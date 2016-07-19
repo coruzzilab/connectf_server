@@ -19,23 +19,25 @@ class Meta(models.Model):
 
 class Nodes(models.Model):
     node_id = models.IntegerField();
-    node_name = models.CharField(max_length=100);
+    text = models.CharField(max_length=100, db_column = "node_name");
     node_type = models.CharField(max_length=100);
 
     class Meta:
         verbose_name = "Nodes"
         verbose_name_plural = "Nodess"
+	db_table = "Nodes"
 	managed = False;
     def __str__(self):
         pass
     
 class Edges(models.Model):
     edge_id = models.IntegerField();
-    edge_name = models.CharField(max_length=100);
+    text = models.CharField(max_length=100, db_column = "edge_name");
 
     class Meta:
         verbose_name = "Edges"
         verbose_name_plural = "Edgess"
+	db_table = "Edges"
 	managed = False;
     def __str__(self):
         pass

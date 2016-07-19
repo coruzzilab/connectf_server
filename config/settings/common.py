@@ -104,7 +104,7 @@ DATABASES = {
     # Raises ImproperlyConfigured exception if DATABASE_URL not in os.environ
     'default': {
     'ENGINE' : 'django.db.backends.mysql',
-    'NAME' : 'tfdb',
+    'NAME' : 'targetdb',
     'USER' : 'coruzzilab',
     'PASSWORD' : 'accesstargetdb',
     'HOST' : '172.22.2.137',
