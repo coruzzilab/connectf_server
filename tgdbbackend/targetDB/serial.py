@@ -14,8 +14,8 @@ class TFValueSerializer(serializers.HyperlinkedModelSerializer):
         model = Nodes
         fields = ["text",]
         
-class EdgesValueSerializer(serializers.HyperlinkedModelSerializer):
-    
+class EdgesValueSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Edges
-        field = ["text",]
+        fields = ["text"]
