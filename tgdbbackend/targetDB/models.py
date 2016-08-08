@@ -20,8 +20,8 @@ class Meta(models.Model):
 class Nodes(models.Model):
     node_id = models.IntegerField();
     text = models.CharField(max_length=100, db_column = "node_name");
-    node_type = models.CharField(max_length=100);
-
+    node_type = models.CharField(max_length=100,db_column = "node_type");
+    
     class Meta:
         verbose_name = "Nodes"
         verbose_name_plural = "Nodess"

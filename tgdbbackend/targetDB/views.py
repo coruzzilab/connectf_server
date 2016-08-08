@@ -2,7 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 from rest_framework import viewsets
-from .serial import MetaValueSerializer,TFValueSerializer,EdgesValueSerializer;
+from .serial import MetaValueSerializer,TFValueSerializer,EdgesValueSerializer,TFTypeSerializer;
 from .models import Meta,Nodes,Edges
 from rest_framework.response import Response
 from rest_framework.decorators import detail_route
@@ -34,10 +34,16 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     
     @detail_route()
     def searchName(self,request,pk=None):
+        uinput = request.query_params.get("uinput",None);
         queryset = [];
         pk = pk.upper();
-        queryset =  Nodes.objects.filter(text__istartswith=pk).all().values("text").distinct();
-        serializer = TFValueSerializer(queryset,many =True);
+        if uinput!=None and pk=="NODENAME":
+            queryset =  Nodes.objects.filter(node_type="TF",text__istartswith=uinput).all().values("text").distinct();
+            serializer = TFValueSerializer(queryset,many =True);
+        elif uinput!=None and pk=="NODETYPE":
+            queryset = Nodes.objects.filter(node_type=="TF",text__istartswith=uinput).all().values("text").distinct();   
+            serializer = TFValueSerializer(queryset,many =True);
+                 
         return Response(serializer.data);
     
 class EdgesValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
@@ -52,10 +58,3 @@ class EdgesValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = EdgesValueSerializer(queryset,many =True);
         return Response(serializer.data);
     
-class HandleQueryView(View):
-    
-    def get(self,request,*args,**kwargs):
-        pass
-    
-    def post(self,request,*args,**kwargs):
-        pass;
