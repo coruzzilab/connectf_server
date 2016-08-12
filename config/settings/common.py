@@ -102,18 +102,18 @@ MANAGERS = ADMINS
 # DATABASE CONFIGURATION
 # ------------------------------------------------------------------------------
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#databases
-DATABASES = {
-    # Raises ImproperlyConfigured exception if DATABASE_URL not in os.environ
-    'default': {
-    'ENGINE' : 'django.db.backends.mysql',
-    'NAME' : 'targetdb',
-    'USER' : 'coruzzilab',
-    'PASSWORD' : 'accesstargetdb',
-    'HOST' : '172.22.2.137',
-    'PORT' : '3306',
-    },
-}
-DATABASES['default']['ATOMIC_REQUESTS'] = True
+#DATABASES = {
+    ## Raises ImproperlyConfigured exception if DATABASE_URL not in os.environ
+    #'default': {
+    #'ENGINE' : 'django.db.backends.mysql',
+    #'NAME' : 'targetdb',
+    #'USER' : 'coruzzilab',
+    #'PASSWORD' : 'accesstargetdb',
+    #'HOST' : '172.22.2.137',
+    #'PORT' : '3306',
+    #},
+#}
+#DATABASES['default']['ATOMIC_REQUESTS'] = True
 
 
 # GENERAL CONFIGURATION
