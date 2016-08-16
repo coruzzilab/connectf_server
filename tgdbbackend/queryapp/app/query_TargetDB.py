@@ -16,7 +16,7 @@ Current version of TargetDB database contains data for six transcription factors
 						TGA1, NLP7, bZIP1 (WT), bZIP1 (mutant), DREB, GATA17, HSFB2A
 User can construct queries for TFs, edges and metadata
 All queries tested in the latest documentation runs under 20 secs
-Last updated: August 4, 2016
+Last updated: August 16, 2016
 '''
 
 ##############
@@ -345,7 +345,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	df_count_rows= new_res_df.shape[0]
 
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
-		writer = pd.ExcelWriter(outfile+'/'+outfile+'_tabular_output.xlsx') # output in excel format
+		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
 		new_res_df.to_excel(writer,index=False,sheet_name='TargetDB Output')
 		writer= write_to_excel(writer, new_res_df)		
 	else:
@@ -420,11 +420,11 @@ def create_sif(sess, output, tmp_df, targetgenes):
 	# SIF output in tab-delimited format
 	for tf_val in tf_list:
 		sub_df= reordered_tmp_df[reordered_tmp_df['TF']==tf_val]
-		outfile = open(output+'/'+output+'_'+tf_val+'.sif', 'wb') # Generates sif output file for each TF
+		outfile = open(output+'/'+output.split('/')[-1]+'_'+tf_val+'.sif', 'wb') # Generates sif output file for each TF
 		sub_df.to_csv(outfile,sep='\t',index=False) 
 		outfile.close() # close the file resources
 
-	outfile_all = open(output+'/'+output+'_AllTFs.sif', 'wb') # Generates sif output file for all TF
+	outfile_all = open(output+'/'+output.split('/')[-1]+'_AllTFs.sif', 'wb') # Generates sif output file for all TF
 	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
 	outfile_all.close() # close the file resources
 
