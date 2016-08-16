@@ -478,7 +478,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		sys.exit(1)
  
 	# creating engine and session
-	engine= create_engine('mysql://coruzzilab:accesstargetdb@localhost/'+dbname)
+	engine= create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
 	Base.metadata.bind= engine
 	DBSession= sessionmaker(bind=engine)
 	sess= DBSession()

@@ -8,6 +8,12 @@ from .app import query_TargetDB;
 import tempfile;
 import shutil;
 import pandas as pd;
+
+import environ
+
+ROOT_DIR = environ.Path(__file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
+APPS_DIR = ROOT_DIR.path('tgdbbackend')
+STATIC_DIR = APPS_DIR.path('static').path('queryBuilder')
 # Create your views here.
 def save_file(dest_path, f):
     #original_name, file_extension = os.path.splitext(f.name)
@@ -48,12 +54,11 @@ class HandleQueryView(View):
         
         self.setTFquery(TFquery,tfFilePaths);
         
-        outfmt = 'tabular';       
-        output = None;
-        #df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, outfmt, output, 
-                           #targetgenesFilePath);
-        df = pd.read_pickle("testdf.pickle")
-        out_metadata_df = pd.read_pickle("testmeta.pickle")     
+        output = STATIC_DIR.path(request_id);
+        df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), 
+                           targetgenesFilePath);
+        #df = pd.read_pickle("testdf.pickle")
+        #out_metadata_df = pd.read_pickle("testmeta.pickle")     
         
         df_columns = [];
         for column in df.columns:
