@@ -15,7 +15,7 @@ Version notes:
 Current version of TargetDB database contains data for six transcription factors: 
 						TGA1, NLP7, bZIP1 (WT), bZIP1 (mutant), DREB, GATA17, HSFB2A
 User can construct queries for TFs, edges and metadata
-All queries tested in the latest documentation runs under 20 secs
+All queries tested in the latest documentation runs under 20 sec
 Last updated: August 4, 2016
 '''
 
