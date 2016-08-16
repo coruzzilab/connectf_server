@@ -21,8 +21,9 @@ Last updated: August 4, 2016
 
 ##############
 # Modules
-import sys
+import sys, os
 import re
+import shutil, zipfile
 #import networkx as nx
 import numpy as np
 import pandas as pd
@@ -39,7 +40,7 @@ def queryTFDB(sess, q_TFname, qedgelist, qmetalist):
 	
 	# create alias for node1
 	n1= aliased(Nodes)
-	n2= aliased(Nodes)
+	n2= aliased(Nodes) 
 	count=0
 	list_metaid= list()
 
@@ -183,10 +184,8 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 	if 'AND' in TFname:
 		filtered_columns= rs_pd_all.columns.tolist() # after edges were removed dataframe contains only valid edges
 		tfquery= create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
-		#print 'tfquery= ',tfquery
-		#print 'rs_pd_all= ',rs_pd_all[0:10]
 		rs_pd_all.query(tfquery,inplace= True) # query the dataframe for intersection and complex query expression
-		#rs_pd_all= rs_pd_all.query(tfquery,inplace= False)
+	
 	return rs_pd_all
 
 
@@ -342,17 +341,15 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	cols = new_res_df.columns.tolist()
 	cols= ['Gene Full Name','Gene Name','index','Target Count','p-value']+cols[1:-4]
 	new_res_df = new_res_df[cols]
-	new_res_df.rename(columns={'index': 'Gene ID'}, inplace=True) # THIS IS FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT
+	new_res_df.rename(columns={'index': 'Gene ID'}, inplace=True) # THIS IS the FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT
 	df_count_rows= new_res_df.shape[0]
-	if outfile:
-		if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
-			writer = pd.ExcelWriter(outfile+'.xlsx') # output in excel format
-			new_res_df.to_excel(writer,index=False,sheet_name='TargetDB Output')
-			writer= write_to_excel(writer, new_res_df)		
-		else:
-			print '\nNo target genes matched the query crietria!'
+
+	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
+		writer = pd.ExcelWriter(outfile+'/'+outfile+'_tabular_output.xlsx') # output in excel format
+		new_res_df.to_excel(writer,index=False,sheet_name='TargetDB Output')
+		writer= write_to_excel(writer, new_res_df)		
 	else:
-		writer=None
+		print '\nNo target genes matched the query crietria!'
 
 	return writer,new_res_df
 
@@ -409,25 +406,34 @@ def write_to_excel(writer, new_res_df):
 #################################
 # Generate sif output
 def create_sif(sess, output, tmp_df, targetgenes):
-
+	
 	stacked_tmp_df = pd.DataFrame(tmp_df.stack().reset_index())
 
 	stacked_tmp_df.columns = ['TARGET','TF','EDGE']
 
 	stacked_tmp_df['TF']= stacked_tmp_df['TF'].apply(lambda x:x.split('_')[0])
+
+	tf_list= list(set(stacked_tmp_df['TF'].tolist()))
 	
 	reordered_tmp_df = pd.DataFrame(stacked_tmp_df,columns=['TF','EDGE','TARGET'])
 
 	# SIF output in tab-delimited format
-	if output:
-		reordered_tmp_df.to_csv(output+'.txt',sep='\t',index=False) # THIS IS MY FINAL OUTPUT DATAFRAME FOR SIF FORMAT
+	for tf_val in tf_list:
+		sub_df= reordered_tmp_df[reordered_tmp_df['TF']==tf_val]
+		outfile = open(output+'/'+output+'_'+tf_val+'.sif', 'wb') # Generates sif output file for each TF
+		sub_df.to_csv(outfile,sep='\t',index=False) 
+		outfile.close() # close the file resources
+
+	outfile_all = open(output+'/'+output+'_AllTFs.sif', 'wb') # Generates sif output file for all TF
+	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
+	outfile_all.close() # close the file resources
 
 	return reordered_tmp_df	
 
 
 ###################################################
 # function to filter database based on metadata
-def getmetadata(sess, list_metaid, output, writer):
+def getmetadata(sess, list_metaid, writer):
 
 	# This function takes a list of metadata ids as an input, returns a nested dict that contains all the metadata types for metadata ids
 	db_metadict= dict()
@@ -445,23 +451,22 @@ def getmetadata(sess, list_metaid, output, writer):
 	tf_name= pd.DataFrame(data=expid_dict, index=['META_DATA'])
 	out_metadata_df= pd.concat([tf_name, metadata_df], axis=0) # THIS IS MY FINAL OUTPUT DATAFRAME FOR METADATA OUTPUT
 
-	if writer:	
-		out_metadata_df.to_excel(writer,sheet_name='MetaData')
-		workbook1 = writer.book
-		worksheet1 = writer.sheets['MetaData']
-		bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
-		worksheet1.set_column('A:A', 27, bold_font1)
-		worksheet1.set_column('B:Z', 40)
-		header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
-		worksheet1.set_row(1, None, header_fmt)
-		writer.close()
+	out_metadata_df.to_excel(writer,sheet_name='MetaData')
+	workbook1 = writer.book
+	worksheet1 = writer.sheets['MetaData']
+	bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
+	worksheet1.set_column('A:A', 27, bold_font1)
+	worksheet1.set_column('B:Z', 40)
+	header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
+	worksheet1.set_row(1, None, header_fmt)
+	writer.close()
 	return out_metadata_df
 
 
 ############################
 # main method
 #@profile
-def main(dbname, TFquery, edges, metadata, outfmt, output, targetgenes):
+def main(dbname, TFquery, edges, metadata, output, targetgenes):
 
 	# check if the command line arguments provided are ok
 	if dbname==None:
@@ -473,7 +478,7 @@ def main(dbname, TFquery, edges, metadata, outfmt, output, targetgenes):
 		sys.exit(1)
  
 	# creating engine and session
-	engine= create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
+	engine= create_engine('mysql://coruzzilab:accesstargetdb@localhost/'+dbname)
 	Base.metadata.bind= engine
 	DBSession= sessionmaker(bind=engine)
 	sess= DBSession()
@@ -528,21 +533,18 @@ def main(dbname, TFquery, edges, metadata, outfmt, output, targetgenes):
 		rs_final_res_t= rs_final_res
 	
 	# Write Output
-	if not outfmt:
-		outfmt= 'SIF'
-	if outfmt.strip().upper()== 'TABULAR':	# create tabular output
-		rs_tabular, chipdata_summary= tabular(rs_final_res_t)
-		writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
-		out_metadata_df= getmetadata(sess, rs_final_res.columns, output, writer)
-		return new_res_df,out_metadata_df
-	if outfmt.strip().upper()== 'SIF': # create sif output	
-		reordered_tmp_df= create_sif(sess, output, rs_final_res_t, targetgenes)
-		if output:
-			writer= pd.ExcelWriter(output+'_metadata.xlsx')
-		else:
-			writer= None
-		out_metadata_df= getmetadata(sess, rs_final_res.columns, output, writer)
-		return reordered_tmp_df, out_metadata_df
+	if not os.path.exists(output): # create output directory
+		os.makedirs(output)
+	
+	rs_tabular, chipdata_summary= tabular(rs_final_res_t)
+	writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
+	reordered_tmp_df= create_sif(sess, output, rs_final_res_t, targetgenes)
+	out_metadata_df= getmetadata(sess, rs_final_res.columns, writer)
+
+	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
+	shutil.rmtree(output) # delete the output directory after creating zip file
+
+	return new_res_df,reordered_tmp_df,out_metadata_df # returns three dfs to be displayed on user-interface
 
 
 ###################################################################
@@ -608,13 +610,11 @@ if __name__=='__main__':
 	parser.add_argument('-t','--TFname', nargs='+', help= 'Search by TF name or'\
 							 'get alldata from the database (-t alldata)', required= True)
 	parser.add_argument('-e','--edges', nargs='+', help= 'Search by Edges')
-
 	parser.add_argument('-m','--metadata', nargs='+', help= 'Search by meta data')
-	parser.add_argument('-f','--outfmt', help= 'Specify output format: sif, tabular: Default- sif')
 	parser.add_argument('-o','--output', help= 'Output file name', required= False)
 	parser.add_argument('-r','--targetgenes', help= 'List of genes provided by user to refine the database output')	
 	
 	args= parser.parse_args()
 	
-	main(args.dbname, args.TFname, args.edges, args.metadata, args.outfmt, args.output, args.targetgenes)
+	main(args.dbname, args.TFname, args.edges, args.metadata, args.output, args.targetgenes)
 
