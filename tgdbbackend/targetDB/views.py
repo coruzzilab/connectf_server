@@ -7,6 +7,7 @@ from .models import Meta,Nodes,Edges
 from rest_framework.response import Response
 from rest_framework.decorators import detail_route
 from django.views.generic import View;
+from django.db.models import Q
 
 class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MetaValueSerializer;
@@ -38,10 +39,10 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = [];
         pk = pk.upper();
         if uinput!=None and pk=="NODENAME":
-            queryset =  Nodes.objects.filter(node_type="TF",text__istartswith=uinput).all().values("text").distinct();
+            queryset =  Nodes.objects.filter(Q(node_type="TF") | Q(node_type="-"),Q(text__istartswith=uinput)).all().values("text").distinct();
             serializer = TFValueSerializer(queryset,many =True);
         elif uinput!=None and pk=="NODETYPE":
-            queryset = Nodes.objects.filter(node_type=="TF",text__istartswith=uinput).all().values("text").distinct();   
+            queryset = Nodes.objects.filter(Q(node_type=="TF") | Q(node_type="-"),Q(text__istartswith=uinput)).all().values("text").distinct();   
             serializer = TFValueSerializer(queryset,many =True);
                  
         return Response(serializer.data);
