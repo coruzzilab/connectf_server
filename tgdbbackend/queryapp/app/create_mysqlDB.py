@@ -56,14 +56,25 @@ class Genenames(Base):
 	ath_fullname= Column(Text(2000))
 	ath_gene_type= Column(String(100),nullable=False)
 
-def createdbase(dbasename):
+class createdbase():
 
-	engine = create_engine('mysql://root:coruzzilab@localhost')
-	engine.execute("DROP DATABASE IF EXISTS "+dbasename)
-	engine.execute("CREATE DATABASE "+dbasename)
-	engine.execute("USE "+dbasename)
-	Base.metadata.create_all(engine)
-	return
+	def __init__(self,dbasename):
+		self.engine = create_engine('mysql://root:coruzzilab@172.22.2.137')
+		#self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to create the database
+		#self.engine.execute("CREATE DATABASE "+dbasename)
+		self.engine.execute("USE "+dbasename)
+		Base.metadata.create_all(self.engine)
+		
+	def getEngine(self):
+		return self.engine
+
+class AccessDatabase():
+
+	def __init__(self, dbname):
+		self.engine = create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
+	
+	def getEngine(self):
+		return self.engine
 
 if __name__=='__main__':
 
