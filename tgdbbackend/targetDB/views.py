@@ -54,8 +54,9 @@ class EdgesValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     @detail_route()
     def searchName(self,request,pk=None):
         queryset = [];
+        uinput = request.query_params.get("uinput",None);
         pk = pk.upper();
-        queryset = Edges.objects.filter(text__istartswith=pk).all().values("text").distinct();
+        queryset = Edges.objects.filter(text__istartswith=uinput).all().values("text").distinct();
         serializer = EdgesValueSerializer(queryset,many =True);
         return Response(serializer.data);
     
