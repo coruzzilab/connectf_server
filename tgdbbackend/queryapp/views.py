@@ -55,8 +55,7 @@ class HandleQueryView(View):
         self.setTFquery(TFquery,tfFilePaths);
         
         output = STATIC_DIR.path(request_id);
-        df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), 
-                           targetgenesFilePath);
+        df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), targetgenesFilePath);
         #df = pd.read_pickle("testdf.pickle")
         #out_metadata_df = pd.read_pickle("testmeta.pickle")     
         

@@ -62,3 +62,6 @@ tgdbbackend/media/
 # Hitch directory
 tests/.hitch
 
+# static file
+tgdbbackend/static/queryBuilder/*.zip
+
