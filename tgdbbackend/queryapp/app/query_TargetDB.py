@@ -16,7 +16,7 @@ Current version of TargetDB database contains data for six transcription factors
 						TGA1, NLP7, bZIP1 (WT), bZIP1 (mutant), DREB, GATA17, HSFB2A
 User can construct queries for TFs, edges and metadata
 All queries tested in the latest documentation runs under 20 secs
-Last updated: August 16, 2016
+Last updated: August 4, 2016
 '''
 
 ##############
@@ -32,7 +32,7 @@ import json
 from collections import defaultdict
 from sqlalchemy import create_engine,exc,func,and_,or_
 from sqlalchemy.orm import sessionmaker, aliased
-from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base
+from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base,AccessDatabase
 
 ################################################
 # Query the database
@@ -181,7 +181,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 
 	# query df (df with multiple TFs) if intersection is asked for TFs 
 	# , otherwise skip as join 'outer' used above creates union between multiple TFs
-	if 'AND' in TFname:
+	if 'AND' in ''.join(TFname):
 		filtered_columns= rs_pd_all.columns.tolist() # after edges were removed dataframe contains only valid edges
 		tfquery= create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
 		rs_pd_all.query(tfquery,inplace= True) # query the dataframe for intersection and complex query expression
@@ -257,8 +257,8 @@ def getquerylist(query): # should be able to handle any user entered list: TFs o
 	if ' AND ' in q_str.upper():
 		q_str= q_str.upper().replace(' AND ',' ')
 		
-	if ' NOT ' in q_str.upper():
-		q_str= q_str.upper().replace(' NOT ',' ')
+	if ' ANDNOT ' in q_str.upper():
+		q_str= q_str.upper().replace(' ANDNOT ',' ')
 
 	q_list_new= [x.upper().strip() for x in q_str.split(' ')]
 	q_list_new = filter(None, q_list_new)
@@ -478,7 +478,8 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		sys.exit(1)
  
 	# creating engine and session
-	engine= create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
+	#engine= create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
+	engine = AccessDatabase(dbname).getEngine()
 	Base.metadata.bind= engine
 	DBSession= sessionmaker(bind=engine)
 	sess= DBSession()
@@ -544,7 +545,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
 	shutil.rmtree(output) # delete the output directory after creating zip file
 
-	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
+	return new_res_df,reordered_tmp_df,out_metadata_df # returns three dfs to be displayed on user-interface
 
 
 ###################################################################

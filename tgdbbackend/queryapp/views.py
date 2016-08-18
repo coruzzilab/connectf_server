@@ -31,6 +31,7 @@ class HandleQueryView(View):
     def get(self,request,*args,**kwargs):
         pass
     
+
     def post(self,request,*args,**kwargs):
         request_id = request.POST['requestId'];
         dbname = 'targetdb';
