@@ -501,7 +501,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		with open(tf_input, 'r') as fl_tf:
 			for val_tf in fl_tf:
 				q_list.append(val_tf.strip().upper())
-		TFname= (' '+TFquery[0].strip().upper()+' ').join(q_list).split()
+		TFname= (' '+TFquery[0].strip().upper()+' ').replace('[','').replace(']','').join(q_list).split()
 		q_tf_list= getquerylist(TFname)
 		print '\nFollowing is your database query:'
 		print ' '.join(TFname)
