@@ -545,7 +545,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
 	shutil.rmtree(output) # delete the output directory after creating zip file
 
-	return new_res_df,reordered_tmp_df,out_metadata_df # returns three dfs to be displayed on user-interface
+	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
 
 
 ###################################################################
