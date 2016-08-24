@@ -90,7 +90,9 @@ def create_all_query(sess, edges, allquery, q_tf, pos):
 		allquery_edges.append(x_r[0])
 	all_r_edges= (' '+edges[pos-1].strip().replace('[','')+' ').join(allquery_edges)
 	edges[pos]= '['+all_r_edges+']'
-
+	print 'test= ',(' '+edges[pos-1].strip().replace('[','')+' ')
+	print '*allquery_edges= ',allquery_edges
+	print 'all_r_edges= ',all_r_edges
 	return edges # return replaced edge
 
 ############################################################
@@ -158,7 +160,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 					rs_gp['TMP']= None # all rows for this column are NONE. Edge not present for a TF will look for values in this column and get false as a result of expression
 				
 				edgequery= create_pd_query(edges, edgelist, edge_mid_map)
-				#print 'edgequery= ',edgequery
+				print 'edgequery= ',edgequery
 				rs_gp.query(edgequery,inplace= True) # query the df of each TF for edges
 				#print '*****rs_gp= ',rs_gp
 			if 'TMP' in rs_gp.columns: # discard the tmp column from the dataframe after querying the DF
@@ -176,7 +178,8 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 		print '\nNo data matched for the given query!'
 		print 'Exit'
 		sys.exit(1)
-
+	
+	 
 	# query df (df with multiple TFs) if intersection is asked for TFs 
 	# , otherwise skip as join 'outer' used above creates union between multiple TFs
 	if 'AND' in ''.join(TFname):
@@ -190,7 +193,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 ##########################################################
 # Create TF query
 def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
-	
+	print 
 	tfstr= ' '.join(TFname)
 	tf_in_mid= tfstr.upper().replace('AND','&').replace('OR','|').replace('NOT','~').replace('[','(').replace(']',')')
 
@@ -260,7 +263,7 @@ def getquerylist(query): # should be able to handle any user entered list: TFs o
 
 	q_list_new= [x.upper().strip() for x in q_str.split(' ')]
 	q_list_new = filter(None, q_list_new)
-
+	
 	return q_list_new
 
 
@@ -494,12 +497,20 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	# if query is given as an input file for transcription factors
 	tmptf= ' '.join(TFquery)	
 	if '.TXT' in tmptf.upper(): # if input query is a txt file
-		tf_input= TFquery[1].replace('[','').replace(']','').strip()
+		#tf_input= TFquery[1].replace('[','').replace(']','').strip()
+		file_index = [i for i, s in enumerate(TFquery) if '.txt' in s][0] # get index of txt file in the list
+		tf_input= TFquery[file_index].replace(']','').replace('[','') # get the file name
 		q_list= list()
-		with open(tf_input, 'r') as fl_tf:
+		with open(tf_input, 'r') as fl_tf: # read the file
 			for val_tf in fl_tf:
-				q_list.append(val_tf.strip().upper())
-		TFname= (' '+TFquery[0].strip().upper()+' ').replace('[','').replace(']','').join(q_list).split()
+				q_list.append(val_tf.strip().upper())	
+		tmp_TFname= (' '+TFquery[file_index-1].strip().upper().replace('[','').replace(']','')+' ').join(q_list)
+		s_brac= ''.join(['[']*(TFquery[file_index-1].count('[')))+''.join(['[']*(TFquery[file_index].count('['))) # to set the start brackets around the file elements
+		e_brac= ''.join([']']*(TFquery[file_index].count(']'))) # to set the end brackets around the file elements
+		my_TFname= (s_brac+tmp_TFname+e_brac) # replace the file name and condition (and/or) with query constructed
+		del TFquery[file_index-1:file_index+1]# delete the file name and condition from the user provided query list
+		TFquery.insert(file_index-1,my_TFname)# insert the file name and condition with query constructed in user provided list
+		TFname= ' '.join(TFquery).split() # Split by space (bcoz the newly inserted query part is still a list)
 		q_tf_list= getquerylist(TFname)
 		print '\nFollowing is your database query:'
 		print ' '.join(TFname)
@@ -508,8 +519,8 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		all_tfs= sess.query(Nodes.node_name, Nodes.node_type).filter(Nodes.node_type=='TF').all()
 		for x in all_tfs:
 			q_tf_list.append(x[0])
-		TFname= (' '+TFquery[0].strip().upper()+' ').join(q_tf_list).split()
-		
+		TFname= (' '+TFquery[0].strip().upper().replace('[','')+' ').join(q_tf_list).split()
+
 	if not ('.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()): # if input query is an expression or selection of one TF
 		TFname= [x.upper() for x in TFquery]
 		q_tf_list= getquerylist(TFname)
