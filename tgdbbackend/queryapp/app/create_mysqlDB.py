@@ -36,7 +36,7 @@ class Meta(Base):
 	__tablename__='Meta'
 	meta_p= Column(Integer, primary_key= True, autoincrement=True) # I had to make this a primary key
 	meta_id= Column(String(100), primary_key= True, nullable=False, index= True)
-	meta_value= Column(String(100),nullable=False, index= True) # meta value should be a text
+	meta_value= Column(String(255),index=True) # meta value should be a text
 	meta_type= Column(String(100),nullable=False, index= True)
 
 class Interactions(Base):
@@ -59,8 +59,8 @@ class Genenames(Base):
 class createdbase():
 
 	def __init__(self,dbasename):
-		self.engine = create_engine('mysql://root:coruzzilab@172.22.2.137')
-		#self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to create the database
+		self.engine = create_engine('mysql://root:coruzzilab@localhost')
+		#self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
 		#self.engine.execute("CREATE DATABASE "+dbasename)
 		self.engine.execute("USE "+dbasename)
 		Base.metadata.create_all(self.engine)

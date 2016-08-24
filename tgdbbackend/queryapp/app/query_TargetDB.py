@@ -21,13 +21,11 @@ Last updated: August 4, 2016
 
 ##############
 # Modules
-import sys, os
-import re
+import sys, os, re
+import argparse as agp
 import shutil, zipfile
-#import networkx as nx
 import numpy as np
 import pandas as pd
-import argparse as agp
 import json
 from collections import defaultdict
 from sqlalchemy import create_engine,exc,func,and_,or_
