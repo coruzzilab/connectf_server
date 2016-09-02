@@ -330,19 +330,19 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 
 	df_target_names= pd.DataFrame(rsall_gnames, columns=['Gene ID','Gene Name','Gene Full Name']).set_index('Gene ID')
 	
-	# concat this df to results df on metaid column names to create additional row for gene names
 	rs_final_res['Target Count']= (rs_final_res.notnull() * 1).sum(axis=1)
 
+	# concat this df to results df on metaid column names to create additional row for gene names
 	new_df= pd.concat([df_target_names, rs_final_res], axis=1)
 	new_df.sort(columns='Target Count', axis=0, ascending=False, inplace=True)
 	new_res_df= pd.concat([mid_tfname_df, chip_coding, new_df], axis=0)
 	
 	new_res_df.reset_index(inplace=True)
-	new_res_df["p-value"] = np.nan
+	new_res_df["pvalue"] = np.nan
 	cols = new_res_df.columns.tolist()
-	cols= ['Gene Full Name','Gene Name','index','Target Count','p-value']+cols[1:-4]
+	cols= ['Gene Full Name','Gene Name','index','Target Count','pvalue']+cols[1:-4]
 	new_res_df = new_res_df[cols]
-	new_res_df.rename(columns={'index': 'Gene ID'}, inplace=True) # THIS IS the FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT
+	new_res_df.rename(columns={'index': 'Gene ID', 'Target Count': 'Target Count '+'('+str(len(res_df_cols))+')'}, inplace=True) # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
 	df_count_rows= new_res_df.shape[0]
 
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
@@ -376,10 +376,10 @@ def write_to_excel(writer, new_res_df):
 
 	workbook = writer.book
 	worksheet = writer.sheets['TargetDB Output']
-	bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border':1})
+	bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'center'})
 	worksheet.set_column('A:B', 15)
 	worksheet.set_column('C:C', 15, bold_font)
-	worksheet.set_column('D:D', 10, bold_font)
+	worksheet.set_column('D:D', 15, bold_font)
 	worksheet.set_column('E:E', 8, bold_font)
 	worksheet.set_column('F:Z', 27)
 	header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
@@ -408,15 +408,20 @@ def write_to_excel(writer, new_res_df):
 # Generate sif output
 def create_sif(sess, output, tmp_df, targetgenes):
 	
-	stacked_tmp_df = pd.DataFrame(tmp_df.stack().reset_index())
+	# before creating the sif file I am combining chipseq data from different time-points (from one experiment) into one column
+	# Now I am retaining only one edge for multiple time-points: e.g.: Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by Target:CHIPSEQ
+	sif_rs_tabular= tmp_df.groupby(tmp_df.columns, axis=1).\
+							apply(lambda x:x.apply(lambda y: ','.join([l for l in y if l is not None]), axis=1))
+	# replace Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by Target:CHIPSEQ
+	sif_rs_tabular.replace({'^TARGET:CHIPSEQ.*': 'TARGET:CHIPSEQ'}, regex=True, inplace=True)
+	#sif_rs_tabular.drop_duplicates()
+	sif_rs_tabular.replace('', np.nan, inplace=True)
 
-	stacked_tmp_df.columns = ['TARGET','TF','EDGE']
-
-	stacked_tmp_df['TF']= stacked_tmp_df['TF'].apply(lambda x:x.split('_')[0])
-
+	stacked_tmp_df = pd.DataFrame(sif_rs_tabular.stack().reset_index()) # stack converts df columns into stacked rows
+	stacked_tmp_df.columns = ['TARGET','TF','EDGE'] # assign new columns
+	stacked_tmp_df['TF']= stacked_tmp_df['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
 	tf_list= list(set(stacked_tmp_df['TF'].tolist()))
-	
-	reordered_tmp_df = pd.DataFrame(stacked_tmp_df,columns=['TF','EDGE','TARGET'])
+	reordered_tmp_df = pd.DataFrame(stacked_tmp_df,columns=['TF','EDGE','TARGET']) # reorder the dataframe
 
 	# SIF output in tab-delimited format
 	for tf_val in tf_list:
@@ -425,9 +430,32 @@ def create_sif(sess, output, tmp_df, targetgenes):
 		sub_df.to_csv(outfile,sep='\t',index=False) 
 		outfile.close() # close the file resources
 
-	outfile_all = open(output+'/'+output.split('/')[-1]+'_AllTFs.sif', 'wb') # Generates sif output file for all TF
+	outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
 	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
+	
+	total_exp= len(sif_rs_tabular.columns.tolist()) # count the total number of experiments	
+	sif_rs_tabular['target_count']= (sif_rs_tabular.notnull() * 1).sum(axis=1)
+	sub_common_targets= sif_rs_tabular[sif_rs_tabular['target_count']==total_exp] # df subset of common targets (i.e. targets repersented across all the exps)
+	sub_shared_targets= sif_rs_tabular[sif_rs_tabular['target_count']>1] # df subset of shared targets (i.e. target genes present in >1 exp)
+	sub_common_targets.drop('target_count', 1, inplace=True) # drop the target_count column from this subset df
+	sub_shared_targets.drop('target_count', 1, inplace=True) # drop the target_count column from this subset df 
+	
+	outfile_common = open(output+'/'+output.split('/')[-1]+'_commonTargets.sif', 'wb') # Generates sif output file for all TF
+	stacked_common_targets= pd.DataFrame(sub_common_targets.stack().reset_index())
+	stacked_common_targets.columns = ['TARGET','TF','EDGE']
+	stacked_common_targets['TF']= stacked_common_targets['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
+	stacked_common_targets[['TF','EDGE','TARGET']].to_csv(outfile_common,sep='\t',index=False)
+
+
+	outfile_shared = open(output+'/'+output.split('/')[-1]+'_sharedTargets.sif', 'wb') # Generates sif output file for shared targets
+	stacked_shared_targets= pd.DataFrame(sub_shared_targets.stack().reset_index())
+	stacked_shared_targets.columns = ['TARGET','TF','EDGE']
+	stacked_shared_targets['TF']= stacked_shared_targets['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
+	stacked_shared_targets[['TF','EDGE','TARGET']].to_csv(outfile_shared,sep='\t',index=False)
+
 	outfile_all.close() # close the file resources
+	outfile_common.close() # close the file resources
+	outfile_shared.close() # close the file resources
 
 	return reordered_tmp_df	
 
@@ -449,7 +477,7 @@ def getmetadata(sess, list_metaid, writer):
 				if m_type== 'TRANSCRIPTION_FACTOR_NAME':
 					expid_dict[m_id]= m_value
 	metadata_df= pd.DataFrame.from_dict(data=db_metadict,orient='columns')
-	tf_name= pd.DataFrame(data=expid_dict, index=['META_DATA'])
+	tf_name= pd.DataFrame(data=expid_dict, index=['TF NAME'])
 	out_metadata_df= pd.concat([tf_name, metadata_df], axis=0) # THIS IS MY FINAL OUTPUT DATAFRAME FOR METADATA OUTPUT
 
 	out_metadata_df.to_excel(writer,sheet_name='MetaData')
