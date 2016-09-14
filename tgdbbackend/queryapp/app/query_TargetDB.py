@@ -394,7 +394,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	# code below is to count the Target_count: default count counts analysis id for each experiment separately
 	tmp_level_sum= (new_res_df.notnull() * 1) # convert data to binary format to count the Target_count correctly
 	tmp_level_sum.drop(['Full Name__','Name__','ID__','pvalue__'], axis=1, inplace=True) # drop unecsseary columns
-	tmp_level_sum.drop([0,1,2], axis=0, inplace=True)# drop unecsseary rows
+	tmp_level_sum.drop([0,1], axis=0, inplace=True)# drop unecsseary rows
 	tmp_level_sum.replace(0, np.nan, inplace=True)
 	level_count= tmp_level_sum.sum(level=0,axis=1)
 	total_no_exp= '('+str(len(list(set(tmp_level_sum.columns.get_level_values(0)))))+')'
@@ -450,18 +450,18 @@ def write_to_excel(writer, new_res_df):
 	worksheet.set_row(2, None, None, {'hidden': True}) # hiding unnecessary row created by multiindexing
 	worksheet.set_row(3, None, header_fmt_1)
 	worksheet.set_row(4, None, header_fmt)
-	worksheet.set_row(5, None, header_fmt)
+	#worksheet.set_row(5, None, header_fmt)
 	format1 = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
 	format2 = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
 	format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
 		
 	# Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
 		
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C5:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
                                         'value': 'INDUCED', 'format': format2})
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C5:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
      	                                   'value': 'REPRESSED', 'format': format1})
-	worksheet.conditional_format(('F7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format(('F6:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
                                         'value': 1,'format': format3})
 	return writer
 
@@ -647,10 +647,10 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	#new_res_df.columns = new_res_df.columns.get_level_values(0)
 	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
 	new_res_df.drop(new_res_df.index[0])
-	if type(new_res_df.index)==pd.MultiIndex:
-		print 'new_res_df is still multiple index'
-	else:
-		print 'new_res_df is NOT multiple index'
+	#if type(new_res_df.index)==pd.MultiIndex:
+	#	print 'new_res_df is still multiple index'
+	#else:
+	#	print 'new_res_df is NOT multiple index'
 	####################################
 
 	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
