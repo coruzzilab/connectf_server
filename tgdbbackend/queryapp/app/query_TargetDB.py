@@ -654,6 +654,12 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	new_res_df.drop(new_res_df.index[0])
 	targetcount_cols = [col for col in new_res_df if 'Target Count' in col] # find target_count column name
 	new_res_df.sort(columns=targetcount_cols, ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
+	
+	#wr= pd.ExcelWriter('test10.xlsx')
+	#new_res_df.to_excel(wr)
+	#wr.close()
+
+
 	#if type(new_res_df.index)==pd.MultiIndex:
 	#	print 'new_res_df is still multiple index'
 	#else:
