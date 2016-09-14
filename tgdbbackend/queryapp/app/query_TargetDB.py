@@ -404,18 +404,6 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	multi_cols= [('Full Name', 'Gene Full Name'), ('Name', 'Gene Name'), ('ID', 'Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-4] # rearraging the columns
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
-
-	####################################Remove this code when implemnting 6 headers
-	#new_res_df.columns = new_res_df.columns.get_level_values(0)
-	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
-	new_res_df.drop(new_res_df.index[0])
-	if type(new_res_df.index)==pd.MultiIndex:
-		print 'new_res_df is still multiple index'
-	else:
-		print 'new_res_df is NOT multiple index'
-	####################################
-
-		
 	
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
 		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
@@ -654,6 +642,16 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 
 	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
 	shutil.rmtree(output) # delete the output directory after creating zip file
+
+	####################################Remove this code when implemnting 6 headers
+	#new_res_df.columns = new_res_df.columns.get_level_values(0)
+	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
+	new_res_df.drop(new_res_df.index[0])
+	if type(new_res_df.index)==pd.MultiIndex:
+		print 'new_res_df is still multiple index'
+	else:
+		print 'new_res_df is NOT multiple index'
+	####################################
 
 	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
 
