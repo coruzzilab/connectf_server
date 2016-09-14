@@ -406,12 +406,12 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
 
 	####################################Remove this code when implemnting 6 headers
-	new_res_df.columns = new_res_df.columns.get_level_values(0)
-	new_res_df.drop(new_res_df.index[0])
-	if type(new_res_df.index)==pd.MultiIndex:
-		print 'new_res_df is still multiple index'
-	else:
-		print 'new_res_df is NOT multiple index'
+	#new_res_df.columns = new_res_df.columns.get_level_values(0)
+	#new_res_df.drop(new_res_df.index[0])
+	#if type(new_res_df.index)==pd.MultiIndex:
+	#	print 'new_res_df is still multiple index'
+	#else:
+	#	print 'new_res_df is NOT multiple index'
 	####################################
 
 		
