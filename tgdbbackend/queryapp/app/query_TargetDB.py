@@ -16,8 +16,7 @@ Current version of TargetDB database contains data for six transcription factors
 						TGA1, NLP7, bZIP1 (WT), bZIP1 (mutant), DREB, GATA17, HSFB2A
 User can construct queries for TFs, edges and metadata
 All queries tested in the latest documentation runs under 20 secs
-Including analysisID in this code
-Last updated: Sept 6, 2016
+Last updated: August 4, 2016
 '''
 
 ##############
@@ -29,7 +28,7 @@ import numpy as np
 import pandas as pd
 import json
 from collections import defaultdict
-from sqlalchemy import create_engine,exc,func,and_,or_,distinct
+from sqlalchemy import create_engine,exc,func,and_,or_
 from sqlalchemy.orm import sessionmaker, aliased
 from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base,AccessDatabase
 
@@ -49,37 +48,29 @@ def queryTFDB(sess, q_TFname, qedgelist, qmetalist):
 
 	if qedgelist: 
 		if qmetalist: # if both edges and meta ids are given in the user query
-			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
+			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id).filter(n1.node_name==q_TFname).\
 							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
 							filter(Interactions.edge_id==Edges.edge_id).filter(Edges.edge_name.in_(qedgelist)).filter(Interactions.meta_id.in_(qmetalist)).all()
 		if not qmetalist: # if only edges are given in the user query
-			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
+			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id).filter(n1.node_name==q_TFname).\
 							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
 							filter(Interactions.edge_id==Edges.edge_id).filter(Edges.edge_name.in_(qedgelist)).all()
 	if qmetalist and not qedgelist: # if only metaid is given in the user query
-		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
+		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id).filter(n1.node_name==q_TFname).\
 							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
 							filter(Interactions.edge_id==Edges.edge_id).filter(Interactions.meta_id.in_(qmetalist)).all()
 	if not qmetalist and not qedgelist: # if only TFs are given- no edges and no metadata asked in the query
-		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
+		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id).filter(n1.node_name==q_TFname).\
 							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
 							filter(Interactions.edge_id==Edges.edge_id).all()
 
-	rs_pd= pd.DataFrame(rs, columns=['TF','EDGE','TARGET','META','ANALYSIS'])
-#	if rs_pd.empty:
-#		print 'No data matched your query!'
-#		sys.exit(1)
+	rs_pd= pd.DataFrame(rs, columns=['TF','EDGE','TARGET','META_ID'])
 
-	rs_pd['ANALYSIS'] = rs_pd['ANALYSIS'].str.replace('.','_') # pvalues '.' are replaces because pandas does not allow to use these chars with pandas.query
-	rs_pd['META_ID'] = rs_pd[['META', 'ANALYSIS']].apply(lambda x: '_'.join(x), axis=1) # separating metaid and analysis id with '_' because pandas does not allow other chars
-	rs_pd.drop('META', axis=1, inplace=True)
-	rs_pd.drop('ANALYSIS', axis=1, inplace=True)
+	# code to change CHIPSEQ column names for time points: Example: METAID_X will be METAID_X:0, METAID_X:1, METAID_X:5
+	pattern = rs_pd.META_ID.str.contains('CHIPSEQ')
+	# attach time point with each metaid
+	rs_pd.loc[pattern, 'META_ID'] = rs_pd.loc[pattern, 'META_ID'] + '_' + rs_pd.loc[pattern, 'EDGE'].str.split(':').str.get(2)
 
-	if not rs_pd.empty:
-		# code to change CHIPSEQ column names for time points: Example: METAID_X will be METAID_X:0, METAID_X:1, METAID_X:5
-		pattern = rs_pd.META_ID.str.contains('CHIPSEQ')
-		# attach time point with each metaid
-		rs_pd.loc[pattern, 'META_ID'] = rs_pd.loc[pattern, 'META_ID'] + '_' + rs_pd.loc[pattern, 'EDGE'].str.split(':').str.get(2)
 	return rs_pd
 
 ###################################################################################
@@ -99,6 +90,9 @@ def create_all_query(sess, edges, allquery, q_tf, pos):
 		allquery_edges.append(x_r[0])
 	all_r_edges= (' '+edges[pos-1].strip().replace('[','')+' ').join(allquery_edges)
 	edges[pos]= '['+all_r_edges+']'
+	print 'test= ',(' '+edges[pos-1].strip().replace('[','')+' ')
+	print '*allquery_edges= ',allquery_edges
+	print 'all_r_edges= ',all_r_edges
 	return edges # return replaced edge
 
 ############################################################
@@ -153,7 +147,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 			for k,g in tf_data.groupby('EDGE'):
 				edge_mid_map[k]= list(set(g['META_ID']))
 			
-			for i,j in tf_data.groupby('TF'): 
+			for i,j in tf_data.groupby('TF'):
 				tf_mid_map[i].extend(list(set(j['META_ID'])))
 
 			grouped= tf_data.groupby(['TARGET','META_ID'], axis=0)
@@ -166,11 +160,9 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 					rs_gp['TMP']= None # all rows for this column are NONE. Edge not present for a TF will look for values in this column and get false as a result of expression
 				
 				edgequery= create_pd_query(edges, edgelist, edge_mid_map)
-				if edgequery== 'False':
-					print 'No data matched your query!'
-					print 'Create a new query'
-					sys.exit(1)
+				print 'edgequery= ',edgequery
 				rs_gp.query(edgequery,inplace= True) # query the df of each TF for edges
+				#print '*****rs_gp= ',rs_gp
 			if 'TMP' in rs_gp.columns: # discard the tmp column from the dataframe after querying the DF
 				rs_gp.drop('TMP', 1, inplace=True)
 			if not rs_gp.empty: # if dataframe for a TF is not empty after quering the DF then append it to the DF for multiple TFs
@@ -187,13 +179,12 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 		print 'Exit'
 		sys.exit(1)
 	
+	 
 	# query df (df with multiple TFs) if intersection is asked for TFs 
 	# , otherwise skip as join 'outer' used above creates union between multiple TFs
-	#print '***tetsing here= ',''.join(TFname)
 	if 'AND' in ''.join(TFname):
 		filtered_columns= rs_pd_all.columns.tolist() # after edges were removed dataframe contains only valid edges
 		tfquery= create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
-		#print 'tfquery= ',tfquery
 		rs_pd_all.query(tfquery,inplace= True) # query the dataframe for intersection and complex query expression
 	
 	return rs_pd_all
@@ -202,9 +193,9 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 ##########################################################
 # Create TF query
 def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
-
+	print 
 	tfstr= ' '.join(TFname)
-	tf_in_mid= tfstr.upper().replace(' AND ',' & ').replace(' OR ',' | ').replace(' ANDNOT ',' &~ ').replace('[','(').replace(']',')')
+	tf_in_mid= tfstr.upper().replace('AND','&').replace('OR','|').replace('NOT','~').replace('[','(').replace(']',')')
 
 	for val in q_tf_list:
 		count=0
@@ -232,9 +223,7 @@ def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
 def create_pd_query(edges, edgelist, edge_mid_map):
 	
 	edgestr= ' '.join(edges)
-	edges_in_mid= edgestr.upper().replace(' AND ',' & ').replace(' OR ',' | ').replace(' ANDNOT ',' &~ ').\
-																		replace('[]','False').replace('[','(').replace(']',')')
-	#print 'edges_in_mid= ',edges_in_mid
+	edges_in_mid= edgestr.upper().replace('AND','&').replace('OR','|').replace('NOT','~').replace('[','(').replace(']',')')
 	for val in edgelist:
 		myval= '"%s"'%val
 		count=0
@@ -283,90 +272,54 @@ def getquerylist(query): # should be able to handle any user entered list: TFs o
 def filter_meta(sess, q_meta, user_q_meta):
 
 	rs_meta_tmp= list()
-	rs_meta_id_tmp= list()
+	rs_meta_id= list()
 	user_q_metastr= ' '.join(user_q_meta)
-	user_q_meta_format= user_q_metastr.upper().replace(' AND ',' & ').replace(' OR ',' | ').\
-													replace(' ANDNOT ',' &~ ').replace('[','(').replace(']',')')
-	for valm in q_meta: # This loop is to simply get the metaids from the data for multiple conditions in the query
+	user_q_meta_format= user_q_metastr.upper().replace('AND','&').replace('OR','|').\
+													replace('NOT','~').replace('[','(').replace(']',')')
+
+	for valm in q_meta:
 		rs_meta= sess.query(Meta.meta_id).\
 									filter(Meta.meta_type==valm.split('=')[0]).\
-									filter(Meta.meta_value==valm.split('=')[1]) # filtering the metadata and type given in the user query
+									filter(Meta.meta_value==valm.split('=')[1]) # filtering the metadata and type given in user query
 		valm_format= '"%s"'%(valm.split('=')[1])+' in '+valm.split('=')[0] # create query for meta_data
 		user_q_meta_format= user_q_meta_format.replace(valm, valm_format) # creating query expression- replace query with example: 'ANNA_SCHINKE in EXPERIMENTER'
 		rs_meta_tmp.extend([x[0] for x in rs_meta.all()])
 
 	db_metadict= dict()
-	for valm1 in set(rs_meta_tmp): # This loop is to make combinations on the metaids identified in upper loop
-		metadata_df= pd.DataFrame(sess.query(Meta.meta_id, Meta.analysis_id, Meta.meta_value, Meta.meta_type).\
-												filter(Meta.meta_id==valm1).all(), columns= ['m_id','a_id','m_val','m_type'])
-		metadata_df['mid_aid']= metadata_df['m_id']+'_'+metadata_df['a_id']
-		metadata_df_new= metadata_df.pivot(index='mid_aid', columns='m_type', values='m_val')
+	for valm1 in set(rs_meta_tmp):
+		metadata_df= pd.DataFrame(sess.query(Meta.meta_id, Meta.meta_value, Meta.meta_type).\
+												filter(Meta.meta_id==valm1).all(), columns= ['m_id','m_val','m_type'])
+		metadata_df_new= metadata_df.pivot(index='m_id', columns='m_type', values='m_val')
 		m_df_out= metadata_df_new.query(user_q_meta_format)
-
+		
 		if not m_df_out.empty:			
-			rs_meta_id_tmp.append(m_df_out.index[0])
+			rs_meta_id.append(m_df_out.index[0])
 	
-	rs_meta_id= ['_'.join(x.split('_')[:3]) for x in rs_meta_id_tmp]
-
-	if not rs_meta_id:
-		print 'No data matched your metadata query!\n'
-		sys.exit(1)
-
 	return rs_meta_id
-
-
-#########################################################################
-# Counts the number of target genes in experiment and analysisIds given
-def querydb_exp_count(sess, rs_final_res_cols):
-	
-	no1= aliased(Nodes)
-	no2= aliased(Nodes)
-	exp_count= dict()
-
-	for id_val in rs_final_res_cols:
-		exp_id= '_'.join(id_val.split('_')[:3]) # extract experiment id
-		analys_id= '_'.join(id_val.split('_')[3:]) # extract analysis id
-
-		rs_count= sess.query(func.count(distinct(no2.node_name))).\
-				         		filter(Interactions.meta_id==exp_id).filter(Interactions.analysis_id== analys_id).\
-								filter(no1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==no2.node_id).\
-								filter(Interactions.edge_id==Edges.edge_id).all()
-		exp_count[id_val]= int(rs_count[0][0])
-
-	return exp_count
 
 
 ##################################
 # Generate tabular output
 def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	
-	# rename column names- converting fdr0_01 to fdr0.01
-	rs_final_res.rename(columns=lambda x: x[::-1].replace('_','.',1)[::-1], inplace=True) # replacing the last occurence of '_' with '.'
 	res_df_cols= rs_final_res.columns.tolist()
-	
-	exp_count= querydb_exp_count(sess, res_df_cols)
-	rs_final_res.replace('', np.nan, inplace=True) # without this replacement it was counting '' as an element
+	rs_final_res.replace('', np.nan, inplace=True)
 	count_series= rs_final_res.count(axis=0)
 	# get the tf name in a dict
 	mid_tfname_dict= dict() # dict will contain metaid to genename mapping+TF target counts
 	mid_tfname= dict() # dict will contain metaid to genename mapping
-	mid_genotype_control= dict() # dict contains metaid to gentype+control mapping
-	for i_mid in rs_final_res.columns: # creating data for excel sheet headers
-		tf_name= 	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='TRANSCRIPTION_FACTOR_NAME').all()
-		tf_id= sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='TRANSCRIPTION_FACTOR_ID').all()
-		tf_exp= sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='EXPERIMENT').all()
-		tf_control=	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='CONTROL').all()	
-		tf_geno= 	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='GENOTYPE').all()
-		mid_tfname_dict[i_mid]= str(tf_name[0][0])+'- '+str(count_series[i_mid])+' ('+str(exp_count[i_mid])+')'
-		mid_tfname[tf_id[0][0]]= str(tf_name[0][0])
-		mid_genotype_control[i_mid]= str(tf_exp[0][0])+' | '+str(tf_geno[0][0])+' | '+str(tf_control[0][0])# include the data for control here in '+' with genotype
-	
-	mid_tfname_df= pd.DataFrame(data=mid_tfname_dict, index=[' ']) # dump mid_tfname_dict to a df
-	mid_geno_cntrl_df= pd.DataFrame(data= mid_genotype_control, index=[' ']) # dump mid_genotype_control to a df
-	chip_coding= pd.DataFrame(data=chipdata_summary, index=[' ']) # dump mid_tfname_dict to a df
-	chip_coding.rename(columns=lambda x: x[::-1].replace('_','.',1)[::-1], inplace=True) # replacing the last occurence of '_' with '.'
-	
-	# Get the Gene names of the target genes, insert it into a dataframe and merge with the following two dfs
+	for i_mid in rs_final_res.columns:
+		tf_name= 	sess.query(Meta.meta_value).\
+									filter(Meta.meta_id==i_mid).\
+									filter(or_(Meta.meta_type=='TRANSCRIPTION_FACTOR_NAME', Meta.meta_type=='TRANSCRIPTION_FACTOR_ID')).all()
+		mid_tfname_dict[i_mid]= str(tf_name[0][0])+' ('+str(count_series[i_mid])+')'
+		mid_tfname[tf_name[1][0]]= str(tf_name[0][0])
+
+	mid_tfname_df= pd.DataFrame(data=mid_tfname_dict, index=['Targets']) # dump mid_tfname_dict to a df
+
+	chip_coding= pd.DataFrame(data=chipdata_summary, index=['-']) # dump mid_tfname_dict to a df
+
+	# Get the Gene names of the target genes, insert it into a dataframe and merge with the following two dataframes
 	all_targetgenes= list(rs_final_res.index.values)
 	rsall_gnames=list()
 
@@ -375,39 +328,26 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 							filter(Genenames.ath_id==k.strip()).all()
 		rsall_gnames.extend(rs_gnames)
 
-	df_target_names= pd.DataFrame(rsall_gnames, columns=['ID___Gene ID','Name___Gene Name','Full Name___Gene Full Name']).set_index('ID___Gene ID')
+	df_target_names= pd.DataFrame(rsall_gnames, columns=['Gene ID','Gene Name','Gene Full Name']).set_index('Gene ID')
+	
+	rs_final_res['Target Count']= (rs_final_res.notnull() * 1).sum(axis=1)
 
 	# concat this df to results df on metaid column names to create additional row for gene names
-	new_df= pd.concat([df_target_names, rs_final_res], axis=1) # concat with gene annotation for each target gene (by columns)
-	new_res_df= pd.concat([mid_geno_cntrl_df, mid_tfname_df, chip_coding, new_df], axis=0) # concat metadata for each experiment (as headers)
-	new_res_df.reset_index(inplace=True)
-
-	new_res_df["pvalue___P"] = np.nan
-	new_res_df.rename(columns={'index': 'ID___Gene ID'}, inplace=True)
-	df_count_rows= new_res_df.shape[0]
+	new_df= pd.concat([df_target_names, rs_final_res], axis=1)
+	new_df.sort(columns='Target Count', axis=0, ascending=False, inplace=True)
+	new_res_df= pd.concat([mid_tfname_df, chip_coding, new_df], axis=0)
 	
-	# creating multiple index by separating expid and analysisid
-	new_res_df.columns= pd.MultiIndex.from_tuples([('_'.join(c.split('_')[:3]), '_'.join(c.split('_')[3:])) for c in new_res_df.columns])
-	#new_res_df.rename(columns=lambda x: pd.MultiIndex.from_tuples([('_'.join(x.split('_')[:3]), '_'.join(x.split('_')[3:]))]), inplace=True) # probably a better way of renaming but not working 
-
-
-	# code below is to count the Target_count: default count counts analysis id for each experiment separately
-	tmp_level_sum= (new_res_df.notnull() * 1) # convert data to binary format to count the Target_count correctly
-	tmp_level_sum.drop(['Full Name__','Name__','ID__','pvalue__'], axis=1, inplace=True) # drop unecsseary columns
-	tmp_level_sum.drop([0,1,2], axis=0, inplace=True)# drop unecsseary rows
-	tmp_level_sum.replace(0, np.nan, inplace=True)
-	level_count= tmp_level_sum.sum(level=0,axis=1)
-	total_no_exp= '('+str(len(list(set(tmp_level_sum.columns.get_level_values(0)))))+')'
-	new_res_df['Target Count', total_no_exp]= (level_count.notnull() * 1).sum(axis=1)
-	new_res_df.rename(columns={'Full Name__':'Full Name','Name__':'Name','ID__':'ID','pvalue__':'pvalue'}, inplace=True)
-	multi_cols= new_res_df.columns.tolist()
-	multi_cols= [('Full Name', 'Gene Full Name'), ('Name', 'Gene Name'), ('ID', 'Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-4] # rearraging the columns
-	new_res_df= new_res_df[multi_cols]
-	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
+	new_res_df.reset_index(inplace=True)
+	new_res_df["pvalue"] = np.nan
+	cols = new_res_df.columns.tolist()
+	cols= ['Gene Full Name','Gene Name','index','Target Count','pvalue']+cols[1:-4]
+	new_res_df = new_res_df[cols]
+	new_res_df.rename(columns={'index': 'Gene ID', 'Target Count': 'Target Count '+'('+str(len(res_df_cols))+')'}, inplace=True) # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
+	df_count_rows= new_res_df.shape[0]
 
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
 		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
-		new_res_df.to_excel(writer,sheet_name='TargetDB Output') # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
+		new_res_df.to_excel(writer,index=False,sheet_name='TargetDB Output')
 		writer= write_to_excel(writer, new_res_df)		
 	else:
 		print '\nNo target genes matched the query crietria!'
@@ -437,50 +377,48 @@ def write_to_excel(writer, new_res_df):
 	workbook = writer.book
 	worksheet = writer.sheets['TargetDB Output']
 	bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'center'})
-	worksheet.set_column('B:B', 15)
-	worksheet.set_column('C:C', 15)
+	worksheet.set_column('A:B', 15)
+	worksheet.set_column('C:C', 15, bold_font)
 	worksheet.set_column('D:D', 15, bold_font)
-	worksheet.set_column('E:E', 15, bold_font)
-	worksheet.set_column('F:F', 8, bold_font)
-	worksheet.set_column('G:Z', 30)
-	worksheet.set_column('A:A', None, None, {'hidden': True}) # hiding meaningless column (index) created by multiindexing
-
+	worksheet.set_column('E:E', 8, bold_font)
+	worksheet.set_column('F:Z', 27)
 	header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
-	header_fmt_1 = workbook.add_format({'font_name': 'Calibri', 'font_size': 11, 'bold': True, 'align': 'center', 'border':1})
-	worksheet.set_row(2, None, None, {'hidden': True}) # hiding unnecessary row created by multiindexing
-	worksheet.set_row(3, None, header_fmt_1)
-	worksheet.set_row(4, None, header_fmt)
-	worksheet.set_row(5, None, header_fmt)
+	worksheet.set_row(0, None, header_fmt)
+	worksheet.set_row(1, None, header_fmt)
+	worksheet.set_row(2, None, header_fmt)
+
 	format1 = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
 	format2 = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
 	format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
 		
 	# Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
 		
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C2:'+excel_count_cols+str(df_count_rows+1), {'type': 'text', 'criteria': 'containing',
                                         'value': 'INDUCED', 'format': format2})
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C2:'+excel_count_cols+str(df_count_rows+1), {'type': 'text', 'criteria': 'containing',
      	                                   'value': 'REPRESSED', 'format': format1})
-	worksheet.conditional_format(('F7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format(('F4:'+excel_count_cols+str(df_count_rows+1)), {'type': 'text', 'criteria': 'containing',
                                         'value': 1,'format': format3})
+	#writer.close()
+
 	return writer
 
 
 #################################
 # Generate sif output
 def create_sif(sess, output, tmp_df, targetgenes):
-
+	
 	# before creating the sif file I am combining chipseq data from different time-points (from one experiment) into one column
 	# Now I am retaining only one edge for multiple time-points: e.g.: Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by Target:CHIPSEQ
 	sif_rs_tabular= tmp_df.groupby(tmp_df.columns, axis=1).\
 							apply(lambda x:x.apply(lambda y: ','.join([l for l in y if l is not None]), axis=1))
-	sif_rs_tabular.replace({'^TARGET:CHIPSEQ.*': 'TARGET:CHIPSEQ'}, regex=True, inplace=True) # replace Target:CHIPSEQ:0,Target:CHIPSEQ:5 with Target:CHIPSEQ
+	# replace Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by Target:CHIPSEQ
+	sif_rs_tabular.replace({'^TARGET:CHIPSEQ.*': 'TARGET:CHIPSEQ'}, regex=True, inplace=True)
+	#sif_rs_tabular.drop_duplicates()
 	sif_rs_tabular.replace('', np.nan, inplace=True)
 
-	stacked_tmp_df= pd.DataFrame(sif_rs_tabular.stack().reset_index()) # stack converts df columns into stacked rows
+	stacked_tmp_df = pd.DataFrame(sif_rs_tabular.stack().reset_index()) # stack converts df columns into stacked rows
 	stacked_tmp_df.columns = ['TARGET','TF','EDGE'] # assign new columns
-	stacked_tmp_df['TF']= stacked_tmp_df['TF'].apply(lambda x:x.split('#')[0]) # extract experimentID from experimentID+analysisID (separated by '#')
-	stacked_tmp_df= stacked_tmp_df.drop_duplicates() #  dropping duplicates to solve the problem of multiple representation of same experiment (with multiple analysis ID) and chipseq multiple time-points
 	stacked_tmp_df['TF']= stacked_tmp_df['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
 	tf_list= list(set(stacked_tmp_df['TF'].tolist()))
 	reordered_tmp_df = pd.DataFrame(stacked_tmp_df,columns=['TF','EDGE','TARGET']) # reorder the dataframe
@@ -600,7 +538,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		my_TFname= (s_brac+tmp_TFname+e_brac) # replace the file name and condition (and/or) with query constructed
 		del TFquery[file_index-1:file_index+1]# delete the file name and condition from the user provided query list
 		TFquery.insert(file_index-1,my_TFname)# insert the file name and condition with query constructed in user provided list
-		TFname= ' '.join(TFquery).split() # split by space (bcoz the newly inserted query part is still a list)
+		TFname= ' '.join(TFquery).split() # Split by space (bcoz the newly inserted query part is still a list)
 		q_tf_list= getquerylist(TFname)
 		print '\nFollowing is your database query:'
 		print ' '.join(TFname)
@@ -616,6 +554,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		q_tf_list= getquerylist(TFname)
 
 	rs_final_res= queryTF(sess, q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata)
+
 	# if chipseq in dataframe column- exclude the time point from meta_id
 	rs_final_res.columns = [str('_'.join(col.split('_')[:-1])) if 'CHIPSEQ' in col else col for col in rs_final_res.columns]
 	rs_final_res.where((pd.notnull(rs_final_res)), None, inplace=True) # replacing all the Nan values in df with None
@@ -649,10 +588,10 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 ###################################################################
 # Tabular function
 def tabular(rs_final_res_t):
-
 	# combine chipseq data for different time points in a single column
 	rs_tabular= rs_final_res_t.groupby(rs_final_res_t.columns, axis=1).\
 			apply(lambda x: x.apply(lambda y: ','.join([':'.join(l.split(':')[2:]) for l in y if l is not None]), axis=1))
+
 	chipseq_cols= [col_final_df for col_final_df in rs_final_res_t if 'CHIPSEQ' in col_final_df]
 	chipdata_summary= defaultdict(list)
 	for c_c in set(chipseq_cols):
