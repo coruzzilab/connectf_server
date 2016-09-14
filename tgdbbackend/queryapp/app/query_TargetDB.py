@@ -524,11 +524,12 @@ def create_sif(sess, output, tmp_df, targetgenes):
 
 ###################################################
 # function to filter database based on metadata
-def getmetadata(sess, list_metaid, writer):
+def getmetadata(sess, df_cols, writer):
 
 	# This function takes a list of metadata ids as an input, returns a nested dict that contains all the metadata types for metadata ids
 	db_metadict= dict()
 	expid_dict= dict()
+	list_metaid= ['_'.join(x.split('_')[:3]) for x in df_cols]
 	for valm in set(list_metaid):		
 		rs_meta= sess.query(Meta.meta_id, Meta.meta_value, Meta.meta_type).filter(Meta.meta_id==valm)
 		db_metadict[valm]= dict()
