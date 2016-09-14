@@ -547,14 +547,14 @@ def getmetadata(sess, df_cols, writer):
 	#print 'out_metadata_df= ',out_metadata_df
 
 
-	out_metadata_df.to_excel(writer,sheet_name='MetaData')
-	workbook1 = writer.book
-	worksheet1 = writer.sheets['MetaData']
-	bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
-	worksheet1.set_column('A:A', 27, bold_font1)
-	worksheet1.set_column('B:Z', 40)
-	header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
-	worksheet1.set_row(1, None, header_fmt)
+	#out_metadata_df.to_excel(writer,sheet_name='MetaData')
+	#workbook1 = writer.book
+	#worksheet1 = writer.sheets['MetaData']
+	#bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
+	#worksheet1.set_column('A:A', 27, bold_font1)
+	#worksheet1.set_column('B:Z', 40)
+	#header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
+	#worksheet1.set_row(1, None, header_fmt)
 	writer.close()
 	return out_metadata_df
 
@@ -652,6 +652,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	#new_res_df.columns = new_res_df.columns.get_level_values(0)
 	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
 	new_res_df.drop(new_res_df.index[0])
+	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
 	#if type(new_res_df.index)==pd.MultiIndex:
 	#	print 'new_res_df is still multiple index'
 	#else:
