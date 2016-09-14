@@ -36,7 +36,6 @@ class Meta(Base):
 	__tablename__='Meta'
 	meta_p= Column(Integer, primary_key= True, autoincrement=True) # I had to make this a primary key
 	meta_id= Column(String(100), primary_key= True, nullable=False, index= True)
-	analysis_id= Column(String(100), primary_key= True, nullable=False, index= True)
 	meta_value= Column(String(255),index=True) # meta value should be a text
 	meta_type= Column(String(100),nullable=False, index= True)
 
@@ -47,8 +46,7 @@ class Interactions(Base):
 	node_1_id = Column(Integer, ForeignKey('Nodes.node_id'), nullable=False, index= True)
 	node_2_id = Column(Integer, ForeignKey('Nodes.node_id'), nullable=False, index= True)
 	edge_id = Column(Integer, ForeignKey('Edges.edge_id'), nullable=False)
-	meta_id= Column(String(100), ForeignKey('Meta.meta_id'), nullable=False) # could not change this to an interger because of autoincrement
-	analysis_id= Column(String(100), ForeignKey('Meta.analysis_id'), nullable=False)
+	meta_id= Column(String(100), ForeignKey('Meta.meta_id'), nullable=False)
 
 class Genenames(Base):
 	
@@ -62,15 +60,15 @@ class createdbase():
 
 	def __init__(self,dbasename):
 		self.engine = create_engine('mysql://root:coruzzilab@localhost')
-		self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
-		self.engine.execute("CREATE DATABASE "+dbasename)
+		#self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
+		#self.engine.execute("CREATE DATABASE "+dbasename)
 		self.engine.execute("USE "+dbasename)
 		Base.metadata.create_all(self.engine)
 		
 	def getEngine(self):
 		return self.engine
 
-class AccessDatabase(): # This class has special permissions for coruzzilab users(have only permissions to access the database)
+class AccessDatabase():
 
 	def __init__(self, dbname):
 		self.engine = create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
