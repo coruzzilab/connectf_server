@@ -530,6 +530,7 @@ def getmetadata(sess, df_cols, writer):
 	db_metadict= dict()
 	expid_dict= dict()
 	list_metaid= ['_'.join(x.split('_')[:3]) for x in df_cols]
+	#print 'list_metaid= ',list_metaid
 	for valm in set(list_metaid):		
 		rs_meta= sess.query(Meta.meta_id, Meta.meta_value, Meta.meta_type).filter(Meta.meta_id==valm)
 		db_metadict[valm]= dict()
@@ -542,15 +543,18 @@ def getmetadata(sess, df_cols, writer):
 	metadata_df= pd.DataFrame.from_dict(data=db_metadict,orient='columns')
 	tf_name= pd.DataFrame(data=expid_dict, index=['TF NAME'])
 	out_metadata_df= pd.concat([tf_name, metadata_df], axis=0) # THIS IS MY FINAL OUTPUT DATAFRAME FOR METADATA OUTPUT
+	
+	#print 'out_metadata_df= ',out_metadata_df
 
-	out_metadata_df.to_excel(writer,sheet_name='MetaData')
-	workbook1 = writer.book
-	worksheet1 = writer.sheets['MetaData']
-	bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
-	worksheet1.set_column('A:A', 27, bold_font1)
-	worksheet1.set_column('B:Z', 40)
-	header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
-	worksheet1.set_row(1, None, header_fmt)
+
+	#out_metadata_df.to_excel(writer,sheet_name='MetaData')
+	#workbook1 = writer.book
+	#worksheet1 = writer.sheets['MetaData']
+	#bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
+	#worksheet1.set_column('A:A', 27, bold_font1)
+	#worksheet1.set_column('B:Z', 40)
+	#header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
+	#worksheet1.set_row(1, None, header_fmt)
 	writer.close()
 	return out_metadata_df
 
