@@ -379,7 +379,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 
 	# concat this df to results df on metaid column names to create additional row for gene names
 	new_df= pd.concat([df_target_names, rs_final_res], axis=1) # concat with gene annotation for each target gene (by columns)
-	new_res_df= pd.concat([mid_geno_cntrl_df, mid_tfname_df, chip_coding, new_df], axis=0) # concat metadata for each experiment (as headers)
+	new_res_df= pd.concat([mid_tfname_df, chip_coding, new_df], axis=0) # concat metadata for each experiment (as headers)
 	new_res_df.reset_index(inplace=True)
 
 	new_res_df["pvalue___P"] = np.nan
@@ -404,6 +404,11 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	multi_cols= [('Full Name', 'Gene Full Name'), ('Name', 'Gene Name'), ('ID', 'Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-4] # rearraging the columns
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
+
+	####################################Remove this code when implemnting 6 headers
+	new_res_df.columns = new_res_df.columns.get_level_values(0)
+	new_res_df.drop(new_res_df.index[0])
+	####################################
 
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
 		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
