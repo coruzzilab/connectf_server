@@ -141,11 +141,11 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 						edges= create_all_query(sess, edges, allquery, q_tf, pos)
 
 				for p in sorted(discard_pos, reverse=True): # this will fail in case when both chipseq and rnaseq are provided- TEST
-					del edges[int(p)] # delete all the positions with 'and' 'or' in reverse order to aviod change in the pos after deleting
+					del edges[int(p)] # delete all the positions with 'and' 'or' in reverse order to avoid change in the pos after deleting
 
 				edgelist= getquerylist(edges)
 		tf_data= queryTFDB(sess, q_tf, edgelist, metalist)
-		
+
 		# if df for a Tf is empty after querying the database, don't query the DF for edges or combine to the df for multiple TFs 
 		if not tf_data.empty: # if tf_data df is empty, don't append to the tf_frame
 			tf_edges_uniq= tf_data.EDGE.unique()
@@ -160,21 +160,27 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 			rs_gp= pd.DataFrame(grouped.EDGE.apply(lambda x: ','.join(x)).unstack('META_ID'))
 			
 			if edges:# create query string for pandas.dataframe.query() function
+		
 				if set(edgelist)!=set(tf_edges_uniq):# Throw warning if an edge is non-existing for a TF
 					print 'Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',list(set(edgelist)-set(tf_edges_uniq))
 					# make a TMP column in DF to tackle if an edges asked is not present in dbase for a TF
 					rs_gp['TMP']= None # all rows for this column are NONE. Edge not present for a TF will look for values in this column and get false as a result of expression
 				
 				edgequery= create_pd_query(edges, edgelist, edge_mid_map)
-				if edgequery== 'False':
-					print 'No data matched your query!'
-					print 'Create a new query'
-					sys.exit(1)
+
+				if edgequery== 'False': # If no edges are present for 'all' edges. Ignore these TFs
+					if all_edge_flag!=0: # if allrnaseq or allchipseq data is asked. replace the changed edges (with actual edges name) to original edges for next TF
+						edges= orig_edges
+						all_edge_flag= 0
+					continue
+
 				rs_gp.query(edgequery,inplace= True) # query the df of each TF for edges
 			if 'TMP' in rs_gp.columns: # discard the tmp column from the dataframe after querying the DF
 				rs_gp.drop('TMP', 1, inplace=True)
 			if not rs_gp.empty: # if dataframe for a TF is not empty after quering the DF then append it to the DF for multiple TFs
 				tf_frames.append(rs_gp) # append all the dataframes to a list
+		else:
+			print '*Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',edgelist
 
 		if all_edge_flag!=0: # if allrnaseq or allchipseq data is asked. replace the changed edges (with actual edges name) to original edges for next TF
 			edges= orig_edges
@@ -186,6 +192,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 		print '\nNo data matched for the given query!'
 		print 'Exit'
 		sys.exit(1)
+
 	
 	# query df (df with multiple TFs) if intersection is asked for TFs 
 	# , otherwise skip as join 'outer' used above creates union between multiple TFs
@@ -301,6 +308,7 @@ def filter_meta(sess, q_meta, user_q_meta):
 												filter(Meta.meta_id==valm1).all(), columns= ['m_id','a_id','m_val','m_type'])
 		metadata_df['mid_aid']= metadata_df['m_id']+'_'+metadata_df['a_id']
 		metadata_df_new= metadata_df.pivot(index='mid_aid', columns='m_type', values='m_val')
+		print 'user_q_meta_format= ',user_q_meta_format
 		m_df_out= metadata_df_new.query(user_q_meta_format)
 
 		if not m_df_out.empty:			
@@ -647,22 +655,12 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
 	shutil.rmtree(output) # delete the output directory after creating zip file
 
-	####################################Remove this code when implemnting 6 headers
-	#new_res_df.columns = new_res_df.columns.get_level_values(0)
+	####################################
+	# Included this code for the moment to display output on GUI till we solve the problem of displaying multiindex to json
 	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
 	new_res_df.drop(new_res_df.index[0])
 	targetcount_cols = [col for col in new_res_df if 'Target Count' in col] # find target_count column name
 	new_res_df.sort(columns=targetcount_cols, ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
-	
-	#wr= pd.ExcelWriter('test10.xlsx')
-	#new_res_df.to_excel(wr)
-	#wr.close()
-
-
-	#if type(new_res_df.index)==pd.MultiIndex:
-	#	print 'new_res_df is still multiple index'
-	#else:
-	#	print 'new_res_df is NOT multiple index'
 	####################################
 
 	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
