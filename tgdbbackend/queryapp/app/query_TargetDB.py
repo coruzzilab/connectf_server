@@ -390,11 +390,11 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	new_res_df.columns= pd.MultiIndex.from_tuples([('_'.join(c.split('_')[:3]), '_'.join(c.split('_')[3:])) for c in new_res_df.columns])
 	#new_res_df.rename(columns=lambda x: pd.MultiIndex.from_tuples([('_'.join(x.split('_')[:3]), '_'.join(x.split('_')[3:]))]), inplace=True) # probably a better way of renaming but not working 
 
-
+	
 	# code below is to count the Target_count: default count counts analysis id for each experiment separately
 	tmp_level_sum= (new_res_df.notnull() * 1) # convert data to binary format to count the Target_count correctly
 	tmp_level_sum.drop(['Full Name__','Name__','ID__','pvalue__'], axis=1, inplace=True) # drop unecsseary columns
-	tmp_level_sum.drop([0,1], axis=0, inplace=True)# drop unecsseary rows
+	tmp_level_sum.drop([0,1,2], axis=0, inplace=True)# drop unecsseary rows
 	tmp_level_sum.replace(0, np.nan, inplace=True)
 	level_count= tmp_level_sum.sum(level=0,axis=1)
 	total_no_exp= '('+str(len(list(set(tmp_level_sum.columns.get_level_values(0)))))+')'
@@ -404,7 +404,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	multi_cols= [('Full Name', 'Gene Full Name'), ('Name', 'Gene Name'), ('ID', 'Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-4] # rearraging the columns
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
-	
+
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
 		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
 		new_res_df.to_excel(writer,sheet_name='TargetDB Output') # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
@@ -450,18 +450,18 @@ def write_to_excel(writer, new_res_df):
 	worksheet.set_row(2, None, None, {'hidden': True}) # hiding unnecessary row created by multiindexing
 	worksheet.set_row(3, None, header_fmt_1)
 	worksheet.set_row(4, None, header_fmt)
-	#worksheet.set_row(5, None, header_fmt)
+	worksheet.set_row(5, None, header_fmt)
 	format1 = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
 	format2 = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
 	format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
 		
 	# Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
 		
-	worksheet.conditional_format('C5:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
                                         'value': 'INDUCED', 'format': format2})
-	worksheet.conditional_format('C5:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
      	                                   'value': 'REPRESSED', 'format': format1})
-	worksheet.conditional_format(('F6:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format(('F7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
                                         'value': 1,'format': format3})
 	return writer
 
