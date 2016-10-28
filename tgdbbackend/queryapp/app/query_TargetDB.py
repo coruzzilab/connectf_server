@@ -20,6 +20,7 @@ Including analysisID in this code
 Last updated: Sept 6, 2016
 '''
 
+
 ##############
 # Modules
 import sys, os, re
@@ -32,55 +33,7 @@ from collections import defaultdict
 from sqlalchemy import create_engine,exc,func,and_,or_,distinct
 from sqlalchemy.orm import sessionmaker, aliased
 from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base,AccessDatabase
-
-################################################
-# Query the database
-def queryTFDB(sess, q_TFname, qedgelist, qmetalist):
-	
-	# create alias for node1
-	n1= aliased(Nodes)
-	n2= aliased(Nodes) 
-	count=0
-	list_metaid= list()
-
-	#print 'q_TFname= ',q_TFname
-	#print 'qedgelist= ',qedgelist
-	#print 'qmetalist= ',qmetalist
-
-	if qedgelist: 
-		if qmetalist: # if both edges and meta ids are given in the user query
-			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
-							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
-							filter(Interactions.edge_id==Edges.edge_id).filter(Edges.edge_name.in_(qedgelist)).filter(Interactions.meta_id.in_(qmetalist)).all()
-		if not qmetalist: # if only edges are given in the user query
-			rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
-							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
-							filter(Interactions.edge_id==Edges.edge_id).filter(Edges.edge_name.in_(qedgelist)).all()
-	if qmetalist and not qedgelist: # if only metaid is given in the user query
-		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
-							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
-							filter(Interactions.edge_id==Edges.edge_id).filter(Interactions.meta_id.in_(qmetalist)).all()
-	if not qmetalist and not qedgelist: # if only TFs are given- no edges and no metadata asked in the query
-		rs= sess.query(n1.node_name, Edges.edge_name, n2.node_name, Interactions.meta_id, Interactions.analysis_id).filter(n1.node_name==q_TFname).\
-							filter(n1.node_id==Interactions.node_1_id).filter(Interactions.node_2_id==n2.node_id).\
-							filter(Interactions.edge_id==Edges.edge_id).all()
-
-	rs_pd= pd.DataFrame(rs, columns=['TF','EDGE','TARGET','META','ANALYSIS'])
-#	if rs_pd.empty:
-#		print 'No data matched your query!'
-#		sys.exit(1)
-
-	rs_pd['ANALYSIS'] = rs_pd['ANALYSIS'].str.replace('.','_') # pvalues '.' are replaces because pandas does not allow to use these chars with pandas.query
-	rs_pd['META_ID'] = rs_pd[['META', 'ANALYSIS']].apply(lambda x: '_'.join(x), axis=1) # separating metaid and analysis id with '_' because pandas does not allow other chars
-	rs_pd.drop('META', axis=1, inplace=True)
-	rs_pd.drop('ANALYSIS', axis=1, inplace=True)
-
-	if not rs_pd.empty:
-		# code to change CHIPSEQ column names for time points: Example: METAID_X will be METAID_X:0, METAID_X:1, METAID_X:5
-		pattern = rs_pd.META_ID.str.contains('CHIPSEQ')
-		# attach time point with each metaid
-		rs_pd.loc[pattern, 'META_ID'] = rs_pd.loc[pattern, 'META_ID'] + '_' + rs_pd.loc[pattern, 'EDGE'].str.split(':').str.get(2)
-	return rs_pd
+from Modules import module_createjson,module_query #importing my modules
 
 ###################################################################################
 # Function to create queries when allrnaseq, allchipseq, allinduced or allrepressed is given in the user query
@@ -144,7 +97,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 					del edges[int(p)] # delete all the positions with 'and' 'or' in reverse order to avoid change in the pos after deleting
 
 				edgelist= getquerylist(edges)
-		tf_data= queryTFDB(sess, q_tf, edgelist, metalist)
+		tf_data= module_query.queryTFDB(sess, q_tf, edgelist, metalist)
 
 		# if df for a Tf is empty after querying the database, don't query the DF for edges or combine to the df for multiple TFs 
 		if not tf_data.empty: # if tf_data df is empty, don't append to the tf_frame
@@ -187,22 +140,18 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 			all_edge_flag= 0
 
 	if tf_frames:
-		rs_pd_all = pd.concat(tf_frames, axis=1, join='outer') # concatenate the dfs for multiple TFs: join= 'outer' represents union of multiple dfs
-	if not tf_frames: # if no data is fetched for the given query then raise an exception and exit
-		print '\nNo data matched for the given query!'
-		print 'Exit'
-		sys.exit(1)
+		rs_pd_all = pd.concat(tf_frames, axis=1, join='outer') # concatenate the dfs for multiple TFs: join= 'outer' represents union of multiple dfs	
+		# query df (df with multiple TFs) if intersection is asked for TFs 
+		# , otherwise skip as join 'outer' used above creates union between multiple TFs
+		#print '***tetsing here= ',''.join(TFname)	
+		if 'AND' in ''.join(TFname):
+			filtered_columns= rs_pd_all.columns.tolist() # after edges were removed dataframe contains only valid edges
+			tfquery= create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
+			#print 'tfquery= ',tfquery
+			rs_pd_all.query(tfquery,inplace= True) # query the dataframe for intersection and complex query expression
+	else: # if no data is fetched for the given query then raise an exception and exit
+		rs_pd_all = pd.DataFrame(columns=['No_data'], dtype='float')
 
-	
-	# query df (df with multiple TFs) if intersection is asked for TFs 
-	# , otherwise skip as join 'outer' used above creates union between multiple TFs
-	#print '***tetsing here= ',''.join(TFname)
-	if 'AND' in ''.join(TFname):
-		filtered_columns= rs_pd_all.columns.tolist() # after edges were removed dataframe contains only valid edges
-		tfquery= create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
-		#print 'tfquery= ',tfquery
-		rs_pd_all.query(tfquery,inplace= True) # query the dataframe for intersection and complex query expression
-	
 	return rs_pd_all
 
 
@@ -440,8 +389,8 @@ def write_to_excel(writer, new_res_df):
 	# get the shape of the output dataframe
 	df_count_rows= new_res_df.shape[0]
 	df_count_cols= new_res_df.shape[1]
-	excel_count_cols= chr((df_count_cols+1) + ord('A'))
-
+	excel_count_cols= colToExcel(df_count_cols+1)
+	
 	workbook = writer.book
 	worksheet = writer.sheets['TargetDB Output']
 	bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'center'})
@@ -450,7 +399,7 @@ def write_to_excel(writer, new_res_df):
 	worksheet.set_column('D:D', 15, bold_font)
 	worksheet.set_column('E:E', 15, bold_font)
 	worksheet.set_column('F:F', 8, bold_font)
-	worksheet.set_column('G:Z', 30)
+	worksheet.set_column('G:'+excel_count_cols, 30)
 	worksheet.set_column('A:A', None, None, {'hidden': True}) # hiding meaningless column (index) created by multiindexing
 
 	header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
@@ -464,7 +413,6 @@ def write_to_excel(writer, new_res_df):
 	format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
 		
 	# Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
-		
 	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
                                         'value': 'INDUCED', 'format': format2})
 	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
@@ -472,6 +420,18 @@ def write_to_excel(writer, new_res_df):
 	worksheet.conditional_format(('F7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
                                         'value': 1,'format': format3})
 	return writer
+
+
+#################################
+# get excel style column name 
+def colToExcel(col): # col is 1 based
+    excelCol = str()
+    div = col 
+    while div:
+        (div, mod) = divmod(div-1, 26) # will return (x, 0 .. 25)
+        excelCol = chr(mod + 65) + excelCol
+
+    return excelCol
 
 
 #################################
@@ -559,11 +519,42 @@ def getmetadata(sess, df_cols, writer):
 	worksheet1 = writer.sheets['MetaData']
 	bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'left'})
 	worksheet1.set_column('A:A', 27, bold_font1)
-	worksheet1.set_column('B:Z', 40)
+	excel_count_cols= colToExcel((out_metadata_df.shape[1])+1)
+	worksheet1.set_column('B:'+excel_count_cols, 40)
 	header_fmt = workbook1.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
 	worksheet1.set_row(1, None, header_fmt)
 	writer.close()
 	return out_metadata_df
+
+
+###################################################################
+# Tabular function
+def tabular(rs_final_res_t):
+
+	# combine chipseq data for different time points in a single column
+	rs_tabular= rs_final_res_t.groupby(rs_final_res_t.columns, axis=1).\
+			apply(lambda x: x.apply(lambda y: ','.join([':'.join(l.split(':')[2:]) for l in y if l is not None]), axis=1))
+	chipseq_cols= [col_final_df for col_final_df in rs_final_res_t if 'CHIPSEQ' in col_final_df]
+	chipdata_summary= defaultdict(list)
+	for c_c in set(chipseq_cols):
+		all_timepoints= pd.Series(rs_final_res_t[c_c].values.ravel()).dropna().unique().tolist()
+		chipdata_summary[c_c]= ':'.join(str(k) for k in sorted([int(x_c_dict.split(':')[2]) for x_c_dict in list(set(all_timepoints))]))
+
+	for col_chip_dict in chipdata_summary:
+		binary_code_dict= dict()
+		count_ele= len(chipdata_summary[col_chip_dict].split(':'))
+		for flag, values in enumerate(chipdata_summary[col_chip_dict].split(':')):					
+			binary_code_dict[values]= 10**((count_ele-flag)-1)
+			
+		rs_tabular[col_chip_dict+'_binary'] = rs_tabular.apply(lambda x: convert_to_binary(binary_code_dict, x[col_chip_dict]), axis = 1)
+		no_zero= ''.join(['0']*count_ele)
+				
+		rs_tabular[col_chip_dict]= 	rs_tabular[col_chip_dict+'_binary']
+				
+		rs_tabular.drop(col_chip_dict+'_binary', axis=1, inplace=True)
+		rs_tabular[col_chip_dict].replace(no_zero,np.nan,inplace=True)			
+
+	return rs_tabular, chipdata_summary
 
 
 ############################
@@ -628,72 +619,57 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		q_tf_list= getquerylist(TFname)
 
 	rs_final_res= queryTF(sess, q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata)
-	# if chipseq in dataframe column- exclude the time point from meta_id
-	rs_final_res.columns = [str('_'.join(col.split('_')[:-1])) if 'CHIPSEQ' in col else col for col in rs_final_res.columns]
-	rs_final_res.where((pd.notnull(rs_final_res)), None, inplace=True) # replacing all the Nan values in df with None
+	if not rs_final_res.empty:
+		# if chipseq in dataframe column- exclude the time point from meta_id
+		rs_final_res.columns = [str('_'.join(col.split('_')[:-1])) if 'CHIPSEQ' in col else col for col in rs_final_res.columns]
+		rs_final_res.where((pd.notnull(rs_final_res)), None, inplace=True) # replacing all the Nan values in df with None
 
-	# if file with list of target genes is provided with -r option
-	# Get the subset of results dataframe (df after queries) for target genes asked in targetgenes query file
-	if targetgenes:
-		q_tg_list= list()
-		q_tg= open(targetgenes, 'r')
-		for i_q_tg in q_tg:
-			q_tg_list.append(i_q_tg.strip().upper())
-		rs_final_res_t= rs_final_res[rs_final_res.index.isin(q_tg_list)]
+		# if file with list of target genes is provided with -r option
+		# Get the subset of results dataframe (df after queries) for target genes asked in targetgenes query file
+		if targetgenes:
+			q_tg_list= list()
+			q_tg= open(targetgenes, 'r')
+			for i_q_tg in q_tg:
+				q_tg_list.append(i_q_tg.strip().upper())
+			rs_final_res_t= rs_final_res[rs_final_res.index.isin(q_tg_list)]
+		else:
+			rs_final_res_t= rs_final_res
+	
+		# Write Output
+		if not os.path.exists(output): # create output directory
+			os.makedirs(output)
+	
+		rs_tabular, chipdata_summary= tabular(rs_final_res_t)
+		writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
+		reordered_tmp_df= create_sif(sess, output, rs_final_res_t, targetgenes)
+		out_metadata_df= getmetadata(sess, rs_final_res.columns, writer)
+		json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3= module_createjson.create_json(sess, rs_tabular, output) # create json object/file- module_createjson.py
+		shutil.make_archive(output, 'zip', output)# create a zip file for output directory
+		shutil.rmtree(output) # delete the output directory after creating zip file
+
+		####################################
+		# Included this code for the moment to display output on GUI till we solve the problem of displaying multiindex to json
+		new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
+		new_res_df.drop(new_res_df.index[0])
+		targetcount_cols = [col for col in new_res_df if 'Target Count' in col] # find target_count column name
+		new_res_df.sort(columns=targetcount_cols, ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
+		####################################
+		return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
 	else:
-		rs_final_res_t= rs_final_res
-	
-	# Write Output
-	if not os.path.exists(output): # create output directory
-		os.makedirs(output)
-	
-	rs_tabular, chipdata_summary= tabular(rs_final_res_t)
-	writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
-	reordered_tmp_df= create_sif(sess, output, rs_final_res_t, targetgenes)
-	out_metadata_df= getmetadata(sess, rs_final_res.columns, writer)
+		message_dict= dict()
+		message_dict['Warning']='No Data Matched Your Query!'
+		new_res_df= pd.DataFrame.from_dict(message_dict, orient='index', dtype=None)
+		new_res_df.columns=['1']
+		out_metadata_df= pd.DataFrame.from_dict(message_dict, orient='index', dtype=None)
+		out_metadata_df.columns=['1']
 
-	shutil.make_archive(output, 'zip', output)# create a zip file for output directory
-	shutil.rmtree(output) # delete the output directory after creating zip file
+		# Write Output
+		if not os.path.exists(output): # create output directory
+			os.makedirs(output)
+		shutil.make_archive(output, 'zip', output)# create a zip file for output directory
+		shutil.rmtree(output) # delete the output directory after creating zip file	
 
-	####################################
-	# Included this code for the moment to display output on GUI till we solve the problem of displaying multiindex to json
-	new_res_df.columns = [' '.join(col).strip() for col in new_res_df.columns.values]
-	new_res_df.drop(new_res_df.index[0])
-	targetcount_cols = [col for col in new_res_df if 'Target Count' in col] # find target_count column name
-	new_res_df.sort(columns=targetcount_cols, ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
-	####################################
-
-	return new_res_df,out_metadata_df # returns three dfs to be displayed on user-interface
-
-
-###################################################################
-# Tabular function
-def tabular(rs_final_res_t):
-
-	# combine chipseq data for different time points in a single column
-	rs_tabular= rs_final_res_t.groupby(rs_final_res_t.columns, axis=1).\
-			apply(lambda x: x.apply(lambda y: ','.join([':'.join(l.split(':')[2:]) for l in y if l is not None]), axis=1))
-	chipseq_cols= [col_final_df for col_final_df in rs_final_res_t if 'CHIPSEQ' in col_final_df]
-	chipdata_summary= defaultdict(list)
-	for c_c in set(chipseq_cols):
-		all_timepoints= pd.Series(rs_final_res_t[c_c].values.ravel()).dropna().unique().tolist()
-		chipdata_summary[c_c]= ':'.join(str(k) for k in sorted([int(x_c_dict.split(':')[2]) for x_c_dict in list(set(all_timepoints))]))
-
-	for col_chip_dict in chipdata_summary:
-		binary_code_dict= dict()
-		count_ele= len(chipdata_summary[col_chip_dict].split(':'))
-		for flag, values in enumerate(chipdata_summary[col_chip_dict].split(':')):					
-			binary_code_dict[values]= 10**((count_ele-flag)-1)
-			
-		rs_tabular[col_chip_dict+'_binary'] = rs_tabular.apply(lambda x: convert_to_binary(binary_code_dict, x[col_chip_dict]), axis = 1)
-		no_zero= ''.join(['0']*count_ele)
-				
-		rs_tabular[col_chip_dict]= 	rs_tabular[col_chip_dict+'_binary']
-				
-		rs_tabular.drop(col_chip_dict+'_binary', axis=1, inplace=True)
-		rs_tabular[col_chip_dict].replace(no_zero,np.nan,inplace=True)			
-
-	return rs_tabular, chipdata_summary
+		return new_res_df,out_metadata_df
 
 
 ###################################################################
@@ -705,6 +681,7 @@ def convert_to_binary(dct, entry):
 		if len(i) > 0:
 			out+= dct[i]  
 	return str(out).zfill(len(dct))
+
 
 ###################################################################
 # Add genesect sheet
