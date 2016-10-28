@@ -32,7 +32,7 @@ import json
 from collections import defaultdict
 from sqlalchemy import create_engine,exc,func,and_,or_,distinct
 from sqlalchemy.orm import sessionmaker, aliased
-from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base,AccessDatabase
+#from create_mysqlDB import Nodes,Edges,Meta,Interactions,Genenames,Base,AccessDatabase
 from Modules import module_createjson,module_query #importing my modules
 
 ###################################################################################
