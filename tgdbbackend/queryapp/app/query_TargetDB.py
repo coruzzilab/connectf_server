@@ -460,8 +460,8 @@ def create_sif(sess, output, tmp_df, targetgenes):
 		sub_df.to_csv(outfile,sep='\t',index=False) 
 		outfile.close() # close the file resources
 
-	#outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
-	#reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
+	outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
+	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
 	
 	total_exp= len(sif_rs_tabular.columns.tolist()) # count the total number of experiments	
 	sif_rs_tabular['target_count']= (sif_rs_tabular.notnull() * 1).sum(axis=1)
@@ -483,7 +483,7 @@ def create_sif(sess, output, tmp_df, targetgenes):
 	stacked_shared_targets['TF']= stacked_shared_targets['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
 	stacked_shared_targets[['TF','EDGE','TARGET']].to_csv(outfile_shared,sep='\t',index=False)
 
-	#outfile_all.close() # close the file resources
+	outfile_all.close() # close the file resources
 	outfile_common.close() # close the file resources
 	outfile_shared.close() # close the file resources
 
