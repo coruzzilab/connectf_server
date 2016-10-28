@@ -460,7 +460,7 @@ def create_sif(sess, output, tmp_df, targetgenes):
 		sub_df.to_csv(outfile,sep='\t',index=False) 
 		outfile.close() # close the file resources
 
-	outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
+	#outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
 	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
 	
 	total_exp= len(sif_rs_tabular.columns.tolist()) # count the total number of experiments	
