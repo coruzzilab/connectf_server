@@ -643,8 +643,11 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
 		reordered_tmp_df= create_sif(sess, output, rs_final_res_t, targetgenes)
 		out_metadata_df= getmetadata(sess, rs_final_res.columns, writer)
-		json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3= module_createjson.create_json(sess, rs_tabular, output) # create json object/file- module_createjson.py
-		shutil.make_archive(output, 'zip', output)# create a zip file for output directory
+		#json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3= module_createjson.create_json(sess, rs_tabular, output) # create json object/file- module_createjson.py
+	
+		json_object_TFdbase_vw1= module_createjson.create_json(sess, rs_tabular, output)		
+	
+		shutil.make_archive(output, 'zip', output) # create a zip file for output directory
 		shutil.rmtree(output) # delete the output directory after creating zip file
 
 		####################################

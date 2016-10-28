@@ -36,14 +36,14 @@ def create_json(sess, query_res_df, output):
 	edges_json_genome, out_tf_genome, tf_genome_matrix_concat= get_json_root_edges_genome(sess, rs_final_tfcolset, df_rows)
 	geneid_genome=  tf_genome_matrix_concat.columns.tolist()+tf_genome_matrix_concat.index.tolist() # For database TF matrix I need columns and rows (genome TF) as nodes
 	mid_tfname_genome, tfname_tftype= id_name_mapping(sess, geneid_genome) # query the database for geneid to genename mapping
-	json_object_WG= create_json_object(geneid_genome, edges_json_genome, out_tf_genome, mid_tfname_genome, tfname_tftype, output_x)
+	#json_object_WG= create_json_object(geneid_genome, edges_json_genome, out_tf_genome, mid_tfname_genome, tfname_tftype, output_x)
 
 	# function 3 to create the raw data for creating json file for TFs-Targets- Raw data means nodes, edges, size of the nodes
 	output_x= output+'_targets'
 	edges_json_tg, out_tg_genome, tf_tg_matrix_concat= get_json_root_edges_dbase_TGs(sess, rs_final_tfcolset, df_rows)
 	geneid_TF_targets=  tf_tg_matrix_concat.columns.tolist()+tf_tg_matrix_concat.index.tolist()
 	mid_tfname_dbase, tfname_tftype= id_name_mapping(sess, geneid_TF_targets) # query the database for geneid to genename mapping
-	json_object_TG= create_json_object(geneid_TF_targets, edges_json_tg, out_tg_genome, mid_tfname_dbase, tfname_tftype, output_x)
+	#json_object_TG= create_json_object(geneid_TF_targets, edges_json_tg, out_tg_genome, mid_tfname_dbase, tfname_tftype, output_x)
 	
 	# function 1 to create the raw data for creating json file for database TFs- Raw data means nodes, edges, size of the nodes
 	output_view1= output+'_dbase_view1'
@@ -53,11 +53,11 @@ def create_json(sess, query_res_df, output):
 	geneid_dbase= list(set(tf_subset_matrix_final.columns.tolist()+tf_subset_matrix_final.index.tolist())) # For database TF matrix I need both rows and columns as nodes
 	mid_tfname_dbase, tfname_tftype= id_name_mapping(sess, geneid_dbase) # query the database for geneid to genename mapping
 	json_object_TFdbase_vw1= create_json_object(geneid_dbase, edges_json_list, out_tf_dbase, mid_tfname_dbase, tfname_tftype, output_view1)
-	json_object_TFdbase_vw2= create_json_object(geneid_dbase, edges_json_list, out_tf_genome, mid_tfname_dbase, tfname_tftype, output_view2)
-	json_object_TFdbase_vw3= create_json_object(geneid_dbase, edges_json_list, out_tg_genome, mid_tfname_dbase, tfname_tftype, output_view3)
+	#json_object_TFdbase_vw2= create_json_object(geneid_dbase, edges_json_list, out_tf_genome, mid_tfname_dbase, tfname_tftype, output_view2)
+	#json_object_TFdbase_vw3= create_json_object(geneid_dbase, edges_json_list, out_tg_genome, mid_tfname_dbase, tfname_tftype, output_view3)
 
-	return json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3
-
+	#return json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3
+	return json_object_TFdbase_vw1
 
 ###################################################################
 # Gets the root and edges for TFs present in the database
@@ -262,8 +262,9 @@ def create_json_object(geneid_x, edges_json_list, out_tf_x, mid_tfname, tfname_t
 	json_output_dict['layout']= dict() # Set layout
 	json_output_dict['layout']['name']= 'preset'
 	json_object= json.dumps(json_output_dict)
+	output_x= 
 	if output_x:
-		with open(output_x+'_json.txt', 'w') as out_jsonfile:
+		with open(output+'_cy.json', 'w') as out_jsonfile:
 			json.dump(json_output_dict, out_jsonfile, sort_keys = True, indent = 4, ensure_ascii=False)
 
 	return json_object
