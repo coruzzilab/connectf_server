@@ -265,7 +265,7 @@ def create_json_object(geneid_x, edges_json_list, out_tf_x, mid_tfname, tfname_t
 	json_object= json.dumps(json_output_dict)
  
 	if output_x:
-		with open(output_x+'_cy.json', 'wb') as out_jsonfile:
+		with open(output_x+'/'+output_x.split('/')[-1]+'_cy.json', 'wb') as out_jsonfile:
 			json.dump(json_output_dict, out_jsonfile, sort_keys = True, indent = 4, ensure_ascii=False)
 
 	return json_object
