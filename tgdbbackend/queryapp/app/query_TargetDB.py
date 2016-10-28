@@ -257,7 +257,7 @@ def filter_meta(sess, q_meta, user_q_meta):
 												filter(Meta.meta_id==valm1).all(), columns= ['m_id','a_id','m_val','m_type'])
 		metadata_df['mid_aid']= metadata_df['m_id']+'_'+metadata_df['a_id']
 		metadata_df_new= metadata_df.pivot(index='mid_aid', columns='m_type', values='m_val')
-		print 'user_q_meta_format= ',user_q_meta_format
+		#print 'user_q_meta_format= ',user_q_meta_format
 		m_df_out= metadata_df_new.query(user_q_meta_format)
 
 		if not m_df_out.empty:			

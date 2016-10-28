@@ -46,7 +46,8 @@ def create_json(sess, query_res_df, output):
 	#json_object_TG= create_json_object(geneid_TF_targets, edges_json_tg, out_tg_genome, mid_tfname_dbase, tfname_tftype, output_x)
 	
 	# function 1 to create the raw data for creating json file for database TFs- Raw data means nodes, edges, size of the nodes
-	output_view1= output+'_dbase_view1'
+	#output_view1= output+'_dbase_view1'
+	output_view1= output
 	output_view2= output+'_dbase_view2'
 	output_view3= output+'_dbase_view3'
 	edges_json_list, out_tf_dbase, tf_subset_matrix_final= get_json_root_edges_dbase(rs_final_tfcolset, df_tf_list)
@@ -262,9 +263,9 @@ def create_json_object(geneid_x, edges_json_list, out_tf_x, mid_tfname, tfname_t
 	json_output_dict['layout']= dict() # Set layout
 	json_output_dict['layout']['name']= 'preset'
 	json_object= json.dumps(json_output_dict)
-	output_x= 
+ 
 	if output_x:
-		with open(output+'_cy.json', 'w') as out_jsonfile:
+		with open(output_x+'/'+output_x+'_cy.json', 'wb') as out_jsonfile:
 			json.dump(json_output_dict, out_jsonfile, sort_keys = True, indent = 4, ensure_ascii=False)
 
 	return json_object
