@@ -54,15 +54,16 @@ class Genenames(Base):
 	
 	__tablename__ = 'Genenames'
 	ath_id= Column(String(100), primary_key=True, unique=True, index= True)
-	ath_name= Column(String(100))
+	ath_name= Column(String(200))
 	ath_fullname= Column(Text(2000))
 	ath_gene_type= Column(String(100),nullable=False)
+	ath_gene_fam= Column(Text(2000),nullable=False)
 
 class createdbase():
 
 	def __init__(self,dbasename):
 		self.engine = create_engine('mysql://root:coruzzilab@localhost')
-		#self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
+		self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
 		self.engine.execute("CREATE DATABASE "+dbasename)
 		self.engine.execute("USE "+dbasename)
 		Base.metadata.create_all(self.engine)

@@ -328,17 +328,15 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	rsall_gnames=list()
 
 	for k in all_targetgenes:
-		rs_gnames= sess.query(Genenames.ath_id, Genenames.ath_name, Genenames.ath_fullname).\
+		rs_gnames= sess.query(Genenames.ath_id, Genenames.ath_name, Genenames.ath_fullname, Genenames.ath_gene_type, Genenames.ath_gene_fam).\
 							filter(Genenames.ath_id==k.strip()).all()
 		rsall_gnames.extend(rs_gnames)
-
-	df_target_names= pd.DataFrame(rsall_gnames, columns=['ID___Gene ID','Name___Gene Name','Full Name___Gene Full Name']).set_index('ID___Gene ID')
+	df_target_names= pd.DataFrame(rsall_gnames, columns=['ID___Gene ID','Name___Gene Name','Full Name___Gene Full Name', 'Type___Gene Type', 'Family___Gene Family']).set_index('ID___Gene ID')
 
 	# concat this df to results df on metaid column names to create additional row for gene names
 	new_df= pd.concat([df_target_names, rs_final_res], axis=1) # concat with gene annotation for each target gene (by columns)
 	new_res_df= pd.concat([mid_geno_cntrl_df, mid_tfname_df, chip_coding, new_df], axis=0) # concat metadata for each experiment (as headers)
 	new_res_df.reset_index(inplace=True)
-
 	new_res_df["pvalue___P"] = np.nan
 	new_res_df.rename(columns={'index': 'ID___Gene ID'}, inplace=True)
 	df_count_rows= new_res_df.shape[0]
@@ -350,15 +348,15 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	
 	# code below is to count the Target_count: default count counts analysis id for each experiment separately
 	tmp_level_sum= (new_res_df.notnull() * 1) # convert data to binary format to count the Target_count correctly
-	tmp_level_sum.drop(['Full Name__','Name__','ID__','pvalue__'], axis=1, inplace=True) # drop unecsseary columns
+	tmp_level_sum.drop(['Full Name__','Name__','ID__','Type__','Family__','pvalue__'], axis=1, inplace=True) # drop unecsseary columns
 	tmp_level_sum.drop([0,1,2], axis=0, inplace=True)# drop unecsseary rows
 	tmp_level_sum.replace(0, np.nan, inplace=True)
 	level_count= tmp_level_sum.sum(level=0,axis=1)
 	total_no_exp= '('+str(len(list(set(tmp_level_sum.columns.get_level_values(0)))))+')'
 	new_res_df['Target Count', total_no_exp]= (level_count.notnull() * 1).sum(axis=1)
-	new_res_df.rename(columns={'Full Name__':'Full Name','Name__':'Name','ID__':'ID','pvalue__':'pvalue'}, inplace=True)
+	new_res_df.rename(columns={'Full Name__':'Full Name','Name__':'Name','ID__':'ID','pvalue__':'pvalue','Family__':'Family','Type__':'Type'}, inplace=True)
 	multi_cols= new_res_df.columns.tolist()
-	multi_cols= [('Full Name', 'Gene Full Name'), ('Name', 'Gene Name'), ('ID', 'Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-4] # rearraging the columns
+	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-6] # rearraging the columns
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
 
@@ -396,10 +394,12 @@ def write_to_excel(writer, new_res_df):
 	bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border':1, 'align':'center'})
 	worksheet.set_column('B:B', 15)
 	worksheet.set_column('C:C', 15)
-	worksheet.set_column('D:D', 15, bold_font)
-	worksheet.set_column('E:E', 15, bold_font)
-	worksheet.set_column('F:F', 8, bold_font)
-	worksheet.set_column('G:'+excel_count_cols, 30)
+	worksheet.set_column('D:D', 15)
+	worksheet.set_column('E:E', 15)
+	worksheet.set_column('F:F', 15, bold_font)
+	worksheet.set_column('G:G', 15, bold_font)
+	worksheet.set_column('H:H', 8, bold_font)
+	worksheet.set_column('I:'+excel_count_cols, 30)
 	worksheet.set_column('A:A', None, None, {'hidden': True}) # hiding meaningless column (index) created by multiindexing
 
 	header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border':1})
@@ -413,11 +413,11 @@ def write_to_excel(writer, new_res_df):
 	format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
 		
 	# Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('I7:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
                                         'value': 'INDUCED', 'format': format2})
-	worksheet.conditional_format('C6:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format('I7:'+excel_count_cols+str(df_count_rows+3), {'type': 'text', 'criteria': 'containing',
      	                                   'value': 'REPRESSED', 'format': format1})
-	worksheet.conditional_format(('F7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
+	worksheet.conditional_format(('I7:'+excel_count_cols+str(df_count_rows+3)), {'type': 'text', 'criteria': 'containing',
                                         'value': 1,'format': format3})
 	return writer
 
