@@ -355,7 +355,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	total_no_exp= '('+str(len(list(set(tmp_level_sum.columns.get_level_values(0)))))+')'
 	new_res_df['Target Count', total_no_exp]= (level_count.notnull() * 1).sum(axis=1)
 	new_res_df= new_res_df.applymap(str)
-	new_res_df['Target Count'] = new_res_df['Target Count'].apply(lambda x: 'a'+x)
+	new_res_df['Target Count'] = new_res_df['Target Count'].apply(lambda x: '    '+x)
 	new_res_df.rename(columns={'Full Name__':'Full Name','Name__':'Name','ID__':'ID','pvalue__':'pvalue','Family__':'Family','Type__':'Type'}, inplace=True)
 	multi_cols= new_res_df.columns.tolist()
 	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-6] # rearraging the columns
