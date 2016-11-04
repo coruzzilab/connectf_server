@@ -361,7 +361,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-6] # rearraging the columns
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
-	new_res_df.replace(np.nan,'', regex=True, inplace=True)
+	#new_res_df.replace(np.nan,'', regex=True, inplace=True)
 	if df_count_rows>1:# Writing dataframe to excel and formatting the excel output
 		writer = pd.ExcelWriter(outfile+'/'+outfile.split('/')[-1]+'_tabular_output.xlsx') # output in excel format
 		new_res_df.to_excel(writer,sheet_name='TargetDB Output') # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
