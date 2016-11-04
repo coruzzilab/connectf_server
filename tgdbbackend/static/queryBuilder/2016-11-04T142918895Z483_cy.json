@@ -1,0 +1,72 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "id": "AT5G10030_AT2G22430", 
+                    "source": "AT5G10030", 
+                    "target": "AT2G22430"
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G10030", 
+                    "name": "TGA4,OBF4 (1)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 158.4962500721156, 
+                    "width": 158.4962500721156
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT2G22430", 
+                    "name": "HB6,ATHB6 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT3G49940", 
+                    "name": "LBD38 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}

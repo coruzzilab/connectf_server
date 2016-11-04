@@ -1,0 +1,79 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "id": "AT1G25550_AT2G22430", 
+                    "source": "AT1G25550", 
+                    "target": "AT2G22430"
+                }
+            }, 
+            {
+                "data": {
+                    "id": "AT1G25550_AT5G10030", 
+                    "source": "AT1G25550", 
+                    "target": "AT5G10030"
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT2G22430", 
+                    "name": "HB6,ATHB6 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT1G25550", 
+                    "name": "AT1G25550 (2)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 200.0, 
+                    "width": 200.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G10030", 
+                    "name": "TGA4,OBF4 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}
