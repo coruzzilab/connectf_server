@@ -23,7 +23,7 @@ Last updated: Sept 6, 2016
 
 ##############
 # Modules
-import sys, os, re
+import sys, os, re, operator
 import argparse as agp
 import shutil, zipfile
 import numpy as np
@@ -306,6 +306,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	count_series= rs_final_res.count(axis=0)
 	# get the tf name in a dict
 	mid_tfname_dict= dict() # dict will contain metaid to genename mapping+TF target counts
+	tmp_mid_counts= dict() # dict will be used as a reference for sorting the final dataframe based on targetcounts
 	mid_tfname= dict() # dict will contain metaid to genename mapping
 	mid_genotype_control= dict() # dict contains metaid to gentype+control mapping
 	for i_mid in rs_final_res.columns: # creating data for excel sheet headers
@@ -315,9 +316,10 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 		tf_control=	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='CONTROL').all()	
 		tf_geno= 	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='GENOTYPE').all()
 		mid_tfname_dict[i_mid]= str(tf_name[0][0])+'- '+str(count_series[i_mid])+' ('+str(exp_count[i_mid])+')'
+		tmp_mid_counts[i_mid]= count_series[i_mid]
 		mid_tfname[tf_id[0][0]]= str(tf_name[0][0])
 		mid_genotype_control[i_mid]= str(tf_exp[0][0])+' | '+str(tf_geno[0][0])+' | '+str(tf_control[0][0])# include the data for control here in '+' with genotype
-	
+	sorted_mid_counts = sorted(tmp_mid_counts.items(), key=operator.itemgetter(1), reverse=True)
 	mid_tfname_df= pd.DataFrame(data=mid_tfname_dict, index=[' ']) # dump mid_tfname_dict to a df
 	mid_geno_cntrl_df= pd.DataFrame(data= mid_genotype_control, index=[' ']) # dump mid_genotype_control to a df
 	chip_coding= pd.DataFrame(data=chipdata_summary, index=[' ']) # dump mid_tfname_dict to a df
@@ -357,8 +359,13 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	new_res_df['Target Count', total_no_exp]= new_res_df['Target Count', total_no_exp].ix[3:].astype(np.int64).astype(str)
 	new_res_df['Target Count', total_no_exp] = new_res_df['Target Count', total_no_exp].ix[3:].apply(lambda x: '{: >4}'.format(x))
 	new_res_df.rename(columns={'Full Name__':'Full Name','Name__':'Name','ID__':'ID','pvalue__':'pvalue','Family__':'Family','Type__':'Type'}, inplace=True)
+	
+	# Change column order 
 	multi_cols= new_res_df.columns.tolist()
-	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+multi_cols[1:-6] # rearraging the columns
+	list_mid_aid_sorted= zip(*sorted_mid_counts)[0]
+	list_mid_sorted= [('_'.join(x.split('_')[0:3]),'_'.join(x.split('_')[3:])) for x in list_mid_aid_sorted]
+	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+list_mid_sorted # rearraging the columns
+	
 	new_res_df= new_res_df[multi_cols]
 	new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first') # na_position='first' to leave the header cols (na.nan values) sorted first
 	#new_res_df.replace(np.nan,'', regex=True, inplace=True)
@@ -572,6 +579,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		print '\nError: Either generate a table for all the TFs (--t== alltf) \n'\
 			'or query based on TF (-t), both can not be none\n'
 		sys.exit(1)
+		#TFquery= ['OR [ALLTF]']
  
 	# creating engine and session
 	#engine= create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
@@ -692,7 +700,6 @@ def convert_to_binary(dct, entry):
 # Add genesect sheet
 #def get_genesect():
 
-
 #	stats.hypergeom.sf(3,28774,635,137) #sf did not gave the same results as r phyper function
 #	stats.hypergeom.cdf(3,28774,635,137) # got the same results as r phyper function
 #	r_phyper= robjects.r['phyper']
@@ -709,7 +716,7 @@ if __name__=='__main__':
 	parser= agp.ArgumentParser()
 	parser.add_argument('-d','--dbname',help= 'Database name',required= True)
 	parser.add_argument('-t','--TFname', nargs='+', help= 'Search by TF name or'\
-							 'get alldata from the database (-t alldata)', required= True)
+							 'get alldata from the database (-t alldata)', required= False)
 	parser.add_argument('-e','--edges', nargs='+', help= 'Search by Edges')
 	parser.add_argument('-m','--metadata', nargs='+', help= 'Search by meta data')
 	parser.add_argument('-o','--output', help= 'Output file name', required= False)

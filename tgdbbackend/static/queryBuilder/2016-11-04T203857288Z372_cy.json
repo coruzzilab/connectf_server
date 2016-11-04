@@ -1,0 +1,104 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "id": "AT5G10030_AT2G22430", 
+                    "source": "AT5G10030", 
+                    "target": "AT2G22430"
+                }
+            }, 
+            {
+                "data": {
+                    "id": "AT5G62430_AT2G22430", 
+                    "source": "AT5G62430", 
+                    "target": "AT2G22430"
+                }
+            }, 
+            {
+                "data": {
+                    "id": "AT5G62430_AT3G16870", 
+                    "source": "AT5G62430", 
+                    "target": "AT3G16870"
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT3G16870", 
+                    "name": "GATA17 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT2G22430", 
+                    "name": "HB6,ATHB6 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G10030", 
+                    "name": "TGA4,OBF4 (1)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 158.4962500721156, 
+                    "width": 158.4962500721156
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G62430", 
+                    "name": "CDF1 (2)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 200.0, 
+                    "width": 200.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}

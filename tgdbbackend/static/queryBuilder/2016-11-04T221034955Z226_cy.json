@@ -1,0 +1,64 @@
+{
+    "elements": {
+        "edges": [], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G10030", 
+                    "name": "TGA4,OBF4 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT4G39780", 
+                    "name": "AT4G39780 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT3G49940", 
+                    "name": "LBD38 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}

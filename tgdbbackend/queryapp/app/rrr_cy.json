@@ -1,0 +1,90 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "id": "AT4G36540_AT5G49450", 
+                    "source": "AT4G36540", 
+                    "target": "AT5G49450"
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT5G49450", 
+                    "name": "BZIP1,ATBZIP1 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT4G36540", 
+                    "name": "BEE2 (1)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 158.4962500721156, 
+                    "width": 158.4962500721156
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT2G33550", 
+                    "name": "ASR3 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#33FF52", 
+                    "id": "AT3G49940", 
+                    "name": "LBD38 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR"
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}
