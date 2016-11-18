@@ -69,9 +69,9 @@ INSTALLED_APPS += ('django_extensions', )
 TEST_RUNNER = 'django.test.runner.DiscoverRunner'
 
 # Your local stuff: Below this line define 3rd party library settings
-CORS_ORIGIN_ALLOW_ALL = True   
+# CORS_ORIGIN_ALLOW_ALL = True   
 CORS_ORIGIN_WHITELIST = [
-    '127.0.0.1:3000',
-	'https://coruzzilab-macpro.bio.nyu.edu:3000'
+    'http://127.0.0.1:3000',
+    'http://coruzzilab-macpro.bio.nyu.edu:3000'
 ]
 CORS_ALLOW_CREDENTIALS = True

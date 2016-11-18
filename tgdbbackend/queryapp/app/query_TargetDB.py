@@ -300,7 +300,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	# rename column names- converting fdr0_01 to fdr0.01
 	rs_final_res.rename(columns=lambda x: x[::-1].replace('_','.',1)[::-1], inplace=True) # replacing the last occurence of '_' with '.'
 	res_df_cols= rs_final_res.columns.tolist()
-	
+	tmp_rnaseq_summary= dict()
 	exp_count= querydb_exp_count(sess, res_df_cols)
 	rs_final_res.replace('', np.nan, inplace=True) # without this replacement it was counting '' as an element
 	count_series= rs_final_res.count(axis=0)
@@ -309,6 +309,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	tmp_mid_counts= dict() # dict will be used as a reference for sorting the final dataframe based on targetcounts
 	mid_tfname= dict() # dict will contain metaid to genename mapping
 	mid_genotype_control= dict() # dict contains metaid to gentype+control mapping
+		
 	for i_mid in rs_final_res.columns: # creating data for excel sheet headers
 		tf_name= 	sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='TRANSCRIPTION_FACTOR_NAME').all()
 		tf_id= sess.query(Meta.meta_value).filter(Meta.meta_id==('_'.join(i_mid.split('_')[0:3]))).filter(Meta.meta_type=='TRANSCRIPTION_FACTOR_ID').all()
@@ -319,11 +320,25 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 		tmp_mid_counts[i_mid]= count_series[i_mid]
 		mid_tfname[tf_id[0][0]]= str(tf_name[0][0])
 		mid_genotype_control[i_mid]= str(tf_exp[0][0])+' | '+str(tf_geno[0][0])+' | '+str(tf_control[0][0])# include the data for control here in '+' with genotype
+		
+		# add induced and repressed genes for each experiment
+		if not 'CHIPSEQ' in i_mid:
+			if not rs_final_res[i_mid].isnull().all():
+				induced_eachexp= (rs_final_res[i_mid].str.contains('INDUCED')*1).sum()
+				repressed_eachexp= (rs_final_res[i_mid].str.contains('REPRESSED')*1).sum()
+				tmp_rnaseq_summary[i_mid]= 'Induced-'+str(induced_eachexp)+' Repressed-'+str(repressed_eachexp)
+			else:
+				tmp_rnaseq_summary[i_mid]= 'Induced-0'+' Repressed-0'
+
 	sorted_mid_counts = sorted(tmp_mid_counts.items(), key=operator.itemgetter(1), reverse=True)
 	mid_tfname_df= pd.DataFrame(data=mid_tfname_dict, index=[' ']) # dump mid_tfname_dict to a df
 	mid_geno_cntrl_df= pd.DataFrame(data= mid_genotype_control, index=[' ']) # dump mid_genotype_control to a df
-	chip_coding= pd.DataFrame(data=chipdata_summary, index=[' ']) # dump mid_tfname_dict to a df
-	chip_coding.rename(columns=lambda x: x[::-1].replace('_','.',1)[::-1], inplace=True) # replacing the last occurence of '_' with '.'
+
+	tmp_chip_coding= pd.DataFrame(data=chipdata_summary, index=[' ']) # dump chipdata_summary to a df
+	tmp_rnaseq_df= pd.DataFrame(data=tmp_rnaseq_summary, index=[' ']) # dump tmp_rnaseq_summary to a df
+
+	tmp_chip_coding.rename(columns=lambda x: x[::-1].replace('_','.',1)[::-1], inplace=True) # replacing the last occurence of '_' with '.'
+	chip_coding= pd.concat([tmp_chip_coding, tmp_rnaseq_df], axis=1)
 	
 	# Get the Gene names of the target genes, insert it into a dataframe and merge with the following two dfs
 	all_targetgenes= list(rs_final_res.index.values)

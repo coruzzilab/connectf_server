@@ -1,0 +1,484 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT1G66140_AT1G68670_INDUCED:PCHX", 
+                    "source": "AT1G66140", 
+                    "target": "AT1G68670", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT1G66140_AT2G22430_REPRESSED:PCHX", 
+                    "source": "AT1G66140", 
+                    "target": "AT2G22430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT1G66140_AT3G16870_INDUCED:PCHX", 
+                    "source": "AT1G66140", 
+                    "target": "AT3G16870", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT1G66140_AT5G49450_REPRESSED:PCHX", 
+                    "source": "AT1G66140", 
+                    "target": "AT5G49450", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT1G66140_AT5G62430_REPRESSED:PCHX", 
+                    "source": "AT1G66140", 
+                    "target": "AT5G62430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT2G39250_AT1G68670_INDUCED:PCHX", 
+                    "source": "AT2G39250", 
+                    "target": "AT1G68670", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT2G39250_AT2G22430_REPRESSED:PCHX", 
+                    "source": "AT2G39250", 
+                    "target": "AT2G22430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT2G39250_AT5G49450_REPRESSED:PCHX", 
+                    "source": "AT2G39250", 
+                    "target": "AT5G49450", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT2G39250_AT5G62020_INDUCED:PCHX", 
+                    "source": "AT2G39250", 
+                    "target": "AT5G62020", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT5G10970_AT1G68670_INDUCED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT1G68670", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT2G22430_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT2G22430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT5G10970_AT3G16870_INDUCED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT3G16870", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT4G39780_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT4G39780", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT5G10030_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT5G10030", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT5G49450_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT5G49450", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT5G62020_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT5G62020", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT5G62430_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT5G62430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G10970_AT5G65210_REPRESSED:PCHX", 
+                    "source": "AT5G10970", 
+                    "target": "AT5G65210", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G15830_AT2G33550_REPRESSED:PCHX", 
+                    "source": "AT5G15830", 
+                    "target": "AT2G33550", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT5G15830_AT3G16870_INDUCED:PCHX", 
+                    "source": "AT5G15830", 
+                    "target": "AT3G16870", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT5G15830_AT5G65210_INDUCED:PCHX", 
+                    "source": "AT5G15830", 
+                    "target": "AT5G65210", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT5G62430_AT2G22430_REPRESSED:PCHX", 
+                    "source": "AT5G62430", 
+                    "target": "AT2G22430", 
+                    "weight": 34.59431618637297
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT5G62430_AT3G16870_INDUCED:PCHX", 
+                    "source": "AT5G62430", 
+                    "target": "AT3G16870", 
+                    "weight": 34.59431618637297
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G65210", 
+                    "name": "TGA1 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT2G22430", 
+                    "name": "HB6,ATHB6 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT2G39250", 
+                    "name": "SNZ (4)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 258.49625007211563, 
+                    "width": 258.49625007211563
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT2G33550", 
+                    "name": "ASR3 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT1G66140", 
+                    "name": "ZFP4 (5)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 280.73549220576041, 
+                    "width": 280.73549220576041
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT3G16870", 
+                    "name": "GATA17 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT4G39780", 
+                    "name": "AT4G39780 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G10030", 
+                    "name": "TGA4,OBF4 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT1G68670", 
+                    "name": "AT1G68670 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G15830", 
+                    "name": "ATBZIP3,BZIP3 (3)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 232.19280948873623, 
+                    "width": 232.19280948873623
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G49450", 
+                    "name": "BZIP1,ATBZIP1 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G10970", 
+                    "name": "AT5G10970 (9)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 345.94316186372976, 
+                    "width": 345.94316186372976
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G62020", 
+                    "name": "HSFB2A,AT-HSFB2A (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G62430", 
+                    "name": "CDF1 (2)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 115.31438728790992
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 200.0, 
+                    "width": 200.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}
