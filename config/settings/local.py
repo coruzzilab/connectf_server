@@ -8,9 +8,10 @@ Local settings
 - Add django-extensions as app
 """
 
-from .common import *  # noqa
-import socket
 import os
+import socket
+
+from .common import *  # noqa
 
 # DEBUG
 # ------------------------------------------------------------------------------
@@ -21,7 +22,8 @@ TEMPLATES[0]['OPTIONS']['debug'] = DEBUG
 # ------------------------------------------------------------------------------
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 # Note: This key only used for development and testing.
-SECRET_KEY = env('DJANGO_SECRET_KEY', default='+h#o5oi%(q@dx1f#n9_dfys6v+#hq34ai126b+t9untxs(4=q7')
+SECRET_KEY = env('DJANGO_SECRET_KEY',
+                 default='+h#o5oi%(q@dx1f#n9_dfys6v+#hq34ai126b+t9untxs(4=q7')
 
 # Mail settings
 # ------------------------------------------------------------------------------
@@ -31,7 +33,6 @@ EMAIL_PORT = 1025
 EMAIL_HOST = 'localhost'
 EMAIL_BACKEND = env('DJANGO_EMAIL_BACKEND',
                     default='django.core.mail.backends.console.EmailBackend')
-
 
 # CACHING
 # ------------------------------------------------------------------------------
@@ -45,13 +46,13 @@ CACHES = {
 # django-debug-toolbar
 # ------------------------------------------------------------------------------
 MIDDLEWARE_CLASSES += ('debug_toolbar.middleware.DebugToolbarMiddleware',)
-INSTALLED_APPS += ('debug_toolbar', )
+INSTALLED_APPS += ('debug_toolbar',)
 
 INTERNAL_IPS = ['127.0.0.1', '10.0.2.2', ]
 # tricks to have debug toolbar when developing with docker
 if os.environ.get('USE_DOCKER') == 'yes':
     ip = socket.gethostbyname(socket.gethostname())
-    INTERNAL_IPS += [ip[:-1]+"1"]
+    INTERNAL_IPS += [ip[:-1] + "1"]
 
 DEBUG_TOOLBAR_CONFIG = {
     'DISABLE_PANELS': [
@@ -62,14 +63,14 @@ DEBUG_TOOLBAR_CONFIG = {
 
 # django-extensions
 # ------------------------------------------------------------------------------
-INSTALLED_APPS += ('django_extensions', )
+INSTALLED_APPS += ('django_extensions',)
 
 # TESTING
 # ------------------------------------------------------------------------------
 TEST_RUNNER = 'django.test.runner.DiscoverRunner'
 
 # Your local stuff: Below this line define 3rd party library settings
-# CORS_ORIGIN_ALLOW_ALL = True   
+# CORS_ORIGIN_ALLOW_ALL = True
 CORS_ORIGIN_WHITELIST = [
     'http://127.0.0.1:3000',
     'http://coruzzilab-macpro.bio.nyu.edu:3000'

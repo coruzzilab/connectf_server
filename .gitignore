@@ -65,3 +65,4 @@ tests/.hitch
 # static file
 tgdbbackend/static/queryBuilder/*.zip
 
+venv/

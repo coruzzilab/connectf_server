@@ -1,22 +1,20 @@
-from rest_framework.routers import Route,DynamicDetailRoute, SimpleRouter
+from rest_framework.routers import DynamicDetailRoute, Route, SimpleRouter
+
 
 ########################################################################
 class CustomReadOnlyRouter(SimpleRouter):
     """"""
 
-    routes=[
+    routes = [
         Route(
             url=r'^{prefix}$',
-            mapping = {'get':'list'},
+            mapping={'get': 'list'},
             name='{basename}-list',
-            initkwargs = {'suffix':'List'}
+            initkwargs={'suffix': 'List'}
         ),
         DynamicDetailRoute(
             url=r'^{prefix}/{methodnamehyphen}/{lookup}$',
-            name = '{basename}-{methodnamehyphen}',
-            initkwargs = {}
+            name='{basename}-{methodnamehyphen}',
+            initkwargs={}
         ),
     ]
-        
-    
-    
