@@ -1,11 +1,11 @@
-from rest_framework import serializers;
+from rest_framework import serializers
 
 from .models import Edges, Meta, Nodes
 
 
 class MetaValueSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
-        model = Meta;
+        model = Meta
         fields = ["text", ]
 
 
@@ -22,7 +22,7 @@ class EdgesValueSerializer(serializers.ModelSerializer):
 
 
 class TFTypeSerializer(serializers.HyperlinkedModelSerializer):
-    text = serializers.CharField(source="node_type");
+    text = serializers.CharField(source="node_type")
 
     class Meta:
         model = Nodes
