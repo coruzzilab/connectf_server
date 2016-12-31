@@ -81,7 +81,7 @@ class createdbase():
         return self.engine
 
 
-class AccessDatabase():  # This class has special permissions for coruzzilab
+class AccessDatabase:  # This class has special permissions for coruzzilab
     # users(have only permissions to access the database)
 
     def __init__(self, dbname):

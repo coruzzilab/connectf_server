@@ -890,8 +890,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
         TFname = (' ' + TFquery[0].strip().upper().replace('[', '') + ' ').join(
             q_tf_list).split()
 
-    if not (
-                '.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if
+    if not ('.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if
         # input query is an expression or selection of one TF
         TFname = [x.upper() for x in TFquery]
         q_tf_list = getquerylist(TFname)
