@@ -51,12 +51,12 @@ class HandleQueryView(View):
 
         tfFilePaths = []
         if len(request.FILES) != 0:
-            if request.FILES.has_key("targetgenes"):
+            if "targetgenes" in request.FILES:
                 targetgenesFilePath = save_file(dirpath,
                                                 request.FILES["targetgenes"])
-            if request.FILES.has_key("file-0"):
+            if "file-0" in request.FILES:
                 i = 0
-                while request.FILES.has_key("file-" + str(i)):
+                while "file-" + str(i) in request.FILES:
                     tfFilePaths.append(
                         save_file(dirpath, request.FILES["file-" + str(i)]))
                     i += 1

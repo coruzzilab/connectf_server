@@ -36,12 +36,12 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-from Modules import module_createjson, module_query  # importing my modules
-from create_mysqlDB import AccessDatabase, Base, Edges, Genenames, \
-    Interactions, \
-    Meta, Nodes
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import aliased, sessionmaker
+
+from .Modules import module_createjson, module_query  # importing my modules
+from .create_mysqlDB import AccessDatabase, Base, Edges, Genenames, \
+    Interactions, Meta, Nodes
 
 
 ###################################################################################
@@ -57,9 +57,9 @@ def create_all_query(sess, edges, allquery, q_tf, pos):
     allquery_edges = list()
     tmpresult_edges = set(
         sess.query(Edges.edge_name).filter(no1.node_name == q_tf). \
-        filter(no1.node_id == Interactions.node_1_id).filter(
+            filter(no1.node_id == Interactions.node_1_id).filter(
             Interactions.node_2_id == no2.node_id). \
-        filter(Interactions.edge_id == Edges.edge_id).filter(
+            filter(Interactions.edge_id == Edges.edge_id).filter(
             Edges.edge_name.like(allquery)).all())
 
     for x_r in tmpresult_edges:
@@ -154,7 +154,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
                 if set(edgelist) != set(
                     tf_edges_uniq):  # Throw warning if an edge is
                     # non-existing for a TF
-                    print
+                    print()
                     'Warning: following edges are not present for ', q_tf, \
                     ' in TargetDB:\n ', list(
                         set(edgelist) - set(tf_edges_uniq))
@@ -185,7 +185,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
                 # quering the DF then append it to the DF for multiple TFs
                 tf_frames.append(rs_gp)  # append all the dataframes to a list
         else:
-            print
+            print()
             '*Warning: following edges are not present for ', q_tf, \
             ' in TargetDB:\n ', edgelist
 
@@ -304,7 +304,7 @@ def getquerylist(
         q_str = q_str.upper().replace(' ANDNOT ', ' ')
 
     q_list_new = [x.upper().strip() for x in q_str.split(' ')]
-    q_list_new = filter(None, q_list_new)
+    q_list_new = [_f for _f in q_list_new if _f]
 
     return q_list_new
 
@@ -339,7 +339,7 @@ def filter_meta(sess, q_meta, user_q_meta):
         metadata_df = pd.DataFrame(
             sess.query(Meta.meta_id, Meta.analysis_id, Meta.meta_value,
                        Meta.meta_type). \
-            filter(Meta.meta_id == valm1).all(),
+                filter(Meta.meta_id == valm1).all(),
             columns=['m_id', 'a_id', 'm_val', 'm_type'])
         metadata_df['mid_aid'] = metadata_df['m_id'] + '_' + metadata_df['a_id']
         metadata_df_new = metadata_df.pivot(index='mid_aid', columns='m_type',
@@ -353,7 +353,7 @@ def filter_meta(sess, q_meta, user_q_meta):
     rs_meta_id = ['_'.join(x.split('_')[:3]) for x in rs_meta_id_tmp]
 
     if not rs_meta_id:
-        print
+        print()
         'No data matched your metadata query!\n'
         sys.exit(1)
 
@@ -434,15 +434,15 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
         if not 'CHIPSEQ' in i_mid:
             if not rs_final_res[i_mid].isnull().all():
                 induced_eachexp = (
-                rs_final_res[i_mid].str.contains('INDUCED') * 1).sum()
+                    rs_final_res[i_mid].str.contains('INDUCED') * 1).sum()
                 repressed_eachexp = (
-                rs_final_res[i_mid].str.contains('REPRESSED') * 1).sum()
+                    rs_final_res[i_mid].str.contains('REPRESSED') * 1).sum()
                 tmp_rnaseq_summary[i_mid] = 'Induced-' + str(
                     induced_eachexp) + ' Repressed-' + str(repressed_eachexp)
             else:
                 tmp_rnaseq_summary[i_mid] = 'Induced-0' + ' Repressed-0'
 
-    sorted_mid_counts = sorted(tmp_mid_counts.items(),
+    sorted_mid_counts = sorted(list(tmp_mid_counts.items()),
                                key=operator.itemgetter(1), reverse=True)
     mid_tfname_df = pd.DataFrame(data=mid_tfname_dict,
                                  index=[' '])  # dump mid_tfname_dict to a df
@@ -504,7 +504,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
     # code below is to count the Target_count: default count counts analysis
     # id for each experiment separately
     tmp_level_sum = (
-    new_res_df.notnull() * 1)  # convert data to binary format to count the
+        new_res_df.notnull() * 1)  # convert data to binary format to count the
     # Target_count correctly
     tmp_level_sum.drop(
         ['Full Name__', 'Name__', 'ID__', 'Type__', 'Family__', 'pvalue__'],
@@ -556,7 +556,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
         # FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
         writer = write_to_excel(writer, new_res_df)
     else:
-        print
+        print()
         '\nNo target genes matched the query crietria!'
 
     return writer, new_res_df
@@ -822,11 +822,11 @@ def tabular(rs_final_res_t):
 def main(dbname, TFquery, edges, metadata, output, targetgenes):
     # check if the command line arguments provided are ok
     if dbname == None:
-        print
+        print()
         '\nError: Database name is not provided\n'
         sys.exit(1)
     if TFquery == None:
-        print
+        print()
         '\nError: Either generate a table for all the TFs (--t== alltf) ' \
         '\n' \
         'or query based on TF (-t), both can not be none\n'
@@ -857,32 +857,38 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
         file_index = [i for i, s in enumerate(TFquery) if '.txt' in s][
             0]  # get index of txt file in the list
         tf_input = TFquery[file_index].replace(']', '').replace('[',
-                                                                '')  # get the file name
+                                                                '')  # get
+        # the file name
         q_list = list()
         with open(tf_input, 'r') as fl_tf:  # read the file
             for val_tf in fl_tf:
                 q_list.append(val_tf.strip().upper())
         tmp_TFname = (
-        ' ' + TFquery[file_index - 1].strip().upper().replace('[', '').replace(
-            ']', '') + ' ').join(q_list)
+            ' ' + TFquery[file_index - 1].strip().upper().replace('[',
+                                                                  '').replace(
+                ']', '') + ' ').join(q_list)
         s_brac = ''.join(
             ['['] * (TFquery[file_index - 1].count('['))) + ''.join(['['] * (
-        TFquery[file_index].count(
-            '[')))  # to set the start brackets around the file elements
+            TFquery[file_index].count(
+                '[')))  # to set the start brackets around the file elements
         e_brac = ''.join([']'] * (TFquery[file_index].count(
             ']')))  # to set the end brackets around the file elements
         my_TFname = (
-        s_brac + tmp_TFname + e_brac)  # replace the file name and condition (and/or) with query constructed
+            s_brac + tmp_TFname + e_brac)  # replace the file name and
+        # condition (and/or) with query constructed
         del TFquery[
-            file_index - 1:file_index + 1]  # delete the file name and condition from the user provided query list
+            file_index - 1:file_index + 1]  # delete the file name and
+        # condition from the user provided query list
         TFquery.insert(file_index - 1,
-                       my_TFname)  # insert the file name and condition with query constructed in user provided list
+                       my_TFname)  # insert the file name and condition with
+        # query constructed in user provided list
         TFname = ' '.join(
-            TFquery).split()  # split by space (bcoz the newly inserted query part is still a list)
+            TFquery).split()  # split by space (bcoz the newly inserted query
+        #  part is still a list)
         q_tf_list = getquerylist(TFname)
-        print
+        print()
         '\nFollowing is your database query:'
-        print
+        print()
         ' '.join(TFname)
 
     if 'ALLTF' in tmptf.upper():  # if input query has all TFs
@@ -894,7 +900,8 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
             q_tf_list).split()
 
     if not (
-            '.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if input query is an expression or selection of one TF
+                '.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if
+        # input query is an expression or selection of one TF
         TFname = [x.upper() for x in TFquery]
         q_tf_list = getquerylist(TFname)
 
@@ -906,10 +913,12 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
             str('_'.join(col.split('_')[:-1])) if 'CHIPSEQ' in col else col for
             col in rs_final_res.columns]
         rs_final_res.where((pd.notnull(rs_final_res)), None,
-                           inplace=True)  # replacing all the Nan values in df with None
+                           inplace=True)  # replacing all the Nan values in
+        # df with None
 
         # if file with list of target genes is provided with -r option
-        # Get the subset of results dataframe (df after queries) for target genes asked in targetgenes query file
+        # Get the subset of results dataframe (df after queries) for target
+        # genes asked in targetgenes query file
         if targetgenes:
             q_tg_list = list()
             q_tg = open(targetgenes, 'r')
@@ -928,7 +937,10 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
                                             targetgenes, chipdata_summary)
         reordered_tmp_df = create_sif(sess, output, rs_final_res_t, targetgenes)
         out_metadata_df = getmetadata(sess, rs_final_res.columns, writer)
-        # json_object_WG, json_object_TG, json_object_TFdbase_vw1, json_object_TFdbase_vw2, json_object_TFdbase_vw3= module_createjson.create_json(sess, rs_tabular, output) # create json object/file- module_createjson.py
+        # json_object_WG, json_object_TG, json_object_TFdbase_vw1,
+        # json_object_TFdbase_vw2, json_object_TFdbase_vw3=
+        # module_createjson.create_json(sess, rs_tabular, output) # create
+        # json object/file- module_createjson.py
 
         json_object_TFdbase_vw1 = module_createjson.create_json(sess,
                                                                 rs_tabular,
@@ -940,16 +952,20 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
             output)  # delete the output directory after creating zip file
 
         ####################################
-        # Included this code for the moment to display output on GUI till we solve the problem of displaying multiindex to json
+        # Included this code for the moment to display output on GUI till we
+        # solve the problem of displaying multiindex to json
         new_res_df.columns = [' '.join(col).strip() for col in
                               new_res_df.columns.values]
         new_res_df.drop(new_res_df.index[0])
         targetcount_cols = [col for col in new_res_df if
-                            'Target Count' in col]  # find target_count column name
+                            'Target Count' in col]  # find target_count
+        # column name
         new_res_df.sort(columns=targetcount_cols, ascending=False, inplace=True,
-                        na_position='first')  # na_position='first' to leave the header cols (na.nan values) sorted first
+                        na_position='first')  # na_position='first' to leave
+        # the header cols (na.nan values) sorted first
         ####################################
-        return new_res_df, out_metadata_df  # returns three dfs to be displayed on user-interface
+        return new_res_df, out_metadata_df  # returns three dfs to be
+        # displayed on user-interface
     else:
         message_dict = dict()
         message_dict['Warning'] = 'No Data Matched Your Query!'
@@ -985,8 +1001,10 @@ def convert_to_binary(dct, entry):
 # Add genesect sheet
 # def get_genesect():
 
-#	stats.hypergeom.sf(3,28774,635,137) #sf did not gave the same results as r phyper function
-#	stats.hypergeom.cdf(3,28774,635,137) # got the same results as r phyper function
+#	stats.hypergeom.sf(3,28774,635,137) #sf did not gave the same results as r
+#  phyper function
+#	stats.hypergeom.cdf(3,28774,635,137) # got the same results as r phyper
+# function
 #	r_phyper= robjects.r['phyper']
 #	r_phyper(3,635,(28774-635),137)
 #	results= r_phyper(a,b,c,d)
@@ -1000,8 +1018,11 @@ if __name__ == '__main__':
 
     parser = agp.ArgumentParser()
     parser.add_argument('-d', '--dbname', help='Database name', required=True)
-    parser.add_argument('-t', '--TFname', nargs='+', help='Search by TF name or' \
-                                                          'get alldata from the database (-t alldata)',
+    parser.add_argument('-t', '--TFname', nargs='+', help='Search by TF name '
+                                                          'or' \
+                                                          'get alldata from '
+                                                          'the database (-t '
+                                                          'alldata)',
                         required=False)
     parser.add_argument('-e', '--edges', nargs='+', help='Search by Edges')
     parser.add_argument('-m', '--metadata', nargs='+',
@@ -1009,7 +1030,8 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output', help='Output file name',
                         required=False)
     parser.add_argument('-r', '--targetgenes',
-                        help='List of genes provided by user to refine the database output')
+                        help='List of genes provided by user to refine the '
+                             'database output')
 
     args = parser.parse_args()
 

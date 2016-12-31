@@ -11,10 +11,7 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-from __future__ import unicode_literals
 
-import os
-import sys
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -168,7 +165,6 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'tgdbbackenddoc'
-
 
 # -- Options for LaTeX output --------------------------------------------------
 

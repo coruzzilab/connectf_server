@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals
+
 
 import django.contrib.auth.models
 import django.core.validators
@@ -70,13 +70,18 @@ class Migration(migrations.Migration):
                 ('groups',
                  models.ManyToManyField(related_name='user_set', blank=True,
                                         verbose_name='groups', to='auth.Group',
-                                        help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.',
+                                        help_text='The groups this user '
+                                                  'belongs to. A user will '
+                                                  'get all permissions '
+                                                  'granted to each of their '
+                                                  'groups.',
                                         related_query_name='user')),
                 ('user_permissions',
                  models.ManyToManyField(related_name='user_set', blank=True,
                                         verbose_name='user permissions',
                                         to='auth.Permission',
-                                        help_text='Specific permissions for this user.',
+                                        help_text='Specific permissions for '
+                                                  'this user.',
                                         related_query_name='user')),
                 ('name',
                  models.CharField(max_length=255, verbose_name='Name of User',

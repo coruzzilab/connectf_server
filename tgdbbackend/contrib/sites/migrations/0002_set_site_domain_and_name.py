@@ -6,7 +6,7 @@ http://cookiecutter-django.readthedocs.io/en/latest/faq.html#why-is-there-a
 """
 # -*- coding: utf-8 -*-
 
-from __future__ import unicode_literals
+
 
 from django.conf import settings
 from django.db import migrations

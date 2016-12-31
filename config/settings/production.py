@@ -11,7 +11,6 @@ Production Configurations
 
 
 """
-from __future__ import absolute_import, unicode_literals
 
 import logging
 
@@ -33,7 +32,8 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # See https://docs.getsentry.com/hosted/clients/python/integrations/django/
 INSTALLED_APPS += ('raven.contrib.django.raven_compat',)
 RAVEN_MIDDLEWARE = (
-'raven.contrib.django.raven_compat.middleware.SentryResponseErrorIdMiddleware',)
+    'raven.contrib.django.raven_compat.middleware'
+    '.SentryResponseErrorIdMiddleware',)
 MIDDLEWARE_CLASSES = RAVEN_MIDDLEWARE + MIDDLEWARE_CLASSES
 
 # SECURITY CONFIGURATION

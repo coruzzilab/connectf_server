@@ -1,15 +1,16 @@
 '''
 Call this module to query the TargetDB database. Returns a pandas dataframe.
 
-	My main program query_TargetDb calls the function queryTFDB to generate df
-	for each TF
+    My main program query_TargetDb calls the function queryTFDB to generate df
+    for each TF
 '''
 
 ##############
 # Modules
 import pandas as pd
-from create_mysqlDB import Edges, Interactions, Nodes
 from sqlalchemy.orm import aliased
+
+from .create_mysqlDB import Edges, Interactions, Nodes
 
 
 ################################################
@@ -73,12 +74,15 @@ def queryTFDB(sess, q_TFname, qedgelist, qmetalist):
     #  replaces because pandas does not allow to use these chars with
     # pandas.query
     rs_pd['META_ID'] = rs_pd[['META', 'ANALYSIS']].apply(lambda x: '_'.join(x),
-                                                         axis=1)  # separating metaid and analysis id with '_' because pandas does not allow other chars
+                                                         axis=1)  #
+    # separating metaid and analysis id with '_' because pandas does not
+    # allow other chars
     rs_pd.drop('META', axis=1, inplace=True)
     rs_pd.drop('ANALYSIS', axis=1, inplace=True)
 
     if not rs_pd.empty:
-        # code to change CHIPSEQ column names for time points: Example: METAID_X will be METAID_X:0, METAID_X:1, METAID_X:5
+        # code to change CHIPSEQ column names for time points: Example:
+        # METAID_X will be METAID_X:0, METAID_X:1, METAID_X:5
         pattern = rs_pd.META_ID.str.contains('CHIPSEQ')
         # attach time point with each metaid
         rs_pd.loc[pattern, 'META_ID'] = rs_pd.loc[pattern, 'META_ID'] + '_' + \

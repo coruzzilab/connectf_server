@@ -17,7 +17,8 @@ import os
 
 import numpy as np
 import pandas as pd
-from create_mysqlDB import Genenames, Nodes
+
+from .create_mysqlDB import Genenames, Nodes
 
 
 ###################################################################
@@ -38,7 +39,7 @@ def create_json(sess, query_res_df, output):
     output_x = output + '_genome'
     edges_gm_rawdata, out_tf_genome, tf_genome_matrix_concat = \
         get_json_root_edges_genome(
-        sess, query_res_df, df_rows)
+            sess, query_res_df, df_rows)
     geneid_genome = list(set(
         tf_genome_matrix_concat.columns.tolist() +
         tf_genome_matrix_concat.index.tolist()))  # For database TF matrix I
@@ -55,7 +56,7 @@ def create_json(sess, query_res_df, output):
     output_x = output + '_targets'
     edges_tg_rawdata, out_tg_genome, tf_tg_matrix_concat = \
         get_json_root_edges_dbase_TGs(
-        query_res_df, df_rows)
+            query_res_df, df_rows)
     geneid_TF_targets = list(set(
         tf_tg_matrix_concat.columns.tolist() +
         tf_tg_matrix_concat.index.tolist()))
@@ -73,7 +74,7 @@ def create_json(sess, query_res_df, output):
     output_view3 = output + '_dbase_view3'
     edge_rawdata, out_tf_dbase, tf_subset_matrix_final = \
         get_json_root_edges_dbase(
-        query_res_df, df_tf_list)
+            query_res_df, df_tf_list)
     geneid_dbase = list(set(
         tf_subset_matrix_final.columns.tolist() +
         tf_subset_matrix_final.index.tolist()))  # For database TF matrix I
@@ -94,7 +95,7 @@ def create_json(sess, query_res_df, output):
     output_query = output + '_query'
     edge_query_rawdata, out_query_dbase, tf_query_matrix_final = \
         get_json_root_edges_query(
-        query_res_df, df_tf_list)
+            query_res_df, df_tf_list)
     geneid_query = list(set(
         tf_query_matrix_final.columns.tolist() +
         tf_query_matrix_final.index.tolist()))
@@ -367,7 +368,7 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, mid_tfname,
 
     # Assigning weigths to the edges- this is only for chip-seq data
     edges_rawdata_copy['weight'] = edges_rawdata_copy['val'].apply(lambda x: (
-    (x.count("1")) * fontsize_edges) if x.isdigit() else fontsize_edges)
+        (x.count("1")) * fontsize_edges) if x.isdigit() else fontsize_edges)
     edges_rawdata_copy.drop(
         ['val', 'color_induced', 'color_repressed', 'color_chipseq'], 1,
         inplace=True)  # we don't need the dataframe values (0 1)
@@ -424,7 +425,8 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, mid_tfname,
         tmp_tfdict['style']['width'] = (np.log2(ht_wt + 2)) * 100
         tmp_tfdict['style']['height'] = (np.log2(ht_wt + 2)) * 100
         tmp_tfdict['data']['weight'] = ((np.log2(
-            fontsize + 2)) * 100) / 3  # for font size 1/3 of size of TF with maximum no. of targets
+            fontsize + 2)) * 100) / 3  # for font size 1/3 of size of TF with
+        #  maximum no. of targets
 
         if col_tfs in mid_tfname:
             if mid_tfname[col_tfs] == '-':
@@ -455,11 +457,15 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, mid_tfname,
 
     if output_x:
         dir_path = os.path.dirname(os.path.realpath(output_x))
-        # mydir= '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/static/queryBuilder'
+        # mydir= '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend
+        # /tgdbbackend/static/queryBuilder'
         with open(dir_path + '/' + output_x.split('/')[-1] + '_cy.json',
                   'wb') as \
             out_jsonfile:
-            # print '***= ','/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/static/queryBuilder'+'/'+output_x.split('/')[-1]+'_cy.json'
+            # print '***= ',
+            # '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend
+            # /tgdbbackend/static/queryBuilder'+'/'+output_x.split('/')[
+            # -1]+'_cy.json'
             json.dump(json_output_dict, out_jsonfile, sort_keys=True, indent=4,
                       ensure_ascii=False)
 

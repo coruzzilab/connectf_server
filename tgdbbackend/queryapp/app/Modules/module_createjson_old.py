@@ -17,7 +17,8 @@ import os
 
 import numpy as np
 import pandas as pd
-from create_mysqlDB import Genenames, Nodes
+
+from .create_mysqlDB import Genenames, Nodes
 
 
 ###################################################################
@@ -39,7 +40,7 @@ def create_json(sess, query_res_df, output):
     output_x = output + '_genome'
     edges_json_genome, out_tf_genome, tf_genome_matrix_concat = \
         get_json_root_edges_genome(
-        sess, rs_final_tfcolset, df_rows)
+            sess, rs_final_tfcolset, df_rows)
     geneid_genome = tf_genome_matrix_concat.columns.tolist() + \
                     tf_genome_matrix_concat.index.tolist()  # For database TF
     #  matrix I need columns and rows (genome TF) as nodes
@@ -55,7 +56,7 @@ def create_json(sess, query_res_df, output):
     output_x = output + '_targets'
     edges_json_tg, out_tg_genome, tf_tg_matrix_concat = \
         get_json_root_edges_dbase_TGs(
-        sess, rs_final_tfcolset, df_rows)
+            sess, rs_final_tfcolset, df_rows)
     geneid_TF_targets = tf_tg_matrix_concat.columns.tolist() + \
                         tf_tg_matrix_concat.index.tolist()
     mid_tfname_dbase, tfname_tftype = id_name_mapping(sess,
@@ -72,7 +73,7 @@ def create_json(sess, query_res_df, output):
     output_view3 = output + '_dbase_view3'
     edges_json_list, out_tf_dbase, tf_subset_matrix_final = \
         get_json_root_edges_dbase(
-        rs_final_tfcolset, df_tf_list)
+            rs_final_tfcolset, df_tf_list)
     geneid_dbase = list(set(
         tf_subset_matrix_final.columns.tolist() +
         tf_subset_matrix_final.index.tolist()))  # For database TF matrix I
@@ -405,11 +406,15 @@ def create_json_object(geneid_x, edges_json_list, out_tf_x, mid_tfname,
 
     if output_x:
         dir_path = os.path.dirname(os.path.realpath(output_x))
-        # mydir= '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/static/queryBuilder'
+        # mydir= '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend
+        # /tgdbbackend/static/queryBuilder'
         with open(dir_path + '/' + output_x.split('/')[-1] + '_cy.json',
                   'wb') as \
             out_jsonfile:
-            # print '***= ','/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/static/queryBuilder'+'/'+output_x.split('/')[-1]+'_cy.json'
+            # print '***= ',
+            # '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend
+            # /tgdbbackend/static/queryBuilder'+'/'+output_x.split('/')[
+            # -1]+'_cy.json'
             json.dump(json_output_dict, out_jsonfile, sort_keys=True, indent=4,
                       ensure_ascii=False)
 
