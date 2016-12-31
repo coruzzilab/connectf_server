@@ -31,7 +31,6 @@ import operator
 import os
 import re
 import shutil
-import sys
 from collections import defaultdict
 
 import numpy as np
@@ -185,9 +184,8 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
                 # quering the DF then append it to the DF for multiple TFs
                 tf_frames.append(rs_gp)  # append all the dataframes to a list
         else:
-            print()
-            '*Warning: following edges are not present for ', q_tf, \
-            ' in TargetDB:\n ', edgelist
+            print('*Warning: following edges are not present for ', q_tf,
+                  ' in TargetDB:\n ', edgelist)
 
         if all_edge_flag != 0:  # if allrnaseq or allchipseq data is asked.
             # replace the changed edges (with actual edges name) to original
@@ -353,9 +351,7 @@ def filter_meta(sess, q_meta, user_q_meta):
     rs_meta_id = ['_'.join(x.split('_')[:3]) for x in rs_meta_id_tmp]
 
     if not rs_meta_id:
-        print()
-        'No data matched your metadata query!\n'
-        sys.exit(1)
+        raise ValueError('No data matched your metadata query!\n')
 
     return rs_meta_id
 
@@ -556,8 +552,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
         # FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
         writer = write_to_excel(writer, new_res_df)
     else:
-        print()
-        '\nNo target genes matched the query crietria!'
+        print('\nNo target genes matched the query crietria!')
 
     return writer, new_res_df
 
@@ -821,16 +816,12 @@ def tabular(rs_final_res_t):
 # @profile
 def main(dbname, TFquery, edges, metadata, output, targetgenes):
     # check if the command line arguments provided are ok
-    if dbname == None:
-        print()
-        '\nError: Database name is not provided\n'
-        sys.exit(1)
-    if TFquery == None:
-        print()
-        '\nError: Either generate a table for all the TFs (--t== alltf) ' \
-        '\n' \
-        'or query based on TF (-t), both can not be none\n'
-        sys.exit(1)
+    if dbname is None:
+        raise TypeError('\nError: Database name is not provided\n')
+    if TFquery is None:
+        raise TypeError(
+            '\nError: Either generate a table for all the TFs (--t== alltf) '
+            '\n or query based on TF (-t), both can not be none\n')
         # TFquery= ['OR [ALLTF]']
 
     # creating engine and session
