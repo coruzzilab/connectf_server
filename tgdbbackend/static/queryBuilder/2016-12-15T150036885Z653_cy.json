@@ -1,0 +1,114 @@
+{
+    "elements": {
+        "edges": [
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT2G22430_AT1G68670_INDUCED:PCHX", 
+                    "source": "AT2G22430", 
+                    "target": "AT1G68670", 
+                    "weight": 23.21928094887362
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#669900", 
+                    "id": "AT2G22430_AT3G49940_INDUCED:PCHX", 
+                    "source": "AT2G22430", 
+                    "target": "AT3G49940", 
+                    "weight": 23.21928094887362
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#FF6633", 
+                    "id": "AT2G22430_AT5G49450_REPRESSED:PCHX", 
+                    "source": "AT2G22430", 
+                    "target": "AT5G49450", 
+                    "weight": 23.21928094887362
+                }
+            }
+        ], 
+        "nodes": [
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT5G49450", 
+                    "name": "BZIP1,ATBZIP1 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 77.397603162912077
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT2G22430", 
+                    "name": "HB6,ATHB6 (3)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 77.397603162912077
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 232.19280948873623, 
+                    "width": 232.19280948873623
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT3G49940", 
+                    "name": "LBD38 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 77.397603162912077
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }, 
+            {
+                "data": {
+                    "color": "#00FF00", 
+                    "id": "AT1G68670", 
+                    "name": "AT1G68670 (0)", 
+                    "shape": "triangle", 
+                    "type": "TXNFACTOR", 
+                    "weight": 77.397603162912077
+                }, 
+                "group": "nodes", 
+                "renderedPosition": {
+                    "x": 100, 
+                    "y": 100
+                }, 
+                "style": {
+                    "height": 100.0, 
+                    "width": 100.0
+                }
+            }
+        ]
+    }, 
+    "layout": {
+        "name": "preset"
+    }
+}

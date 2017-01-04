@@ -115,7 +115,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 			if edges:# create query string for pandas.dataframe.query() function
 		
 				if set(edgelist)!=set(tf_edges_uniq):# Throw warning if an edge is non-existing for a TF
-					print 'Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',list(set(edgelist)-set(tf_edges_uniq))
+					print ('Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',list(set(edgelist)-set(tf_edges_uniq)))
 					# make a TMP column in DF to tackle if an edges asked is not present in dbase for a TF
 					rs_gp['TMP']= None # all rows for this column are NONE. Edge not present for a TF will look for values in this column and get false as a result of expression
 				
@@ -133,7 +133,7 @@ def queryTF(sess, q_tf_list, TFname, edges, edgelist, metalist, metadata):
 			if not rs_gp.empty: # if dataframe for a TF is not empty after quering the DF then append it to the DF for multiple TFs
 				tf_frames.append(rs_gp) # append all the dataframes to a list
 		else:
-			print '*Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',edgelist
+			print ('*Warning: following edges are not present for ',q_tf,' in TargetDB:\n ',edgelist)
 
 		if all_edge_flag!=0: # if allrnaseq or allchipseq data is asked. replace the changed edges (with actual edges name) to original edges for next TF
 			edges= orig_edges
@@ -266,7 +266,7 @@ def filter_meta(sess, q_meta, user_q_meta):
 	rs_meta_id= ['_'.join(x.split('_')[:3]) for x in rs_meta_id_tmp]
 
 	if not rs_meta_id:
-		print 'No data matched your metadata query!\n'
+		print ('No data matched your metadata query!\n')
 		sys.exit(1)
 
 	return rs_meta_id
@@ -377,7 +377,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 	
 	# Change column order 
 	multi_cols= new_res_df.columns.tolist()
-	list_mid_aid_sorted= zip(*sorted_mid_counts)[0]
+	list_mid_aid_sorted= list(zip(*sorted_mid_counts))[0]
 	list_mid_sorted= [('_'.join(x.split('_')[0:3]),'_'.join(x.split('_')[3:])) for x in list_mid_aid_sorted]
 	multi_cols= [('Full Name','Gene Full Name'),('Family','Gene Family'),('Type','Gene Type'),('Name','Gene Name'),('ID','Gene ID')]+multi_cols[-1:]+[('pvalue', 'P')]+list_mid_sorted # rearraging the columns
 	
@@ -389,7 +389,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 		new_res_df.to_excel(writer,sheet_name='TargetDB Output') # THIS IS THE FINAL OUTPUT DATAFRAME FOR TABULAR FORMAT**
 		writer= write_to_excel(writer, new_res_df)		
 	else:
-		print '\nNo target genes matched the query crietria!'
+		print ('\nNo target genes matched the query crietria!')
 
 	return writer,new_res_df
 
@@ -480,11 +480,11 @@ def create_sif(sess, output, tmp_df, targetgenes):
 	# SIF output in tab-delimited format
 	for tf_val in tf_list:
 		sub_df= reordered_tmp_df[reordered_tmp_df['TF']==tf_val]
-		outfile = open(output+'/'+output.split('/')[-1]+'_'+tf_val+'.sif', 'wb') # Generates sif output file for each TF
+		outfile = open(output+'/'+output.split('/')[-1]+'_'+tf_val+'.sif', 'w') # Generates sif output file for each TF
 		sub_df.to_csv(outfile,sep='\t',index=False) 
 		outfile.close() # close the file resources
 
-	outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'wb') # Generates sif output file for all TF
+	outfile_all = open(output+'/'+output.split('/')[-1]+'_allTFs.sif', 'w') # Generates sif output file for all TF
 	reordered_tmp_df.to_csv(outfile_all,sep='\t',index=False)
 	
 	total_exp= len(sif_rs_tabular.columns.tolist()) # count the total number of experiments	
@@ -494,14 +494,14 @@ def create_sif(sess, output, tmp_df, targetgenes):
 	sub_common_targets.drop('target_count', 1, inplace=True) # drop the target_count column from this subset df
 	sub_shared_targets.drop('target_count', 1, inplace=True) # drop the target_count column from this subset df 
 	
-	outfile_common = open(output+'/'+output.split('/')[-1]+'_commonTargets.sif', 'wb') # Generates sif output file for all TF
+	outfile_common = open(output+'/'+output.split('/')[-1]+'_commonTargets.sif', 'w') # Generates sif output file for all TF
 	stacked_common_targets= pd.DataFrame(sub_common_targets.stack().reset_index())
 	stacked_common_targets.columns = ['TARGET','TF','EDGE']
 	stacked_common_targets['TF']= stacked_common_targets['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
 	stacked_common_targets[['TF','EDGE','TARGET']].to_csv(outfile_common,sep='\t',index=False)
 
 
-	outfile_shared = open(output+'/'+output.split('/')[-1]+'_sharedTargets.sif', 'wb') # Generates sif output file for shared targets
+	outfile_shared = open(output+'/'+output.split('/')[-1]+'_sharedTargets.sif', 'w') # Generates sif output file for shared targets
 	stacked_shared_targets= pd.DataFrame(sub_shared_targets.stack().reset_index())
 	stacked_shared_targets.columns = ['TARGET','TF','EDGE']
 	stacked_shared_targets['TF']= stacked_shared_targets['TF'].apply(lambda x:x.split('_')[0]) # extract TFname from experimentID
@@ -588,11 +588,11 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 
 	# check if the command line arguments provided are ok
 	if dbname==None:
-		print '\nError: Database name is not provided\n'
+		print ('\nError: Database name is not provided\n')
 		sys.exit(1)
 	if TFquery==None: 
-		print '\nError: Either generate a table for all the TFs (--t== alltf) \n'\
-			'or query based on TF (-t), both can not be none\n'
+		print ('\nError: Either generate a table for all the TFs (--t== alltf) \n'\
+			'or query based on TF (-t), both can not be none\n')
 		sys.exit(1)
 		#TFquery= ['OR [ALLTF]']
  
@@ -630,8 +630,8 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 		TFquery.insert(file_index-1,my_TFname)# insert the file name and condition with query constructed in user provided list
 		TFname= ' '.join(TFquery).split() # split by space (bcoz the newly inserted query part is still a list)
 		q_tf_list= getquerylist(TFname)
-		print '\nFollowing is your database query:'
-		print ' '.join(TFname)
+		print ('\nFollowing is your database query:')
+		print (' '.join(TFname))
 	
 	if 'ALLTF' in tmptf.upper(): # if input query has all TFs
 		all_tfs= sess.query(Nodes.node_name, Nodes.node_type).filter(Nodes.node_type=='TF').all()

@@ -62,7 +62,7 @@ class Genenames(Base):
 class createdbase():
 
 	def __init__(self,dbasename):
-		self.engine = create_engine('mysql://root:coruzzilab@localhost')
+		self.engine = create_engine('mysql+pymysql://root:coruzzilab@localhost')
 		self.engine.execute("DROP DATABASE IF EXISTS "+dbasename) # uncomment this if you want to recreate the database
 		self.engine.execute("CREATE DATABASE "+dbasename)
 		self.engine.execute("USE "+dbasename)
@@ -74,7 +74,7 @@ class createdbase():
 class AccessDatabase(): # This class has special permissions for coruzzilab users(have only permissions to access the database)
 
 	def __init__(self, dbname):
-		self.engine = create_engine('mysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
+		self.engine = create_engine('mysql+pymysql://coruzzilab:accesstargetdb@172.22.2.137/'+dbname)
 	
 	def getEngine(self):
 		return self.engine

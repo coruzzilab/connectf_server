@@ -1,157 +1,23 @@
-[16/Nov/2016 13:43:52] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[16/Nov/2016 14:21:46] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 14:42:21] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 14:42:29] "POST /queryapp/ HTTP/1.1" 200 845050
-[17/Nov/2016 19:16:11] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 19:16:19] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 19:16:44] "POST /queryapp/ HTTP/1.1" 200 1016584
-[17/Nov/2016 19:17:42] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 19:18:06] "GET /api/metas/searchType/Experimenter?format=json&uinput= HTTP/1.1" 200 75
-[17/Nov/2016 19:19:09] "POST /queryapp/ HTTP/1.1" 200 21899030
-[17/Nov/2016 19:19:58] "GET /static/queryBuilder/2016-11-18T001816221Z969_cy.json HTTP/1.1" 200 37707
-[17/Nov/2016 19:21:48] "GET /static/queryBuilder/2016-11-18T001816221Z969_cy.json HTTP/1.1" 304 0
-[17/Nov/2016 19:27:08] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[17/Nov/2016 19:27:12] "POST /queryapp/ HTTP/1.1" 200 213074
-[17/Nov/2016 19:28:07] "GET /static/queryBuilder/2016-11-18T002710772Z807.zip HTTP/1.1" 200 48993
-[18/Nov/2016 12:18:58] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 12:19:03] "POST /queryapp/ HTTP/1.1" 200 213074
-[18/Nov/2016 12:19:11] "GET /static/queryBuilder/2016-11-18T171902043Z404_cy.json HTTP/1.1" 200 1686
-[18/Nov/2016 12:56:29] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 12:56:32] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 12:56:35] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 12:56:45] "POST /queryapp/ HTTP/1.1" 200 1401328
-[18/Nov/2016 13:01:48] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-Traceback (most recent call last):
-  File "/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/wsgiref/handlers.py", line 85, in run
-    self.result = application(self.environ, self.start_response)
-  File "/Library/Python/2.7/site-packages/django/contrib/staticfiles/handlers.py", line 63, in __call__
-    return self.application(environ, start_response)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/wsgi.py", line 170, in __call__
-    response = self.get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 124, in get_response
-    response = self._middleware_chain(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/exception.py", line 39, in inner
-    response = get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 249, in _legacy_get_response
-    response = self._get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 185, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 185, in inner
-    return func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 68, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 67, in _wrapper
-    return bound_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/decorators/csrf.py", line 58, in wrapped_view
-    return view_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 63, in bound_func
-    return func.__get__(self, type(self))(*args2, **kwargs2)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 88, in dispatch
-    return handler(request, *args, **kwargs)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/views.py", line 58, in post
-    df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), targetgenesFilePath);
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 606, in main
-    rs_meta_list= filter_meta(sess, q_meta, metadata)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 270, in filter_meta
-    sys.exit(1)
-SystemExit: 1
-[18/Nov/2016 13:02:16] "POST /queryapp/ HTTP/1.1" 500 59
-[18/Nov/2016 13:02:59] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-Internal Server Error: /queryapp/
-Traceback (most recent call last):
-  File "/Library/Python/2.7/site-packages/django/core/handlers/exception.py", line 39, in inner
-    response = get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 249, in _legacy_get_response
-    response = self._get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 187, in _get_response
-    response = self.process_exception_by_middleware(e, request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 185, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 185, in inner
-    return func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 68, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 67, in _wrapper
-    return bound_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/decorators/csrf.py", line 58, in wrapped_view
-    return view_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 63, in bound_func
-    return func.__get__(self, type(self))(*args2, **kwargs2)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 88, in dispatch
-    return handler(request, *args, **kwargs)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/views.py", line 58, in post
-    df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), targetgenesFilePath);
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 663, in main
-    writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 324, in create_tabular
-    induced_eachexp= (rs_final_res[i_mid].str.contains('INDUCED')*1).sum()
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/generic.py", line 2663, in __getattr__
-    return object.__getattribute__(self, name)
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/base.py", line 235, in __get__
-    return self.construct_accessor(instance)
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/strings.py", line 1800, in _make_str_accessor
-    raise AttributeError("Can only use .str accessor with string "
-AttributeError: Can only use .str accessor with string values, which use np.object_ dtype in pandas
-[18/Nov/2016 13:03:15] "POST /queryapp/ HTTP/1.1" 500 165143
-[18/Nov/2016 13:04:07] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:04:10] "GET /api/tfs/searchName/nodename?format=json&uinput=a HTTP/1.1" 200 528
-[18/Nov/2016 13:04:10] "GET /api/tfs/searchName/nodename?format=json&uinput=at HTTP/1.1" 200 505
-[18/Nov/2016 13:04:10] "GET /api/tfs/searchName/nodename?format=json&uinput=at2 HTTP/1.1" 200 85
-[18/Nov/2016 13:04:12] "GET /api/tfs/searchName/nodename?format=json&uinput=at2g HTTP/1.1" 200 85
-[18/Nov/2016 13:04:12] "GET /api/tfs/searchName/nodename?format=json&uinput=at2g33 HTTP/1.1" 200 22
-[18/Nov/2016 13:04:21] "POST /queryapp/ HTTP/1.1" 200 5672
-[18/Nov/2016 13:05:12] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:05:16] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:05:24] "POST /queryapp/ HTTP/1.1" 200 12059
-[18/Nov/2016 13:09:32] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:09:40] "GET /api/metas/searchType/Experimenter?format=json&uinput= HTTP/1.1" 200 75
-Internal Server Error: /queryapp/
-Traceback (most recent call last):
-  File "/Library/Python/2.7/site-packages/django/core/handlers/exception.py", line 39, in inner
-    response = get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 249, in _legacy_get_response
-    response = self._get_response(request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 187, in _get_response
-    response = self.process_exception_by_middleware(e, request)
-  File "/Library/Python/2.7/site-packages/django/core/handlers/base.py", line 185, in _get_response
-    response = wrapped_callback(request, *callback_args, **callback_kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 185, in inner
-    return func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 68, in view
-    return self.dispatch(request, *args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 67, in _wrapper
-    return bound_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/views/decorators/csrf.py", line 58, in wrapped_view
-    return view_func(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/decorators.py", line 63, in bound_func
-    return func.__get__(self, type(self))(*args2, **kwargs2)
-  File "/Library/Python/2.7/site-packages/django/views/generic/base.py", line 88, in dispatch
-    return handler(request, *args, **kwargs)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/views.py", line 58, in post
-    df,out_metadata_df = query_TargetDB.main(dbname, TFquery, edges, metadata, str(output), targetgenesFilePath);
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 664, in main
-    writer, new_res_df= create_tabular(sess, output, rs_tabular, targetgenes, chipdata_summary)
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 325, in create_tabular
-    induced_eachexp= (rs_final_res[i_mid].str.contains('INDUCED')*1).sum()
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/generic.py", line 2663, in __getattr__
-    return object.__getattribute__(self, name)
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/base.py", line 235, in __get__
-    return self.construct_accessor(instance)
-  File "/Library/Python/2.7/site-packages/pandas-0+unknown-py2.7-macosx-10.11-intel.egg/pandas/core/strings.py", line 1800, in _make_str_accessor
-    raise AttributeError("Can only use .str accessor with string "
-AttributeError: Can only use .str accessor with string values, which use np.object_ dtype in pandas
-[18/Nov/2016 13:09:53] "POST /queryapp/ HTTP/1.1" 500 163333
-Unhandled exception in thread started by <function wrapper at 0x10a0ffe60>
+appending output to nohup.out
+[04/Jan/2017 09:52:21] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
+[04/Jan/2017 09:52:24] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
+[04/Jan/2017 09:52:41] "POST /queryapp/ HTTP/1.1" 200 1870118
+[04/Jan/2017 09:52:50] "GET /static/queryBuilder/2017-01-04T145229868Z468_cy.json HTTP/1.1" 200 8471
+[04/Jan/2017 10:36:46] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
+[04/Jan/2017 10:36:54] "POST /queryapp/ HTTP/1.1" 200 790606
+[04/Jan/2017 10:41:34] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
+[04/Jan/2017 10:41:42] "POST /queryapp/ HTTP/1.1" 200 570334
+Unhandled exception in thread started by <function wrapper at 0x112da1c80>
 Traceback (most recent call last):
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 226, in wrapper
     fn(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 113, in inner_run
+  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 109, in inner_run
     autoreload.raise_last_exception()
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 249, in raise_last_exception
     six.reraise(*_exception)
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 226, in wrapper
     fn(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/__init__.py", line 27, in setup
+  File "/Library/Python/2.7/site-packages/django/__init__.py", line 18, in setup
     apps.populate(settings.INSTALLED_APPS)
   File "/Library/Python/2.7/site-packages/django/apps/registry.py", line 115, in populate
     app_config.ready()
@@ -161,25 +27,25 @@ Traceback (most recent call last):
     patch_root_urlconf()
   File "/Library/Python/2.7/site-packages/debug_toolbar/settings.py", line 231, in patch_root_urlconf
     reverse('djdt:render_panel')
-  File "/Library/Python/2.7/site-packages/django/urls/base.py", line 60, in reverse
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 568, in reverse
     app_list = resolver.app_dict[ns]
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 256, in app_dict
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 360, in app_dict
     self._populate()
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 196, in _populate
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 293, in _populate
     for pattern in reversed(self.url_patterns):
-  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 35, in __get__
+  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 33, in __get__
     res = instance.__dict__[self.name] = self.func(instance)
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 313, in url_patterns
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 417, in url_patterns
     patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
-  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 35, in __get__
+  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 33, in __get__
     res = instance.__dict__[self.name] = self.func(instance)
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 306, in urlconf_module
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 410, in urlconf_module
     return import_module(self.urlconf_name)
   File "/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/importlib/__init__.py", line 37, in import_module
     __import__(name)
   File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/config/urls.py", line 27, in <module>
     url(r'^queryapp/', include('tgdbbackend.queryapp.urls', namespace='queryapp')),
-  File "/Library/Python/2.7/site-packages/django/conf/urls/__init__.py", line 50, in include
+  File "/Library/Python/2.7/site-packages/django/conf/urls/__init__.py", line 52, in include
     urlconf_module = import_module(urlconf_module)
   File "/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/importlib/__init__.py", line 37, in import_module
     __import__(name)
@@ -187,21 +53,20 @@ Traceback (most recent call last):
     from tgdbbackend.queryapp import views;
   File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/views.py", line 7, in <module>
     from .app import query_TargetDB;
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 327
-    if not mys.isnull().all()
-                            ^
-SyntaxError: invalid syntax
-Unhandled exception in thread started by <function wrapper at 0x10365ae60>
+  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 36, in <module>
+    from pathlib import Path
+ImportError: No module named pathlib
+Unhandled exception in thread started by <function wrapper at 0x1058e7c80>
 Traceback (most recent call last):
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 226, in wrapper
     fn(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 113, in inner_run
+  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 109, in inner_run
     autoreload.raise_last_exception()
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 249, in raise_last_exception
     six.reraise(*_exception)
   File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 226, in wrapper
     fn(*args, **kwargs)
-  File "/Library/Python/2.7/site-packages/django/__init__.py", line 27, in setup
+  File "/Library/Python/2.7/site-packages/django/__init__.py", line 18, in setup
     apps.populate(settings.INSTALLED_APPS)
   File "/Library/Python/2.7/site-packages/django/apps/registry.py", line 115, in populate
     app_config.ready()
@@ -211,25 +76,25 @@ Traceback (most recent call last):
     patch_root_urlconf()
   File "/Library/Python/2.7/site-packages/debug_toolbar/settings.py", line 231, in patch_root_urlconf
     reverse('djdt:render_panel')
-  File "/Library/Python/2.7/site-packages/django/urls/base.py", line 60, in reverse
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 568, in reverse
     app_list = resolver.app_dict[ns]
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 256, in app_dict
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 360, in app_dict
     self._populate()
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 196, in _populate
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 293, in _populate
     for pattern in reversed(self.url_patterns):
-  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 35, in __get__
+  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 33, in __get__
     res = instance.__dict__[self.name] = self.func(instance)
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 313, in url_patterns
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 417, in url_patterns
     patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
-  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 35, in __get__
+  File "/Library/Python/2.7/site-packages/django/utils/functional.py", line 33, in __get__
     res = instance.__dict__[self.name] = self.func(instance)
-  File "/Library/Python/2.7/site-packages/django/urls/resolvers.py", line 306, in urlconf_module
+  File "/Library/Python/2.7/site-packages/django/core/urlresolvers.py", line 410, in urlconf_module
     return import_module(self.urlconf_name)
   File "/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/importlib/__init__.py", line 37, in import_module
     __import__(name)
   File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/config/urls.py", line 27, in <module>
     url(r'^queryapp/', include('tgdbbackend.queryapp.urls', namespace='queryapp')),
-  File "/Library/Python/2.7/site-packages/django/conf/urls/__init__.py", line 50, in include
+  File "/Library/Python/2.7/site-packages/django/conf/urls/__init__.py", line 52, in include
     urlconf_module = import_module(urlconf_module)
   File "/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/importlib/__init__.py", line 37, in import_module
     __import__(name)
@@ -237,43 +102,6 @@ Traceback (most recent call last):
     from tgdbbackend.queryapp import views;
   File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/views.py", line 7, in <module>
     from .app import query_TargetDB;
-  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 327
-    if not rs_final_res[i_mid].isnull().all()
-                                            ^
-SyntaxError: invalid syntax
-[18/Nov/2016 13:19:15] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:19:24] "GET /api/metas/searchType/Experimenter?format=json&uinput= HTTP/1.1" 200 75
-[18/Nov/2016 13:19:38] "POST /queryapp/ HTTP/1.1" 200 116363
-[18/Nov/2016 13:20:23] "GET /static/queryBuilder/2016-11-18T181932096Z848_cy.json HTTP/1.1" 200 14092
-[18/Nov/2016 13:20:39] "GET /static/queryBuilder/2016-11-18T181932096Z848_cy.json HTTP/1.1" 304 0
-[18/Nov/2016 13:31:47] "GET /static/queryBuilder/2016-11-18T181932096Z848_cy.json HTTP/1.1" 304 0
-[18/Nov/2016 13:34:44] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:34:46] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-[18/Nov/2016 13:34:56] "POST /queryapp/ HTTP/1.1" 200 12087
-[18/Nov/2016 13:34:59] "GET /api/tfs/searchName/nodename?format=json&uinput= HTTP/1.1" 200 550
-Traceback (most recent call last):
-  File "manage.py", line 10, in <module>
-    execute_from_command_line(sys.argv)
-  File "/Library/Python/2.7/site-packages/django/core/management/__init__.py", line 367, in execute_from_command_line
-    utility.execute()
-  File "/Library/Python/2.7/site-packages/django/core/management/__init__.py", line 359, in execute
-    self.fetch_command(subcommand).run_from_argv(self.argv)
-  File "/Library/Python/2.7/site-packages/django/core/management/base.py", line 294, in run_from_argv
-    self.execute(*args, **cmd_options)
-  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 58, in execute
-    super(Command, self).execute(*args, **options)
-  File "/Library/Python/2.7/site-packages/django/core/management/base.py", line 345, in execute
-    output = self.handle(*args, **options)
-  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 97, in handle
-    self.run(**options)
-  File "/Library/Python/2.7/site-packages/django/core/management/commands/runserver.py", line 106, in run
-    autoreload.main(self.inner_run, None, options)
-  File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 333, in main
-    reloader(wrapped_main_func, args, kwargs)
-  File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 299, in python_reloader
-    reloader_thread()
-  File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 275, in reloader_thread
-    change = fn()
-  File "/Library/Python/2.7/site-packages/django/utils/autoreload.py", line 205, in code_changed
-    stat = os.stat(filename)
-OSError: [Errno 2] No such file or directory: 'manage.py'
+  File "/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend/tgdbbackend/queryapp/app/query_TargetDB.py", line 36, in <module>
+    import pathlib
+ImportError: No module named pathlib
