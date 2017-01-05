@@ -40,18 +40,18 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     @detail_route()
     def searchName(self, request, pk=None):
         uinput = request.query_params.get("uinput", None)
-        queryset = []
+        queryset = self.queryset
         pk = pk.upper()
-        if uinput != None and pk == "NODENAME":
+        if uinput and pk == "NODENAME":
             queryset = Nodes.objects.filter(
                 Q(node_type="TF") | Q(node_type="-"),
                 Q(text__istartswith=uinput)).all().values("text").distinct()
-            serializer = TFValueSerializer(queryset, many=True)
-        elif uinput != None and pk == "NODETYPE":
+        elif uinput and pk == "NODETYPE":
             queryset = Nodes.objects.filter(
-                Q(node_type == "TF") | Q(node_type="-"),
+                Q(node_type="TF") | Q(node_type="-"),
                 Q(text__istartswith=uinput)).all().values("text").distinct()
-            serializer = TFValueSerializer(queryset, many=True)
+
+        serializer = TFValueSerializer(queryset, many=True)
 
         return Response(serializer.data)
 
