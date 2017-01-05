@@ -14,9 +14,6 @@ class Meta(models.Model):
         db_table = "Meta"
         managed = False
 
-    def __str__(self):
-        pass
-
 
 class Nodes(models.Model):
     node_id = models.IntegerField()
@@ -24,13 +21,10 @@ class Nodes(models.Model):
     node_type = models.CharField(max_length=100, db_column="node_type")
 
     class Meta:
-        verbose_name = "Nodes"
-        verbose_name_plural = "Nodess"
+        verbose_name = "Node"
+        verbose_name_plural = "Nodes"
         db_table = "Nodes"
         managed = False
-
-    def __str__(self):
-        pass
 
 
 class Edges(models.Model):
@@ -38,13 +32,10 @@ class Edges(models.Model):
     text = models.CharField(max_length=100, db_column="edge_name")
 
     class Meta:
-        verbose_name = "Edges"
-        verbose_name_plural = "Edgess"
+        verbose_name = "Edge"
+        verbose_name_plural = "Edges"
         db_table = "Edges"
         managed = False
-
-    def __str__(self):
-        pass
 
 
 class Interactions(models.Model):
@@ -55,9 +46,7 @@ class Interactions(models.Model):
     meta_id = models.CharField(max_length=100)
 
     class Meta:
-        verbose_name = "Interactions"
-        verbose_name_plural = "Interactionss"
+        verbose_name = "Interaction"
+        verbose_name_plural = "Interactions"
         managed = False
-
-    def __str__(self):
-        pass
+        db_table = "Interactions"
