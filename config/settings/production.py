@@ -11,13 +11,11 @@ Production Configurations
 
 
 """
-from __future__ import absolute_import, unicode_literals
-
-from boto.s3.connection import OrdinaryCallingFormat
-from django.utils import six
 
 import logging
 
+from boto.s3.connection import OrdinaryCallingFormat
+from django.utils import six
 
 from .common import *  # noqa
 
@@ -27,21 +25,23 @@ from .common import *  # noqa
 # Raises ImproperlyConfigured exception if DJANGO_SECRET_KEY not in os.environ
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 
-
 # This ensures that Django will be able to detect a secure connection
 # properly on Heroku.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # raven sentry client
 # See https://docs.getsentry.com/hosted/clients/python/integrations/django/
-INSTALLED_APPS += ('raven.contrib.django.raven_compat', )
-RAVEN_MIDDLEWARE = ('raven.contrib.django.raven_compat.middleware.SentryResponseErrorIdMiddleware', )
+INSTALLED_APPS += ('raven.contrib.django.raven_compat',)
+RAVEN_MIDDLEWARE = (
+    'raven.contrib.django.raven_compat.middleware'
+    '.SentryResponseErrorIdMiddleware',)
 MIDDLEWARE_CLASSES = RAVEN_MIDDLEWARE + MIDDLEWARE_CLASSES
-
 
 # SECURITY CONFIGURATION
 # ------------------------------------------------------------------------------
-# See https://docs.djangoproject.com/en/1.9/ref/middleware/#module-django.middleware.security
-# and https://docs.djangoproject.com/ja/1.9/howto/deployment/checklist/#run-manage-py-check-deploy
+# See https://docs.djangoproject.com/en/1.9/ref/middleware/#module-django
+# .middleware.security
+# and https://docs.djangoproject.com/ja/1.9/howto/deployment/checklist/#run
+# -manage-py-check-deploy
 
 # set this to 60 seconds and then to 518400 when you can prove it works
 SECURE_HSTS_SECONDS = 60
@@ -64,8 +64,7 @@ X_FRAME_OPTIONS = 'DENY'
 ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=['example.com'])
 # END SITE CONFIGURATION
 
-INSTALLED_APPS += ('gunicorn', )
-
+INSTALLED_APPS += ('gunicorn',)
 
 # STORAGE CONFIGURATION
 # ------------------------------------------------------------------------------
@@ -99,6 +98,7 @@ AWS_HEADERS = {
 
 #  See:http://stackoverflow.com/questions/10390244/
 from storages.backends.s3boto import S3BotoStorage
+
 StaticRootS3BotoStorage = lambda: S3BotoStorage(location='static')
 MediaRootS3BotoStorage = lambda: S3BotoStorage(location='media')
 DEFAULT_FILE_STORAGE = 'config.settings.production.MediaRootS3BotoStorage'
@@ -114,17 +114,18 @@ STATICFILES_STORAGE = 'config.settings.production.StaticRootS3BotoStorage'
 # For Django 1.7+, 'collectfast' should come before
 # 'django.contrib.staticfiles'
 AWS_PRELOAD_METADATA = True
-INSTALLED_APPS = ('collectfast', ) + INSTALLED_APPS
+INSTALLED_APPS = ('collectfast',) + INSTALLED_APPS
 
 # EMAIL
 # ------------------------------------------------------------------------------
 DEFAULT_FROM_EMAIL = env('DJANGO_DEFAULT_FROM_EMAIL',
                          default='tgDBbackend <noreply@example.com>')
-EMAIL_SUBJECT_PREFIX = env('DJANGO_EMAIL_SUBJECT_PREFIX', default='[tgDBbackend] ')
+EMAIL_SUBJECT_PREFIX = env('DJANGO_EMAIL_SUBJECT_PREFIX',
+                           default='[tgDBbackend] ')
 SERVER_EMAIL = env('DJANGO_SERVER_EMAIL', default=DEFAULT_FROM_EMAIL)
 
 # Anymail with Mailgun
-INSTALLED_APPS += ("anymail", )
+INSTALLED_APPS += ("anymail",)
 ANYMAIL = {
     "MAILGUN_API_KEY": env('DJANGO_MAILGUN_API_KEY'),
 }
@@ -133,10 +134,12 @@ EMAIL_BACKEND = "anymail.backends.mailgun.MailgunBackend"
 # TEMPLATE CONFIGURATION
 # ------------------------------------------------------------------------------
 # See:
-# https://docs.djangoproject.com/en/dev/ref/templates/api/#django.template.loaders.cached.Loader
+# https://docs.djangoproject.com/en/dev/ref/templates/api/#django.template
+# .loaders.cached.Loader
 TEMPLATES[0]['OPTIONS']['loaders'] = [
     ('django.template.loaders.cached.Loader', [
-        'django.template.loaders.filesystem.Loader', 'django.template.loaders.app_directories.Loader', ]),
+        'django.template.loaders.filesystem.Loader',
+        'django.template.loaders.app_directories.Loader', ]),
 ]
 
 # DATABASE CONFIGURATION
@@ -150,19 +153,21 @@ DATABASES['default'] = env.db('DATABASE_URL')
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': '{0}/{1}'.format(env('REDIS_URL', default='redis://127.0.0.1:6379'), 0),
+        'LOCATION': '{0}/{1}'.format(
+            env('REDIS_URL', default='redis://127.0.0.1:6379'), 0),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'IGNORE_EXCEPTIONS': True,  # mimics memcache behavior.
-                                        # http://niwinz.github.io/django-redis/latest/#_memcached_exceptions_behavior
+            # http://niwinz.github.io/django-redis/latest
+            # /#_memcached_exceptions_behavior
         }
     }
 }
 
-
 # Sentry Configuration
 SENTRY_DSN = env('DJANGO_SENTRY_DSN')
-SENTRY_CLIENT = env('DJANGO_SENTRY_CLIENT', default='raven.contrib.django.raven_compat.DjangoClient')
+SENTRY_CLIENT = env('DJANGO_SENTRY_CLIENT',
+                    default='raven.contrib.django.raven_compat.DjangoClient')
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': True,

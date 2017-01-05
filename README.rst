@@ -1,5 +1,5 @@
 tgDBbackend
-==============================
+===========
 
 It is the restful api for tgDB
 
@@ -10,7 +10,7 @@ It is the restful api for tgDB
 
 
 Settings
-------------
+--------
 
 Moved to settings_.
 
@@ -40,7 +40,7 @@ To run the tests, check your test coverage, and generate an HTML coverage report
     $ open htmlcov/index.html
 
 Running tests with py.test
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ::
 
