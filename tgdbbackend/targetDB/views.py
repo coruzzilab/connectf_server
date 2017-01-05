@@ -50,8 +50,9 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(node_type="TF") | Q(node_type="-"),
                 Q(text__istartswith=uinput)).all().values("text").distinct()
         else:
-            queryset = Nodes.objects.filter(node_type="TF").all().values(
-                "text").distinct()
+            queryset = Nodes.objects.filter(
+                Q(node_type="TF") | Q(node_type="-")
+            ).all().values("text").distinct()
 
         serializer = TFValueSerializer(queryset, many=True)
 
