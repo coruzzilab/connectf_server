@@ -40,7 +40,6 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     @detail_route()
     def searchName(self, request, pk=None):
         uinput = request.query_params.get("uinput", None)
-        queryset = self.queryset
         pk = pk.upper()
         if uinput and pk == "NODENAME":
             queryset = Nodes.objects.filter(
@@ -50,6 +49,9 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = Nodes.objects.filter(
                 Q(node_type="TF") | Q(node_type="-"),
                 Q(text__istartswith=uinput)).all().values("text").distinct()
+        else:
+            queryset = Nodes.objects.filter(node_type="TF").all().values(
+                "text").distinct()
 
         serializer = TFValueSerializer(queryset, many=True)
 
