@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Metadata Submission form</title>
+    <style>
+        body {
+            background-color: #FFFDD8;
+        }
+
+        .submit-button {
+            height: 30px;
+            width: 100px;
+            left: 250px;
+            top: 250px;
+        }
+
+        input {
+            height: 25px;
+            width: 300px;
+        }
+
+        form > div {
+            margin: 1em;
+        }
+
+        label {
+            display: inline-block;
+            font-weight: bold;
+            text-align: right;
+            // width: 12em;
+        }
+
+        input, textarea {
+            vertical-align: middle;
+        }
+
+        label.normal {
+            font-size: large;
+        }
+
+        label.large {
+            font-size: x-large;
+        }
+
+        textarea {
+            height: 80px;
+            width: 500px;
+        }
+    </style>
+</head>
+<body>
+<h1 align="center"> Metadata Submission Form </h1>
+<form action="" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div>
+        {{ form.experiment_id.errors }}
+        <label class="normal" for="{{ form.experiment_id.id_for_label }}">Experiment
+            ID:</label>
+        {{ form.experiment_id }}
+    </div>
+    <div>
+        {{ form.tf_id.errors }}
+        <label class="normal" for="{{ form.tf_id.id_for_label }}">Transcription
+            Factor ID:</label>
+        {{ form.tf_id }}
+    </div>
+    <div>
+        {{ form.experiment.errors }}
+        <label class="normal"
+               for="{{ form.experiment.id_for_label }}">Experiment:</label>
+        {{ form.experiment }}
+    </div>
+    <div>
+        {{ form.experiment_type.errors }}
+        <label class="normal" for="{{ form.experiment_type.id_for_label }}">Experiment
+            Type:</label>
+        {{ form.experiment_type }}
+    </div>
+    <div>
+        {{ form.expression_type.errors }}
+        <label class="normal" for="{{ form.expression_type.id_for_label }}">Expression
+            Type:</label>
+        {{ form.expression_type }}
+    </div>
+    <div>
+        {{ form.binding_type.errors }}
+        <label class="normal" for="{{ form.binding_type.id_for_label }}">Binding
+            Type:</label>
+        {{ form.binding_type }}
+    </div>
+    <div>
+        {{ form.direction.errors }}
+        <label class="normal"
+               for="{{ form.direction.id_for_label }}">Direction:</label>
+        {{ form.direction }}
+    </div>
+    <div>
+        {{ form.genotype.errors }}
+        <label class="normal"
+               for="{{ form.genotype.id_for_label }}">Genotype:</label>
+        {{ form.genotype }}
+    </div>
+    <div>
+        {{ form.data_source.errors }}
+        <label class="normal"
+               for="{{ form.data_source.id_for_label }}">Data Source:</label>
+        {{ form.data_source }}
+    </div>
+    <div>
+        {{ form.time.errors }}
+        <label class="normal"
+               for="{{ form.time.id_for_label }}">Time (min):</label>
+        {{ form.time }}
+    </div>
+    <div>
+        {{ form.growth_period.errors }}
+        <label class="normal"
+               for="{{ form.growth_period.id_for_label }}">Growth Period
+            (days):</label>
+        {{ form.growth_period }}
+    </div>
+    <div>
+        {{ form.growth_medium.errors }}
+        <label class="normal"
+               for="{{ form.growth_medium.id_for_label }}">Growth
+            Medium:</label>
+        {{ form.growth_medium }}
+    </div>
+    <div>
+        {{ form.plasmid.errors }}
+        <label class="normal"
+               for="{{ form.plasmid.id_for_label }}">Plasmids:</label>
+        {{ form.plasmid }}
+    </div>
+    <div>
+        {{ form.control.errors }}
+        <label class="normal"
+               for="{{ form.control.id_for_label }}">Control:</label>
+        {{ form.control }}
+    </div>
+    <div>
+        {{ form.treatments.errors }}
+        <label class="normal"
+               for="{{ form.treatments.id_for_label }}">Treatments:</label>
+        {{ form.treatments }}
+    </div>
+    <div>
+        {{ form.replicates.errors }}
+        <label class="normal"
+               for="{{ form.replicates.id_for_label }}">Replicates:</label>
+        {{ form.replicates }}
+    </div>
+    <div>
+        {{ form.batch.errors }}
+        <label class="normal"
+               for="{{ form.batch.id_for_label }}">Batch:</label>
+        {{ form.batch }}
+    </div>
+    <div>
+        {{ form.analysis_method.errors }}
+        <label class="normal"
+               for="{{ form.analysis_method.id_for_label }}">Analysis
+            Method:</label>
+        {{ form.analysis_method }}
+    </div>
+    <div>
+        {{ form.analysis_cutoff.errors }}
+        <label class="normal"
+               for="{{ form.analysis_cutoff.id_for_label }}">Analysis
+            Cutoff:</label>
+        {{ form.analysis_cutoff }}
+    </div>
+    <div>
+        {{ form.analysis_command.errors }}
+        <label class="normal"
+               for="{{ form.analysis_command.id_for_label }}">Analysis
+            Command:</label>
+        {{ form.analysis_command }}
+    </div>
+    <div>
+        {{ form.analysis_notes.errors }}
+        <label class="normal"
+               for="{{ form.analysis_notes.id_for_label }}">Analysis
+            Notes:</label>
+        {{ form.analysis_notes }}
+    </div>
+    <div>
+        {{ form.tf_history_notes.errors }}
+        <label class="normal"
+               for="{{ form.tf_history_notes.id_for_label }}">TF History
+            Notes:</label>
+        {{ form.tf_history_notes }}
+    </div>
+    <div>
+        {{ form.experimenter.errors }}
+        <label class="normal" for="{{ form.experimenter.id_for_label }}">
+            Experimenter:</label>
+        {{ form.experimenter }}
+    </div>
+    <div>
+        {{ form.submission_date.errors }}
+        <label class="normal" for="{{ form.submission_date.id_for_label }}">
+            Submission Date:</label>
+        {{ form.submission_date }}
+    </div>
+    <div>
+        {{ form.experiment_date.errors }}
+        <label class="normal" for="{{ form.experiment_date.id_for_label }}">
+            Experiment Date:</label>
+        {{ form.experiment_date }}
+    </div>
+    <div>
+        {{ form.metadata_notes.errors }}
+        <label class="large" for="{{ form.metadata_notes.id_for_label }}">
+            Metadata Notes:</label>
+        {{ form.metadata_notes }}
+    </div>
+    <div>
+        {{ form.gene_list.errors }}
+        <label for="{{ form.gene_list.id_for_label }}" class="large">Upload Gene
+            List:</label>
+        {{ form.gene_list }}
+    </div>
+    <div>
+        {{ form.expression_values.errors }}
+        <label for="{{ form.expression_values.id_for_label }}" class="large">Upload
+            Raw Expression Values:</label>
+        {{ form.expression_values }}
+    </div>
+    <div>
+        {{ form.design.errors }}
+        <label for="{{ form.design.id_for_label }}" class="large">Upload
+            Experimental Design File:</label>
+        {{ form.design }}
+    </div>
+    <input type="submit" class="submit-button" value="SUBMIT"/>
+</form>
+</body>
+</html>
