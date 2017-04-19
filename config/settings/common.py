@@ -49,6 +49,7 @@ LOCAL_APPS = (
     'tgdbbackend.users.apps.UsersConfig',
     # Your stuff: custom apps go here
     'tgdbbackend.targetDB',
+    'upload'
 )
 
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -94,9 +95,7 @@ EMAIL_BACKEND = env('DJANGO_EMAIL_BACKEND',
 # MANAGER CONFIGURATION
 # ------------------------------------------------------------------------------
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#admins
-ADMINS = (
-    ("""rc3097""", 'rc3097@nyu.edu'),
-)
+ADMINS = ()
 
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#managers
 MANAGERS = ADMINS
@@ -265,3 +264,5 @@ REST_FRAMEWORK = {
 # CORS header settings
 ALLOWED_HOSTS = ['*']
 CORS_ORIGIN_ALLOW_ALL = True
+
+ACCOUNT_EMAIL_MAX_LENGTH = 190

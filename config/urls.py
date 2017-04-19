@@ -33,6 +33,7 @@ urlpatterns = [
                   # Your stuff: custom urls includes go here
                   url(r'^queryapp/', include('tgdbbackend.queryapp.urls',
                                              namespace='queryapp')),
+                  url(r'^upload/', include('upload.urls'))
 
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
