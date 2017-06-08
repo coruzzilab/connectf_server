@@ -460,7 +460,7 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, mid_tfname,
         # mydir= '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend
         # /tgdbbackend/static/queryBuilder'
         with open(dir_path + '/' + output_x.split('/')[-1] + '_cy.json',
-                  'wb') as \
+                  'w') as \
             out_jsonfile:
             # print '***= ',
             # '/Users/Reetu/Documents/Projects/TargetDB/tgdbbackend

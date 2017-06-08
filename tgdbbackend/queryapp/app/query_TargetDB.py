@@ -380,7 +380,7 @@ def querydb_exp_count(sess, rs_final_res_cols):
 
 ##################################
 # Generate tabular output
-def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
+def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary, targets_mullist_dict):
     # rename column names- converting fdr0_01 to fdr0.01
     rs_final_res.rename(columns=lambda x: x[::-1].replace('_', '.', 1)[::-1],
                         inplace=True)  # replacing the last occurence of '_'
@@ -398,8 +398,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
     tmp_mid_counts = dict()  # dict will be used as a reference for sorting
     # the final dataframe based on targetcounts
     mid_tfname = dict()  # dict will contain metaid to genename mapping
-    mid_genotype_control = dict()  # dict contains metaid to gentype+control
-    # mapping
+    mid_genotype_control = dict()  # dict contains metaid to gentype+control mapping
 
     for i_mid in rs_final_res.columns:  # creating data for excel sheet headers
         tf_name = sess.query(Meta.meta_value).filter(
@@ -455,9 +454,25 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
     # '_' with '.'
     chip_coding = pd.concat([tmp_chip_coding, tmp_rnaseq_df], axis=1)
 
+    df_genelistid= pd.DataFrame.from_dict(targets_mullist_dict, orient='index')
+    #print('df_genelistid= ',df_genelistid)
+    # Following is a temporary fix for today: replacing None with space to combine x number of rows, I need another solution to this!
+    df_genelistid.replace(np.nan,' ', regex=True, inplace=True)
+    df_genelistid["List___UserList"] = [' '.join(row) for row in df_genelistid[df_genelistid.columns[0:]].values if not row is None]
+
+    df_genelistid_new= df_genelistid[['List___UserList']]
+    if not df_genelistid_new.empty:
+        df_genelistid_new['UserList___Count']= df_genelistid['List___UserList'].apply(lambda x: pd.value_counts(x.strip().split(' '))).sum(axis=1)
+    # if the target list was not given there was problem merging the empty df to the annotation df
+    # if no targetgene, this df=all the genes in final df
+    else:
+        df_genelistid_new['UserList___Count'] = np.nan
+        df_genelistid_new['allgenes']= rs_final_res.index
+        df_genelistid_new.set_index(['allgenes'], inplace=True) # set all the genes as index
+
     # Get the Gene names of the target genes, insert it into a dataframe and
     # merge with the following two dfs
-    all_targetgenes = list(rs_final_res.index.values)
+    all_targetgenes = list(df_genelistid_new.index.values)
     rsall_gnames = list()
 
     for k in all_targetgenes:
@@ -475,17 +490,17 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
 
     # concat this df to results df on metaid column names to create
     # additional row for gene names
-    new_df = pd.concat([df_target_names, rs_final_res],
+    new_df = pd.concat([df_target_names, df_genelistid_new, rs_final_res],
                        axis=1)  # concat with gene annotation for each target
     #  gene (by columns)
     new_res_df = pd.concat(
         [mid_geno_cntrl_df, mid_tfname_df, chip_coding, new_df],
         axis=0)  # concat metadata for each experiment (as headers)
+    #print('new_res_df = ',new_res_df)
     new_res_df.reset_index(inplace=True)
     new_res_df["pvalue___P"] = np.nan
     new_res_df.rename(columns={'index': 'ID___Gene ID'}, inplace=True)
     df_count_rows = new_res_df.shape[0]
-
     # creating multiple index by separating expid and analysisid
     new_res_df.columns = pd.MultiIndex.from_tuples([('_'.join(c.split('_')[
                                                               :3]),
@@ -503,7 +518,7 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
         new_res_df.notnull() * 1)  # convert data to binary format to count the
     # Target_count correctly
     tmp_level_sum.drop(
-        ['Full Name__', 'Name__', 'ID__', 'Type__', 'Family__', 'pvalue__'],
+        ['Full Name__', 'Name__', 'ID__', 'Type__', 'Family__', 'pvalue__', 'List__', 'UserList__'],
         axis=1, inplace=True)  # drop unecsseary columns
     tmp_level_sum.drop([0, 1, 2], axis=0, inplace=True)  # drop unecsseary rows
     tmp_level_sum.replace(0, np.nan, inplace=True)
@@ -523,16 +538,16 @@ def create_tabular(sess, outfile, rs_final_res, targetgenes, chipdata_summary):
         lambda x: '{: >4}'.format(x))
     new_res_df.rename(
         columns={'Full Name__': 'Full Name', 'Name__': 'Name', 'ID__': 'ID',
-                 'pvalue__': 'pvalue', 'Family__': 'Family', 'Type__': 'Type'},
+                 'pvalue__': 'pvalue', 'Family__': 'Family', 'Type__': 'Type','List__': 'List', 'UserList__':'UserList'},
         inplace=True)
 
     # Change column order
     multi_cols = new_res_df.columns.tolist()
-    list_mid_aid_sorted = zip(*sorted_mid_counts)[0]
+    list_mid_aid_sorted = list(zip(*sorted_mid_counts))[0]
     list_mid_sorted = [('_'.join(x.split('_')[0:3]), '_'.join(x.split('_')[3:]))
                        for x in list_mid_aid_sorted]
     multi_cols = [('Full Name', 'Gene Full Name'), ('Family', 'Gene Family'),
-                  ('Type', 'Gene Type'), ('Name', 'Gene Name'),
+                  ('Type', 'Gene Type'), ('Name', 'Gene Name'), ('List','UserList'), ('UserList','Count'),
                   ('ID', 'Gene ID')] + multi_cols[-1:] + [('pvalue',
                                                            'P')] + \
                  list_mid_sorted  # rearraging the columns
@@ -579,14 +594,13 @@ def write_to_excel(writer, new_res_df):
     worksheet = writer.sheets['TargetDB Output']
     bold_font = workbook.add_format(
         {'bold': True, 'font_size': 13, 'border': 1, 'align': 'center'})
-    worksheet.set_column('B:B', 15)
-    worksheet.set_column('C:C', 15)
-    worksheet.set_column('D:D', 15)
-    worksheet.set_column('E:E', 15)
-    worksheet.set_column('F:F', 15, bold_font)
-    worksheet.set_column('G:G', 15, bold_font)
-    worksheet.set_column('H:H', 8, bold_font)
-    worksheet.set_column('I:' + excel_count_cols, 30)
+    align_font = workbook.add_format(
+        {'font_size': 13, 'align': 'center'})
+    worksheet.set_column('B:F', 15)
+    worksheet.set_column('G:G', 10, align_font)
+    worksheet.set_column('H:I', 15, bold_font)
+    worksheet.set_column('J:J', 8, bold_font)
+    worksheet.set_column('K:' + excel_count_cols, 30)
     worksheet.set_column('A:A', None, None, {
         'hidden': True})  # hiding meaningless column (index) created by
     # multiindexing
@@ -612,17 +626,17 @@ def write_to_excel(writer, new_res_df):
     # Conditonal formatting of excel sheet: Green- Induced, Red- Repressed,
     # Yellow- CHIPSEQ
     worksheet.conditional_format(
-        'I7:' + excel_count_cols + str(df_count_rows + 3),
+        'K7:' + excel_count_cols + str(df_count_rows + 3),
         {'type': 'text', 'criteria': 'containing',
          'value': 'INDUCED', 'format': format2})
     worksheet.conditional_format(
-        'I7:' + excel_count_cols + str(df_count_rows + 3),
+        'K7:' + excel_count_cols + str(df_count_rows + 3),
         {'type': 'text', 'criteria': 'containing',
          'value': 'REPRESSED', 'format': format1})
-    worksheet.conditional_format(
-        ('I7:' + excel_count_cols + str(df_count_rows + 3)),
-        {'type': 'text', 'criteria': 'containing',
-         'value': 1, 'format': format3})
+    #worksheet.conditional_format(
+     #   ('K7:' + excel_count_cols + str(df_count_rows + 3)),
+     #   {'type': 'text', 'criteria': 'containing',
+     #    'value': 1, 'format': format3})
     return writer
 
 
@@ -675,12 +689,12 @@ def create_sif(sess, output, tmp_df, targetgenes):
         sub_df = reordered_tmp_df[reordered_tmp_df['TF'] == tf_val]
         outfile = open(
             output + '/' + output.split('/')[-1] + '_' + tf_val + '.sif',
-            'wb')  # Generates sif output file for each TF
+            'w')  # Generates sif output file for each TF
         sub_df.to_csv(outfile, sep='\t', index=False)
         outfile.close()  # close the file resources
 
     outfile_all = open(output + '/' + output.split('/')[-1] + '_allTFs.sif',
-                       'wb')  # Generates sif output file for all TF
+                       'w')  # Generates sif output file for all TF
     reordered_tmp_df.to_csv(outfile_all, sep='\t', index=False)
 
     total_exp = len(
@@ -702,7 +716,7 @@ def create_sif(sess, output, tmp_df, targetgenes):
 
     outfile_common = open(
         output + '/' + output.split('/')[-1] + '_commonTargets.sif',
-        'wb')  # Generates sif output file for all TF
+        'w')  # Generates sif output file for all TF
     stacked_common_targets = pd.DataFrame(
         sub_common_targets.stack().reset_index())
     stacked_common_targets.columns = ['TARGET', 'TF', 'EDGE']
@@ -714,7 +728,7 @@ def create_sif(sess, output, tmp_df, targetgenes):
 
     outfile_shared = open(
         output + '/' + output.split('/')[-1] + '_sharedTargets.sif',
-        'wb')  # Generates sif output file for shared targets
+        'w')  # Generates sif output file for shared targets
     stacked_shared_targets = pd.DataFrame(
         sub_shared_targets.stack().reset_index())
     stacked_shared_targets.columns = ['TARGET', 'TF', 'EDGE']
@@ -909,11 +923,16 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
         # if file with list of target genes is provided with -r option
         # Get the subset of results dataframe (df after queries) for target
         # genes asked in targetgenes query file
+        targets_mullist_dict= defaultdict(list)
         if targetgenes:
             q_tg_list = list()
             q_tg = open(targetgenes, 'r')
             for i_q_tg in q_tg:
-                q_tg_list.append(i_q_tg.strip().upper())
+               if not i_q_tg[0]=='>':
+                    q_tg_list.append(i_q_tg.strip().upper())
+                    targets_mullist_dict[i_q_tg.strip().upper()].append(listid)
+               else:
+                    listid=i_q_tg[1:].strip()
             rs_final_res_t = rs_final_res[rs_final_res.index.isin(q_tg_list)]
         else:
             rs_final_res_t = rs_final_res
@@ -924,7 +943,7 @@ def main(dbname, TFquery, edges, metadata, output, targetgenes):
 
         rs_tabular, chipdata_summary = tabular(rs_final_res_t)
         writer, new_res_df = create_tabular(sess, output, rs_tabular,
-                                            targetgenes, chipdata_summary)
+                                            targetgenes, chipdata_summary, targets_mullist_dict)
         reordered_tmp_df = create_sif(sess, output, rs_final_res_t, targetgenes)
         out_metadata_df = getmetadata(sess, rs_final_res.columns, writer)
         # json_object_WG, json_object_TG, json_object_TFdbase_vw1,

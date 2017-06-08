@@ -10,6 +10,7 @@ https://docs.djangoproject.com/en/dev/ref/settings/
 """
 
 import environ
+import os
 
 ROOT_DIR = environ.Path(
     __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
@@ -49,8 +50,10 @@ LOCAL_APPS = (
     'tgdbbackend.users.apps.UsersConfig',
     # Your stuff: custom apps go here
     'tgdbbackend.targetDB',
-    'upload'
-)
+    'upload',
+    # Querytgdb app
+    'querytgdb.apps.QuerytgdbConfig'
+    )
 
 # See: https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -106,10 +109,10 @@ MANAGERS = ADMINS
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'targetdb',
-        'USER': 'coruzzilab',
-        'PASSWORD': 'accesstargetdb',
-        'HOST': '172.22.2.137',
+        'NAME': 'targetdbv2',
+        'USER': 'root',
+        'PASSWORD': 'coruzzilab',
+        'HOST': 'localhost',
         'PORT': '3306',
     },
 }
@@ -265,4 +268,27 @@ REST_FRAMEWORK = {
 ALLOWED_HOSTS = ['*']
 CORS_ORIGIN_ALLOW_ALL = True
 
+
 ACCOUNT_EMAIL_MAX_LENGTH = 190
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler'
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'django.log'
+        }
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': True,
+        },
+    }
+}
+
