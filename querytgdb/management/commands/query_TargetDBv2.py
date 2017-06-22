@@ -89,8 +89,6 @@ class Command(BaseCommand):
             # subset the df for add function. Add does not work on df with different dimensions
             regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
 
-            #print('xxxxxxx refid_tf_mapping= ',refid_tf_mapping)
-
             # get the dap-seq data from the database
             dap_data= pd.DataFrame(list(DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).
                                           values_list('db_tfid__db_tf_agi', 'ath_id__agi_id'))
@@ -127,7 +125,7 @@ class Command(BaseCommand):
             rs_reg_df_merge = rs_reg_df_merge_tmp.merge(dap_data_pivot, how='left', left_index= True, right_index= True)
             #print('rs_reg_df_merge= ',rs_reg_df_merge)
 
-            new_res_df, db_metadict, mid_tfname_dict, ath_annotation= self.create_tabular(output, rs_reg_df_merge,
+            new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid= self.create_tabular(output, rs_reg_df_merge,
                                                                                          targetgenes, targets_mullist_dict)
 
             # dump rs_final_res_t to a pickle object. This object will be used by create_sif to create a sif file
@@ -141,6 +139,10 @@ class Command(BaseCommand):
             pickled_metadata = output + '_pickle/df_metadata.pkl'
             out_metadata_df.to_pickle(pickled_metadata)
             # pickled_metadata.close()
+
+            # dump uploaded target gene list to a pickle object. This object will be used by do_clustering script
+            pickled_targetgenes= output + '_pickle/df_targetgenes.pkl'
+            df_genelistid.to_pickle(pickled_targetgenes)
 
             # dump db_tf and id_name_type dict to pickle objects. Will be used by module_createjson.
             pickled_json_anno = open(output + '_pickle/df_jsonanno.pkl', 'wb')  # dump id_name_type dict
@@ -219,8 +221,8 @@ class Command(BaseCommand):
 
             q_tf_list = self.getquerylist(TFname)
 
-            print('\nFollowing is your database query:')
-            print(' '.join(TFname))
+            #print('\nFollowing is your database query:')
+            #print(' '.join(TFname))
 
         # if input query has all TFs: ALlTF should get all the TFs from the database
         if 'ALLTF' in tmptf.upper():
@@ -435,12 +437,19 @@ class Command(BaseCommand):
         #tmp_chip_coding = pd.DataFrame(data=chipdata_summary,index=[' '])  # dump chipdata_summary to a df
 
         df_genelistid = pd.DataFrame.from_dict(targets_mullist_dict, orient='index')
-        df_genelistid["List___UserList"] = [' '.join(row) for row in df_genelistid[df_genelistid.columns[0:]].
-                                                                         values if not row is None]
+
+        # Breakpoint- CODE SLOW
+        df_genelistid['List___UserList'] = df_genelistid.apply(lambda x: ' '.join(l for l in x if not l is None), axis=1)
+        df_genelistid= df_genelistid['List___UserList'].to_frame()
+
         df_genelistid_new = df_genelistid[['List___UserList']]
         if not df_genelistid_new.empty:
-            df_genelistid_new['UserList___Count']= df_genelistid['List___UserList'].\
-                                                    apply(lambda x: pd.value_counts(x.strip().split(' '))).sum(axis=1)
+            # Breakpoint- CODE SLOW
+            #df_genelistid_new['UserList___Count']= df_genelistid['List___UserList'].\
+            #                                        apply(lambda x: pd.value_counts(x.strip().split(' '))).sum(axis=1)
+            #alternative
+            df_genelistid_new['UserList___Count'] = df_genelistid['List___UserList'].str.count(' ') + 1
+
         # if the target list was not given there was problem merging the empty df to the annotation df
         # if no targetgene, df=all the genes in final df
         else:
@@ -462,12 +471,15 @@ class Command(BaseCommand):
         renamedict= dict()
         for val_rename in rs_final_res.columns:
             if not val_rename.endswith('_OMalleyetal_2016'):
-                renamedict[val_rename]= val_rename[:-2][::-1].replace('_', '.', 1)[::-1]
+                renamedict[val_rename]= ('_'.join(val_rename.split('_')[:-1]))[::-1].replace('_', '.', 1)[::-1]
             else:
                 renamedict[val_rename] = val_rename
         rs_final_res.rename(columns=renamedict, inplace=True)
+        #print('Before mid_annotate_df= ',mid_annotate_df.columns.tolist())
         # Remove the referenceid and replace the last occurence of '_' with '.'
-        mid_annotate_df.rename(columns=lambda x: x[:-2][::-1].replace('_', '.', 1)[::-1], inplace=True)
+        #mid_annotate_df.rename(columns=lambda x: x[:-2][::-1].replace('_', '.', 1)[::-1], inplace=True)
+        mid_annotate_df.rename(columns=lambda x: ('_'.join(x.split('_')[:-1]))[::-1].replace('_', '.', 1)[::-1], inplace=True)
+        #print('\n\nAfter mid_annotate_df= ',mid_annotate_df.columns.tolist())
         #print('rs_final_res= ',rs_final_res)
 
         rs_final_res1 = pd.concat([mid_annotate_df, rs_final_res], axis=0)
@@ -484,7 +496,6 @@ class Command(BaseCommand):
         final_df = pd.DataFrame()
 
         for col_name in rs_final_res1:
-            #print('xxxxxcol_name= ',col_name)
             if not col_name[1]=='OMalleyetal_2016':
                 if rs_final_res1[col_name].str.contains('||').all():
                     # Split 'Analysis' by || into new columns
@@ -523,12 +534,6 @@ class Command(BaseCommand):
         #print('new_df= ',new_df.columns)
         #print('mid_annotate_df= ',mid_annotate_df)
 
-
-
-        writer = pd.ExcelWriter('tmpdf.xlsx')
-        final_df.to_excel(writer, 'Sheet1')
-        writer.close()
-
         # concat metadata for each experiment (as headers)
         #new_res_df = pd.concat([mid_annotate_df, new_df], axis=0)
         new_res_df= new_df
@@ -562,12 +567,13 @@ class Command(BaseCommand):
         #na_position='first' to leave the header cols (na.nan values) sorted first
         new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
         # ********************** uncomment this
-        #new_res_df.insert(0, ('Ind', 'Target Index'), range(-2, len(new_res_df)-2))
+        new_res_df.insert(0, ('Ind', 'Index', ''), range(-2, len(new_res_df)-2))
 
-        #new_res_df[('Ind', 'Target Index')] = np.where(new_res_df[('Ind', 'Target Index')] > 0, np.nan)
+        #new_res_df[('Ind', 'Index','')] = np.where(new_res_df[('Ind', 'Index','')] > 0, 17)
+        #new_res_df.loc[new_res_df.Ind<0] = np.nan
 
         # ********************** uncomment this
-        #new_res_df.ix[new_res_df[('Ind', 'Target Index')] <=0, ('Ind', 'Target Index')]= np.NaN
+        #new_res_df.ix[new_res_df[('Ind', 'Index')] <=0, ('Ind', 'Index')]= np.NaN
 
         #print('________________________________')
         #print('new_res_df= ',new_res_df)
@@ -575,10 +581,10 @@ class Command(BaseCommand):
         if new_res_df.shape[0]> 1:  # Writing dataframe to excel and formatting the df excel output
             pk_output= outfile + '_pickle/tabular_output.pkl'
             new_res_df.to_pickle(pk_output)
-        else:
-            print('\nNo target genes matched the query crietria!')
+        #else:
+        #    print('\nNo target genes matched the query crietria!')
 
-        return new_res_df, db_metadict, mid_tfname_dict, ath_annotation
+        return new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid
 
 
     #########################################################################
