@@ -40,6 +40,9 @@ class Command(BaseCommand):
         outdir= pickledir.replace('_pickle','')
         if not os.path.exists(outdir):  # create output directory
             os.makedirs(outdir)
+        else:
+            shutil.rmtree(outdir)
+            os.makedirs(outdir)
 
         # get the absolute path of the directory
         outdirpath= os.path.abspath(outdir)
@@ -105,7 +108,6 @@ class Command(BaseCommand):
                         prev_count = count
                         count = count + 1
                     if range:
-                        print('prev_header_level0= ',prev_header_level0)
                         header_dict[range].append(id_headerdict[prev_header_level0][0])  # get annotation at index 0
                         header_dict[range].append(id_headerdict[prev_header_level0][1])  # get annotation at index 1
                         header_dict[range].append(id_headerdict[prev_header_level0][2])  # get annotation at index 2
@@ -255,6 +257,7 @@ class Command(BaseCommand):
         #regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\((?P<FOLDCHANGE>.*)\)'
         regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\|{2,}(?P<FOLDCHANGE>.*)'
         reordered_tmp_df= reordered_tmp_df.assign(**reordered_tmp_df.EDGE.str.extract(regex, expand=True).to_dict('list'))
+        reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != ''] # remove the edges that are not linked
         # ALTERNATIVE
         #reordered_tmp_df.EDGE.str.extract(regex, expand=True).combine_first(reordered_tmp_df)
 

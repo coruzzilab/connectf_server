@@ -39,7 +39,12 @@ class Command(BaseCommand):
     def read_pickled_targetdbout(self, pickledir):
 
         pickled_pandas= pd.read_pickle(pickledir + '/' + 'tabular_output.pkl')
-        pickled_targetgenes= pd.read_pickle(pickledir + '/' + 'df_targetgenes.pkl')
+
+        # raising exception here if target genes are not uploaded by the user
+        try:
+            pickled_targetgenes = pd.read_pickle(pickledir + '/' + 'df_targetgenes.pkl')
+        except FileNotFoundError as e:
+            print('No target genes uploaded',e)
 
         # save targets for each TF into a dict
         targets_eachtf= defaultdict(list)
@@ -137,9 +142,10 @@ class Command(BaseCommand):
         outdirpath= os.path.abspath(pickledir)
         dirpath= '/'.join(outdirpath.split('/')[:-1])
         sns_heatmap.savefig(dirpath+'/'+pickledir.split('/')[-1].replace('_pickle',''))
-	buf= io.BytesIO()
-	sns_heatmap.savefig(buf,format='png')
-	buf.seek(0)
-	return buf
-        print('Generated= ',dirpath+'/'+pickledir.split('/')[-1].replace('_pickle','.png'))
-        #sns_heatmap.set_yticklabels(sns_heatmap.get_yticklabels(), rotation=0, fontsize=8)
+        plt.show()
+        print('Generated= ',(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.png')))
+        buf= io.BytesIO()
+        sns_heatmap.savefig(buf,format='png')
+        buf.seek(0)
+        return buf
+

@@ -23,9 +23,10 @@ def queryTFDB(q_TFname):
 
     rs_pd = pd.DataFrame(rs, columns=['TF', 'EDGE', 'TARGET', 'REFID'])
     list_ref_id = rs_pd.REFID.unique()
+    #print('list_ref_id= ',list_ref_id)
     meta_ref = ReferenceId.objects.select_related().filter(ref_id__in=list_ref_id). \
         values_list('ref_id', 'meta_id__meta_fullid', 'analysis_id__analysis_fullid')
-    print('meta_ref= ', meta_ref)
+    #print('meta_ref= ', meta_ref)
 
     meta_ref_dict = dict()
     for val_m in meta_ref:
