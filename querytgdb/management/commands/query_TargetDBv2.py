@@ -42,12 +42,13 @@ class Command(BaseCommand):
         edgelist = list()
         if metadata:
             q_meta = self.getquerylist(metadata)
+            rs_meta_list= self.filter_meta(q_meta, metadata)
         if edges:
             edgelist = self.getquerylist(edges)
 
         self.get_TFlist(TFquery)
         q_tf_list, TFname = self.get_TFlist(TFquery)
-        rs_final = self.queryTF(q_tf_list, TFname, edges, edgelist)
+        rs_final = self.queryTF(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata)
 
         if not rs_final.empty:
             # if file with list of target genes is provided with -r option
@@ -130,7 +131,8 @@ class Command(BaseCommand):
             #print('rs_reg_df_merge_tmp= ',rs_reg_df_merge_tmp.shape)
             #test_df= pd.merge([rs_reg_df_merge, dap_data_pivot], how="left", left_index= True, indicator=True)
             if not dap_data_pivot.empty:
-                rs_reg_df_merge = rs_reg_df_merge_tmp.merge(dap_data_pivot_replaced, how='left', left_index= True, right_index= True)
+                rs_reg_df_merge = rs_reg_df_merge_tmp.merge(dap_data_pivot_replaced, how='left',
+                                                            left_index= True, right_index= True)
             else:
                 rs_reg_df_merge = rs_reg_df_merge_tmp
             #print('rs_reg_df_merge= ',rs_reg_df_merge)
@@ -151,8 +153,9 @@ class Command(BaseCommand):
             # pickled_metadata.close()
 
             # dump uploaded target gene list to a pickle object. This object will be used by do_clustering script
-            pickled_targetgenes= output + '_pickle/df_targetgenes.pkl'
-            df_genelistid.to_pickle(pickled_targetgenes)
+            if not df_genelistid.empty:
+                pickled_targetgenes= output + '_pickle/df_targetgenes.pkl'
+                df_genelistid.to_pickle(pickled_targetgenes)
 
             # dump db_tf and id_name_type dict to pickle objects. Will be used by module_createjson.
             pickled_json_anno = open(output + '_pickle/df_jsonanno.pkl', 'wb')  # dump id_name_type dict
@@ -251,14 +254,14 @@ class Command(BaseCommand):
     ############################################################
     # Function to filter pandas dataframe for user query provided
     # @profile
-    def queryTF(self, q_tf_list, TFname, edges, edgelist):
+    def queryTF(self, q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
         tf_frames = list()  # stores frames for all TFs
         tf_mid_map = defaultdict(list)
 
         for q_tf in q_tf_list:  # fetch data for each TF in a separate DF
             edge_mid_map = defaultdict(list)
             # Combine all the TF dataframes after this loop
-            tf_data = module_query.queryTFDB(q_tf)
+            tf_data = module_query.queryTFDB(q_tf, rs_meta_list)
 
             # if df for a Tf is empty after querying the database, don't query the DF for edges
             # or concat with other TFs data
@@ -658,3 +661,48 @@ class Command(BaseCommand):
         out_metadata_df = pd.DataFrame.from_dict(data=db_metadict, orient='columns')
 
         return out_metadata_df
+
+
+    ##################################
+    # Filter data for given METADATA
+    def filter_meta(self, q_meta, user_q_meta):
+        rs_meta_tmp = list()
+        rs_meta_id = list()
+        user_q_metastr = ' '.join(user_q_meta)
+        user_q_meta_format = user_q_metastr.upper().replace(' AND ', ' & ').replace(
+            ' OR ', ' | '). \
+            replace(' ANDNOT ', ' &~ ').replace('[', '(').replace(']', ')')
+        for valm in q_meta:  # This loop is to simply get the metaids from the
+            # data for multiple conditions in the query
+            # filtering the metadata and type given in the user query
+            rs_meta = list(MetaIddata.objects.filter(meta_type__exact= valm.split('=')[0], meta_value__exact=valm.split('=')[1]).\
+                values_list('meta_id','meta_type','meta_value'))
+
+            valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
+
+            user_q_meta_format = user_q_meta_format.replace(valm, valm_format)  #
+
+            # creating query expression- replace query with example:
+            # 'ANNA_SCHINKE in EXPERIMENTER'
+            rs_meta_tmp.extend([x[0] for x in rs_meta])
+
+
+        db_metadict = dict()
+        for valm1 in set(rs_meta_tmp):  # This loop is to make combinations on the metaids identified in upper loop
+            metadata_df = pd.DataFrame(list(Metadata.objects.select_related().filter(meta_id__exact=valm1). \
+                values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type', 'referenceid__ref_id')),
+                                       columns=['m_id', 'm_val', 'm_type', 'ref_id'])
+
+            metadata_df_new = metadata_df.pivot(index='ref_id', columns='m_type',
+                                                values='m_val')
+
+            m_df_out = metadata_df_new.query(user_q_meta_format)
+            if not m_df_out.empty:
+                rs_meta_id.append(m_df_out.index[0])
+
+        if not rs_meta_id:
+            raise ValueError('No data matched your metadata query!\n')
+
+        return rs_meta_id
+
+
