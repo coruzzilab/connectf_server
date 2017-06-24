@@ -1,14 +1,18 @@
 import os
 import shutil
 import tempfile
+from functools import partial
+from itertools import chain, groupby
 
 import environ
-from django.http import JsonResponse
+import pandas as pd
+from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 
-from .app import query_TargetDB
+from querytgdb.utils import query_tgdb
+from querytgdb.utils.cytoscape import create_cytoscape_data
 
 ROOT_DIR = environ.Path(
     __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
@@ -36,9 +40,9 @@ class HandleQueryView(View):
 
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
-        dbname = 'targetdb'
-        TFquery = request.POST['tfs'].split(" ") if request.POST[
-                                                        'tfs'] != '' else None
+        # dbname = 'targetdb'
+        tf_query = request.POST['tfs'].split(" ") if request.POST[
+                                                         'tfs'] != '' else None
         edges = request.POST['edges'].split(" ") if request.POST[
                                                         'edges'] != '' else \
             None
@@ -46,45 +50,62 @@ class HandleQueryView(View):
                                                            'metas'] != '' \
             else None
 
-        targetgenesFilePath = None
+        targetgenes_file_path = None
         dirpath = tempfile.mkdtemp()
 
-        tfFilePaths = []
+        tf_file_paths = []
         if len(request.FILES) != 0:
             if "targetgenes" in request.FILES:
-                targetgenesFilePath = save_file(dirpath,
-                                                request.FILES["targetgenes"])
+                targetgenes_file_path = save_file(dirpath,
+                                                  request.FILES["targetgenes"])
             if "file-0" in request.FILES:
                 i = 0
                 while "file-" + str(i) in request.FILES:
-                    tfFilePaths.append(
+                    tf_file_paths.append(
                         save_file(dirpath, request.FILES["file-" + str(i)]))
                     i += 1
 
-        self.setTFquery(TFquery, tfFilePaths)
+        self.setTFquery(tf_query, tf_file_paths)
 
         output = STATIC_DIR.path(request_id)
-        df, out_metadata_df = query_TargetDB.main(dbname, TFquery, edges,
-                                                  metadata, str(output),
-                                                  targetgenesFilePath)
+        df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, str(output))
         # df = pd.read_pickle("testdf.pickle")
         # out_metadata_df = pd.read_pickle("testmeta.pickle")
 
-        df_columns = []
-        for column in df.columns:
-            df_columns.append({"id": column, "name": column, "field": column})
+        # df_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
 
-        res = [{'columns': df_columns}]
-        res[0]['data'] = df.to_json(orient='index')
-        meta_columns = []
+        # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
+
+        # print(df.columns)
+        print(df)
+        int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
+            ['UserList', 'Target Count'])
+        df.iloc[4:, int_cols] = df.iloc[4:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
+        df = df.where(pd.notnull(df), None)
+
+        merged_cells = []
+
+        for i, level in enumerate(df.columns.labels):
+            index = 0
+            for label, group in groupby(level):
+                size = sum(1 for _ in group)
+                merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
+                if i == 0:
+                    merged_cells.extend({'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
+                index += size
+
+        res = [{
+            'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
+            'mergeCells': merged_cells
+        }]
+
         out_metadata_df.reset_index(inplace=True)
-        for column in out_metadata_df.columns:
-            meta_columns.append(
-                {"id": column, "name": column, "field": column})
+        meta_columns = [{"id": column, "name": column, "field": column} for column in out_metadata_df.columns]
 
         res.append({'columns': meta_columns,
                     'data': out_metadata_df.to_json(orient='index')})
         shutil.rmtree(dirpath)
+
         return JsonResponse(res, safe=False)
 
     # ----------------------------------------------------------------------
@@ -100,3 +121,13 @@ class HandleQueryView(View):
                 TFquery[i] = TFquery[i][0:begin] + tfFilePaths[j] + TFquery[i][
                                                                     end + 1:]
                 j += 1
+
+
+class CytoscapeJSONView(View):
+    def get(self, request, request_id, name):
+        try:
+            outdir = create_cytoscape_data(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+            with open("{}/{}.json".format(outdir, name)) as f:
+                return HttpResponse(f, content_type="application/json; charset=utf-8")
+        except FileNotFoundError as e:
+            raise Http404 from e
