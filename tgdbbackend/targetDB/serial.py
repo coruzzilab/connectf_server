@@ -1,24 +1,25 @@
 from rest_framework import serializers
 
-from .models import Edges, Meta, Nodes
+from querytgdb.models import TargetDBTF, Edges, MetaIddata
+from .models import Meta, Nodes
 
 
 class MetaValueSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
-        model = Meta
-        fields = ["text", ]
+        model = MetaIddata
+        fields = ("meta_value",)
 
 
 class TFValueSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
-        model = Nodes
-        fields = ["text", ]
+        model = TargetDBTF
+        fields = ("db_tf_agi",)
 
 
 class EdgesValueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Edges
-        fields = ["text"]
+        fields = ("edge_name",)
 
 
 class TFTypeSerializer(serializers.HyperlinkedModelSerializer):
@@ -26,4 +27,4 @@ class TFTypeSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = Nodes
-        fields = ["text"]
+        fields = ("text",)

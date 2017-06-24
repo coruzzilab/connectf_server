@@ -271,24 +271,23 @@ CORS_ORIGIN_ALLOW_ALL = True
 
 ACCOUNT_EMAIL_MAX_LENGTH = 190
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler'
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': 'django.log'
-        }
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['file'],
-            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
-            'propagate': True,
-        },
-    }
-}
-
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False,
+#     'handlers': {
+#         'console': {
+#             'class': 'logging.StreamHandler'
+#         },
+#         'file': {
+#             'class': 'logging.FileHandler',
+#             'filename': 'django.log'
+#         }
+#     },
+#     'loggers': {
+#         'django': {
+#             'handlers': ['file'],
+#             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+#             'propagate': True,
+#         },
+#     }
+# }
