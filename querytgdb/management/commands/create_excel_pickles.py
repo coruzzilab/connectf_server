@@ -26,8 +26,8 @@ class Command(BaseCommand):
     def main(self, pickledir):
 
         writer, outdirpath= self.read_pickled_targetdbout(pickledir) # Func. to write
-        #self.read_pickled_metadata(pickledir, writer)
-        #self.create_sif(pickledir, outdirpath)
+        self.read_pickled_metadata(pickledir, writer)
+        self.create_sif(pickledir, outdirpath)
 
 
     ########################################################################################
@@ -39,6 +39,9 @@ class Command(BaseCommand):
         # create an output directory for downloadable zip file
         outdir= pickledir.replace('_pickle','')
         if not os.path.exists(outdir):  # create output directory
+            os.makedirs(outdir)
+        else:
+            shutil.rmtree(outdir)
             os.makedirs(outdir)
 
         # get the absolute path of the directory
@@ -64,7 +67,7 @@ class Command(BaseCommand):
         header_dict= defaultdict(list)
         id_headerdict= defaultdict(list)
         header_df= new_res_df.iloc[0:3]
-        header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'Target Count'],
+        header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'Target Count','Ind'],
                            axis=1, inplace=True)  # drop unecsseary columns
 
         #####################################################################################
@@ -72,13 +75,13 @@ class Command(BaseCommand):
         ## Can be moved to a different function
         listlen=0
         header_list= header_df.columns.tolist()
-        count=10
+        count=11
         for val_hls in header_list:
             #print('val_hls= ',val_hls)
             listlen= listlen+1
             range= None
-            if count==10:
-                prev_count = 10
+            if count==11:
+                prev_count = 11
                 prev_header_level0= val_hls[0]
                 prev_header_level1 = val_hls[1]
 
@@ -105,7 +108,6 @@ class Command(BaseCommand):
                         prev_count = count
                         count = count + 1
                     if range:
-                        #print('prev_header_level0= ',prev_header_level0)
                         header_dict[range].append(id_headerdict[prev_header_level0][0])  # get annotation at index 0
                         header_dict[range].append(id_headerdict[prev_header_level0][1])  # get annotation at index 1
                         header_dict[range].append(id_headerdict[prev_header_level0][2])  # get annotation at index 2
@@ -125,10 +127,11 @@ class Command(BaseCommand):
         worksheet = writer.sheets['TargetDB Output']
         bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border': 1, 'align': 'center'})
         align_font = workbook.add_format({'font_size': 13, 'align': 'center'})
-        worksheet.set_column('B:F', 15)
-        worksheet.set_column('G:G', 10, align_font)
-        worksheet.set_column('H:I', 15, bold_font)
-        worksheet.set_column('J:' + excel_count_cols, 15)
+        worksheet.set_column('B:B', 5)
+        worksheet.set_column('C:G', 15)
+        worksheet.set_column('H:H', 10, align_font)
+        worksheet.set_column('I:J', 15, bold_font)
+        worksheet.set_column('K:' + excel_count_cols, 15)
         worksheet.set_column('A:A', None, None, {'hidden': True})# hiding meaningless column created by multiindexing
 
         header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 14,
@@ -165,15 +168,15 @@ class Command(BaseCommand):
             worksheet.merge_range(merge_start+'7:'+merge_end+'7', header_dict[val_merge][2], merge_format)
 
         # Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
-        worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
+        worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
             {'type': 'text', 'criteria': 'containing', 'value': 'INDUCED', 'format': format2})
-        worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
+        worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
             {'type': 'text', 'criteria': 'containing','value': 'REPRESSED', 'format': format1})
         #worksheet.conditional_format(
         #    ('K7:' + excel_count_cols + str(df_count_rows + 3)),
         #    {'type': 'text', 'criteria': 'containing',
         #     'value': 1, 'format': format3})
-        worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
+        worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
             {'type': 'text', 'criteria': 'containing', 'value': 'Present', 'format': format4})
 
         return writer
@@ -217,7 +220,15 @@ class Command(BaseCommand):
     def create_sif(self, pickledir, output):
 
         # read the pickled dataframe
-        pickled_sifdf = pd.read_pickle(pickledir + '/' + 'df_sif.pkl')
+        pickled_sifdf_tmp = pd.read_pickle(pickledir + '/' + 'df_sif.pkl')
+        # Before creating the sif file exclude the dap-seq column. If required later, find a way to add the dap-seq validation
+        # column to the .tbl files
+        keep_cols= list()
+        for val_col in pickled_sifdf_tmp.columns:
+            if not val_col.endswith('_OMalleyetal_2016'):
+                keep_cols.append(val_col)
+
+        pickled_sifdf= pickled_sifdf_tmp[keep_cols]
 
         # Before creating the sif file I combine chipseq-data from different time-points (from one exp) into one column.
         # Retains only one edge for multiple time-points: e.g.:Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by Target:CHIPSEQ
@@ -226,22 +237,27 @@ class Command(BaseCommand):
         sif_rs_tabular = pickled_sifdf.groupby(pickled_sifdf.columns, axis=1). \
             apply(lambda x: x.apply(lambda y: ','.join([l for l in y if pd.notnull(l)]),axis=1))
         sif_rs_tabular.replace('',pd.np.nan,inplace=True) # purpose of replacing spaces with nan??
+
         # replace Target:CHIPSEQ:0, Target:CHIPSEQ:5 with Target:CHIPSEQ
         sif_rs_tabular.replace({'^TARGET:CHIPSEQ.*': 'TARGET:CHIPSEQ'}, regex=True, inplace=True)
         stacked_tmp_df = pd.DataFrame(sif_rs_tabular.stack().reset_index()) # stack converts df columns into stacked rows
         stacked_tmp_df.columns = ['TARGET', 'TF', 'EDGE'] # assign new columns
+
         # extract experimentID from experimentID_analysisID
         stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: '_'.join(x.split('_')[:3]))
         stacked_tmp_df = stacked_tmp_df.drop_duplicates() # dropping duplicates to solve the problem of multiple representation of
         # same experiment (with multiple analysis ID) and chipseq multiple time-points
         stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: x.split('_')[0]) # extract TFname from expID
+
         tf_list = list(set(stacked_tmp_df['TF'].tolist()))
         reordered_tmp_df = pd.DataFrame(stacked_tmp_df, columns=['TF', 'EDGE','TARGET'])  #reorder the df
         # following is separating pvalue and fold-change from EDGE column.
         # Regular expression parses the code and assigns the column names at the same time
         # For example '(?P<Col2>.*)\|{2,}' will grab everything up to the first double | and call it Col2
-        regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\((?P<FOLDCHANGE>.*)\)'
+        #regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\((?P<FOLDCHANGE>.*)\)'
+        regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\|{2,}(?P<FOLDCHANGE>.*)'
         reordered_tmp_df= reordered_tmp_df.assign(**reordered_tmp_df.EDGE.str.extract(regex, expand=True).to_dict('list'))
+        reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != ''] # remove the edges that are not linked
         # ALTERNATIVE
         #reordered_tmp_df.EDGE.str.extract(regex, expand=True).combine_first(reordered_tmp_df)
 

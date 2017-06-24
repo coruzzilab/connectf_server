@@ -43,3 +43,7 @@ python manage.py insert_tgdb -i ../targetdbv2_data/AT5G62020_MB010117_RNASEQ_gen
 python manage.py insert_tgdb -i ../targetdbv2_data/AT5G62430_MB010117_RNASEQ_genelist.txt -m ../targetdbv2_data/AT5G62430_MB010117_RNASEQ_metadata.txt -d ../targetdbv2_data/dap-seq.all.txt
 
 python manage.py insert_tgdb -i ../targetdbv2_data/AT5G65210_MB010117_RNASEQ_genelist.txt -m ../targetdbv2_data/AT5G65210_MB010117_RNASEQ_metadata.txt -d ../targetdbv2_data/dap-seq.all.txt
+
+python manage.py insert_tgdb -i ../targetdbv2_data/NLP7_AS170622_mchx.txt -m ../targetdbv2_data/NLP7_AS170622_mCHX_metadata.txt -d ../targetdbv2_data/dap-seq.all.txt
+
+python manage.py insert_tgdb -i ../targetdbv2_data/NLP7_AS170622_pchx.txt -m ../targetdbv2_data/NLP7_AS170622_pCHX_metadata.txt -d ../targetdbv2_data/dap-seq.all.txt

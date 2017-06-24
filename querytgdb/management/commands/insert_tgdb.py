@@ -42,7 +42,6 @@ class Command(BaseCommand):
         # call the function insert_dapseq to insert the dap-seq data for this TF
         flag_dap= 0
         alltfs = TargetDBTF.objects.values_list('db_tf_agi', flat=True)
-
         if not metadict['Transcription_Factor_ID'.upper()] in alltfs:
             flag_dap= 1
 
