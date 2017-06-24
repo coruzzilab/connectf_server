@@ -40,6 +40,7 @@ class Command(BaseCommand):
                                'query TFs, both can not be none \n')
 
         edgelist = list()
+        rs_meta_list = list()
         if metadata:
             q_meta = self.getquerylist(metadata)
             rs_meta_list= self.filter_meta(q_meta, metadata)
