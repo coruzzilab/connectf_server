@@ -24,8 +24,10 @@ def queryTFDB(q_TFname, rs_meta_list):
         'db_tf_id__db_tf_agi', 'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id'))
 
     rs_pd_tmp = pd.DataFrame(rs, columns=['TF', 'EDGE', 'TARGET', 'REFID'])
-
-    rs_pd = rs_pd_tmp.loc[rs_pd_tmp.REFID.isin(rs_meta_list)]
+    if rs_meta_list:
+        rs_pd = rs_pd_tmp.loc[rs_pd_tmp.REFID.isin(rs_meta_list)]
+    else:
+        rs_pd = rs_pd_tmp
 
     list_ref_id = rs_pd.REFID.unique()
     # print('list_ref_id= ',list_ref_id)
