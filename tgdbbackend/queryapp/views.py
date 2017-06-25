@@ -157,8 +157,12 @@ class ExcelDownloadView(View):
 class HeatMapPNGView(View):
     def get(self, request, request_id):
         try:
-            buf = read_pickled_targetdbout(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+            response = HttpResponse(content_type='image/svg+xml')
+            read_pickled_targetdbout(
+                str(STATIC_DIR.path("{}_pickle".format(request_id))),
+                save_file=False
+            ).savefig(response)
 
-            return HttpResponse(buf, content_type='image/png')
+            return response
         except FileNotFoundError as e:
             raise Http404 from e

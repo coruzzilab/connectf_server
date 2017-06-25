@@ -2,6 +2,9 @@ import io
 import os
 from collections import defaultdict
 
+import matplotlib
+
+matplotlib.use('SVG')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -128,9 +131,6 @@ def read_pickled_targetdbout(pickledir, save_file=True):
         dirpath = '/'.join(outdirpath.split('/')[:-1])
         sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
         plt.show()
-        print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.png')))
+        print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.svg')))
     else:
-        buf = io.BytesIO()
-        sns_heatmap.savefig(buf, format='png')
-        buf.seek(0)
-        return buf
+        return sns_heatmap
