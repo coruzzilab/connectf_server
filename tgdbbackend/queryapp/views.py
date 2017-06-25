@@ -5,6 +5,7 @@ from functools import partial
 from itertools import chain, groupby
 
 import environ
+import numpy as np
 import pandas as pd
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
@@ -13,6 +14,7 @@ from django.views.generic import View
 
 from querytgdb.utils import query_tgdb
 from querytgdb.utils.cytoscape import create_cytoscape_data
+from .utils import PandasJSONEncoder
 
 ROOT_DIR = environ.Path(
     __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
@@ -77,10 +79,10 @@ class HandleQueryView(View):
         # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
 
         # print(df.columns)
-        print(df)
         int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
             ['UserList', 'Target Count'])
         df.iloc[4:, int_cols] = df.iloc[4:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
+        df['Ind'] = df['Ind'].astype(int)
         df = df.where(pd.notnull(df), None)
 
         merged_cells = []
@@ -106,7 +108,7 @@ class HandleQueryView(View):
                     'data': out_metadata_df.to_json(orient='index')})
         shutil.rmtree(dirpath)
 
-        return JsonResponse(res, safe=False)
+        return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
 
     # ----------------------------------------------------------------------
     def setTFquery(self, TFquery, tfFilePaths):

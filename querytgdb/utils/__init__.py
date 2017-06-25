@@ -19,8 +19,6 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         raise TypeError('Either generate a table for all the TFs (--t= OR [ALLTF] \n or '
                         'query TFs, both can not be none \n')
 
-    print(TFquery, edges, metadata, targetgenes, output)
-
     edge_list = []
     rs_meta_list = []
     if metadata:
@@ -158,7 +156,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         pickle.dump(db_tf, pickled_json_dbtf)
         pickled_json_dbtf.close()  # close the pickled object file
 
-        return new_res_df
+        # return new_res_df
 
     else:
         message_dict = dict()
@@ -168,7 +166,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         out_metadata_df = pd.DataFrame.from_dict(message_dict, orient='index', dtype=None)
         out_metadata_df.columns = ['1']
 
-        return new_res_df, out_metadata_df
+    return new_res_df, out_metadata_df
 
 
 ##########################################################
