@@ -5,7 +5,6 @@ from functools import partial
 from itertools import chain, groupby
 
 import environ
-import numpy as np
 import pandas as pd
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
@@ -14,6 +13,7 @@ from django.views.generic import View
 
 from querytgdb.utils import query_tgdb
 from querytgdb.utils.cytoscape import create_cytoscape_data
+from querytgdb.utils.excel import create_excel_zip
 from .utils import PandasJSONEncoder
 
 ROOT_DIR = environ.Path(
@@ -131,5 +131,20 @@ class CytoscapeJSONView(View):
             outdir = create_cytoscape_data(str(STATIC_DIR.path("{}_pickle".format(request_id))))
             with open("{}/{}.json".format(outdir, name)) as f:
                 return HttpResponse(f, content_type="application/json; charset=utf-8")
+        except FileNotFoundError as e:
+            raise Http404 from e
+
+
+class ExcelDownloadView(View):
+    def get(self, request, request_id):
+        try:
+            out_file = str(STATIC_DIR.path("{}.zip".format(request_id)))
+            if not os.path.exists(out_file):
+                out_file = create_excel_zip(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+            with open(out_file, 'rb') as f:
+                response = HttpResponse(f, content_type='application/zip')
+                response['Content-Disposition'] = 'attachment; filename="query.zip"'
+
+                return response
         except FileNotFoundError as e:
             raise Http404 from e
