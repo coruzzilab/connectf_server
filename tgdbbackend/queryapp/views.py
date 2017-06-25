@@ -14,6 +14,7 @@ from django.views.generic import View
 from querytgdb.utils import query_tgdb
 from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
+from querytgdb.utils.clustering import read_pickled_targetdbout
 from .utils import PandasJSONEncoder
 
 ROOT_DIR = environ.Path(
@@ -149,5 +150,15 @@ class ExcelDownloadView(View):
                 response['Content-Disposition'] = 'attachment; filename="query.zip"'
 
                 return response
+        except FileNotFoundError as e:
+            raise Http404 from e
+
+
+class HeatMapPNGView(View):
+    def get(self, request, request_id):
+        try:
+            buf = read_pickled_targetdbout(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+
+            return HttpResponse(buf, content_type='image/png')
         except FileNotFoundError as e:
             raise Http404 from e
