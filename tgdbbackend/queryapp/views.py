@@ -131,7 +131,6 @@ class CytoscapeJSONView(View):
         try:
             outdir = str(STATIC_DIR.path("{}_json".format(request_id)))
             if not os.path.isdir(outdir):
-                print('yay')
                 outdir = create_cytoscape_data(str(STATIC_DIR.path("{}_pickle".format(request_id))))
             with open("{}/{}.json".format(outdir, name)) as f:
                 return HttpResponse(f, content_type="application/json; charset=utf-8")
