@@ -584,8 +584,9 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     # new_res_df[('Ind', 'Index','')] = np.where(new_res_df[('Ind', 'Index','')] > 0, 17)
     # new_res_df.loc[new_res_df.Ind<0] = np.nan
 
-    # ********************** uncomment this
-    # new_res_df.ix[new_res_df[('Ind', 'Index')] <=0, ('Ind', 'Index')]= np.NaN
+    # ********************** uncomment this, ix is deprecated to use. Find alternative to this.
+    new_res_df.ix[new_res_df[('Ind', 'Index')] <=0, ('Ind', 'Index')]= np.NaN
+    new_res_df.ix[new_res_df[('ID', 'GeneID', 'GeneID')].isin([0,1,2]), ('ID', 'GeneID', 'GeneID')] = np.NaN
 
     # print('________________________________')
     # print('new_res_df= ',new_res_df)
