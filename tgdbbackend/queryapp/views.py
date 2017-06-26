@@ -71,44 +71,48 @@ class HandleQueryView(View):
         self.setTFquery(tf_query, tf_file_paths)
 
         output = STATIC_DIR.path(request_id)
-        df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, str(output))
-        # df = pd.read_pickle("testdf.pickle")
-        # out_metadata_df = pd.read_pickle("testmeta.pickle")
 
-        # df_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
+        try:
+            df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, str(output))
+            # df = pd.read_pickle("testdf.pickle")
+            # out_metadata_df = pd.read_pickle("testmeta.pickle")
 
-        # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
+            # df_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
 
-        # print(df.columns)
-        int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
-            ['UserList', 'Target Count'])
-        df.iloc[4:, int_cols] = df.iloc[4:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
-        df = df.where(pd.notnull(df), None)
+            # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
 
-        merged_cells = []
+            # print(df.columns)
+            int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
+                ['UserList', 'Target Count'])
+            df.iloc[3:, int_cols] = df.iloc[3:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
+            df = df.where(pd.notnull(df), None)
 
-        for i, level in enumerate(df.columns.labels):
-            index = 0
-            for label, group in groupby(level):
-                size = sum(1 for _ in group)
-                merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
-                if i == 0:
-                    merged_cells.extend({'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
-                index += size
+            merged_cells = []
 
-        res = [{
-            'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
-            'mergeCells': merged_cells
-        }]
+            for i, level in enumerate(df.columns.labels):
+                index = 0
+                for label, group in groupby(level):
+                    size = sum(1 for _ in group)
+                    merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
+                    if i == 0:
+                        merged_cells.extend({'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
+                    index += size
 
-        out_metadata_df.reset_index(inplace=True)
-        meta_columns = [{"id": column, "name": column, "field": column} for column in out_metadata_df.columns]
+            res = [{
+                'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
+                'mergeCells': merged_cells
+            }]
 
-        res.append({'columns': meta_columns,
-                    'data': out_metadata_df.to_json(orient='index')})
-        shutil.rmtree(dirpath)
+            out_metadata_df.reset_index(inplace=True)
+            meta_columns = [{"id": column, "name": column, "field": column} for column in out_metadata_df.columns]
 
-        return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+            res.append({'columns': meta_columns,
+                        'data': out_metadata_df.to_json(orient='index')})
+            shutil.rmtree(dirpath)
+
+            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+        except IndexError as e:
+            raise Http404('Query not available') from e
 
     # ----------------------------------------------------------------------
     def setTFquery(self, TFquery, tfFilePaths):
