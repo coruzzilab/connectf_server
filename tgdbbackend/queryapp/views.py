@@ -83,7 +83,6 @@ class HandleQueryView(View):
         int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
             ['UserList', 'Target Count'])
         df.iloc[4:, int_cols] = df.iloc[4:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
-        df['Ind'] = df['Ind'].astype(int)
         df = df.where(pd.notnull(df), None)
 
         merged_cells = []
