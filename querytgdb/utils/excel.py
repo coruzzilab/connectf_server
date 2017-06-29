@@ -252,9 +252,9 @@ def create_sif(pickledir, output):
                        'w')  # Generates sif output file for all TF
     outfile_all_tbl = open(output + '/' + output.split('/')[-1] + '_allTFs.tbl',
                            'w')  # Generates sif output file for all TF
-    reordered_tmp_df[['TARGET', 'EDGE', 'TF']].to_csv(outfile_all, sep='\t', index=False, header=False)
-    reordered_tmp_df['shared name'] = reordered_tmp_df['TARGET'] + ' (' + reordered_tmp_df['EDGE'] + ') ' + \
-                                      reordered_tmp_df['TF']
+    reordered_tmp_df[['TF', 'EDGE', 'TARGET']].to_csv(outfile_all, sep='\t', index=False, header=False)
+    reordered_tmp_df['shared name'] = reordered_tmp_df['TF'] + ' (' + reordered_tmp_df['EDGE'] + ') ' + \
+                                      reordered_tmp_df['TARGET']
     reordered_tmp_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_all_tbl, sep='\t', index=False)
 
     # SIF output in tab-delimited format
@@ -265,7 +265,7 @@ def create_sif(pickledir, output):
         outfile_tbl = open(output + '/' + output.split('/')[-1] + '_' + tf_val + '.tbl',
                            'w')  # Generates sif output file for
         # each TF
-        sub_df[['TARGET', 'EDGE', 'TF']].to_csv(outfile, sep='\t', index=False, header=False)
+        sub_df[['TF', 'EDGE', 'TARGET']].to_csv(outfile, sep='\t', index=False, header=False)
         sub_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_tbl, sep='\t', index=False)
         outfile.close()  # close the file resources
         outfile_tbl.close()

@@ -594,8 +594,8 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
         pk_output = outfile + '_pickle/tabular_output.pkl'
         new_res_df.to_pickle(pk_output)
-    # else:
-    #    print('\nNo target genes matched the query crietria!')
+    else:
+        raise ValueError("Empty dataframe for your query")
 
     return new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid
 
