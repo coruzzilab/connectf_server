@@ -12,9 +12,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 
 from querytgdb.utils import query_tgdb
+from querytgdb.utils.clustering import read_pickled_targetdbout
 from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
-from querytgdb.utils.clustering import read_pickled_targetdbout
 from .utils import PandasJSONEncoder
 
 ROOT_DIR = environ.Path(
@@ -43,7 +43,7 @@ class HandleQueryView(View):
 
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
-        # dbname = 'targetdb'
+
         tf_query = request.POST['tfs'].split(" ") if request.POST[
                                                          'tfs'] != '' else None
         edges = request.POST['edges'].split(" ") if request.POST[
@@ -82,25 +82,42 @@ class HandleQueryView(View):
             # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
 
             # print(df.columns)
-            int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(0).isin(
-                ['UserList', 'Target Count'])
+            int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(
+                0).isin(['UserList', 'Target Count'])
             df.iloc[3:, int_cols] = df.iloc[3:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
             df = df.where(pd.notnull(df), None)
 
             merged_cells = []
 
             for i, level in enumerate(df.columns.labels):
-                index = 0
-                for label, group in groupby(level):
+                # don't merge before column 9
+                index = 9
+                for label, group in groupby(level[9:]):
                     size = sum(1 for _ in group)
                     merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
                     if i == 0:
-                        merged_cells.extend({'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
+                        merged_cells.extend(
+                            {'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
                     index += size
+
+            columns = []
+
+            for i, num in enumerate(int_cols):
+                if num:
+                    if i < 9:
+                        columns.append({'type': 'numeric'})
+                    else:
+                        columns.append({'type': 'numeric', 'renderer': 'renderNumber', 'validator': 'exponential'})
+                else:
+                    if i < 9:
+                        columns.append({'type': 'text'})
+                    else:
+                        columns.append({'type': 'text', 'renderer': 'renderTarget'})
 
             res = [{
                 'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
-                'mergeCells': merged_cells
+                'mergeCells': merged_cells,
+                'columns': columns
             }]
 
             out_metadata_df.reset_index(inplace=True)
