@@ -159,12 +159,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # return new_res_df
 
     else:
-        message_dict = dict()
-        message_dict['Warning'] = 'No Data Matched Your Query!'
-        new_res_df = pd.DataFrame.from_dict(message_dict, orient='index', dtype=None)
-        new_res_df.columns = ['1']
-        out_metadata_df = pd.DataFrame.from_dict(message_dict, orient='index', dtype=None)
-        out_metadata_df.columns = ['1']
+        raise ValueError('Query did not return any data.')
 
     return new_res_df, out_metadata_df
 
