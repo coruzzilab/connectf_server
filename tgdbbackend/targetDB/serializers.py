@@ -5,9 +5,11 @@ from querytgdb.models import Edges, MetaIddata, TargetDBTF
 
 
 class MetaValueSerializer(serializers.ModelSerializer):
+    value = serializers.CharField(source='meta_value')
+
     class Meta:
         model = MetaIddata
-        fields = ("meta_value",)
+        fields = ("value",)
 
 
 class TFValueSerializer(serializers.ModelSerializer):
