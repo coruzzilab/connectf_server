@@ -6,16 +6,16 @@ from rest_framework import viewsets
 from rest_framework.decorators import detail_route
 from rest_framework.response import Response
 
-from querytgdb.models import TargetDBTF, Edges, MetaIddata
+from querytgdb.models import Edges, MetaIddata, TargetDBTF
 from .models import Nodes
-from .serial import EdgesValueSerializer, MetaValueSerializer, TFValueSerializer
+from .serializers import EdgesValueSerializer, MetaValueSerializer, TFValueSerializer
 
 
 class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MetaValueSerializer
     queryset = MetaIddata.objects.all()
 
-    def list(self, request):
+    def list(self, request, *args, **kwargs):
         queryset = MetaIddata.objects.values("meta_value").distinct()
         serializer = MetaValueSerializer(queryset, many=True)
         return Response(serializer.data)
@@ -37,7 +37,8 @@ class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     @detail_route()
     def searchName(self, request, pk=None):
         # uinput = request.query_params.get("uinput", None)
-        queryset = TargetDBTF.objects.all()
+        queryset = TargetDBTF.objects.raw("SELECT db_tf_id, db_tf_agi, ath_name FROM querytgdb_targetdbtf "
+                                          "LEFT JOIN querytgdb_annotation ON agi_id = db_tf_agi")
 
         serializer = TFValueSerializer(
             chain([OrderedDict([('db_tf_agi', 'OR [ALLTF]')]), OrderedDict([('db_tf_agi', 'AND [ALLTF]')])], queryset),
