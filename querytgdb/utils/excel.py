@@ -49,7 +49,7 @@ def write_to_excel(writer, new_res_df):
     header_dict = defaultdict(list)
     id_headerdict = defaultdict(list)
     header_df = new_res_df.iloc[0:3]
-    header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'Target Count', 'Ind'],
+    header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'Target Count'],
                    axis=1, inplace=True)  # drop unecsseary columns
 
     #####################################################################################
@@ -57,13 +57,13 @@ def write_to_excel(writer, new_res_df):
     ## Can be moved to a different function
     listlen = 0
     header_list = header_df.columns.tolist()
-    count = 11
+    count = 10 # start merging with column 10/J. Columns before J are annotation columns.
     for val_hls in header_list:
         # print('val_hls= ',val_hls)
         listlen = listlen + 1
         lines = None
-        if count == 11:
-            prev_count = 11
+        if count == 10:
+            prev_count = 10
             prev_header_level0 = val_hls[0]
             prev_header_level1 = val_hls[1]
 
@@ -109,11 +109,10 @@ def write_to_excel(writer, new_res_df):
     worksheet = writer.sheets['TargetDB Output']
     bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border': 1, 'align': 'center'})
     align_font = workbook.add_format({'font_size': 13, 'align': 'center'})
-    worksheet.set_column('B:B', 5)
-    worksheet.set_column('C:G', 15)
-    worksheet.set_column('H:H', 10, align_font)
-    worksheet.set_column('I:J', 15, bold_font)
-    worksheet.set_column('K:' + excel_count_cols, 15)
+    worksheet.set_column('B:F', 15)
+    worksheet.set_column('G:G', 10, align_font)
+    worksheet.set_column('H:I', 15, bold_font)
+    worksheet.set_column('J:' + excel_count_cols, 15)
     worksheet.set_column('A:A', None, None, {'hidden': True})  # hiding meaningless column created by multiindexing
 
     header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 14,
@@ -150,16 +149,15 @@ def write_to_excel(writer, new_res_df):
         worksheet.merge_range(merge_start + '7:' + merge_end + '7', header_dict[val_merge][2], merge_format)
 
     # Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
-    worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
+    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
                                  {'type': 'text', 'criteria': 'containing', 'value': 'INDUCED', 'format': format2})
-    worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
-                                 {'type': 'text', 'criteria': 'containing', 'value': 'REPRESSED',
-                                  'format': format1})
+    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
+                                 {'type': 'text', 'criteria': 'containing', 'value': 'REPRESSED', 'format': format1})
     # worksheet.conditional_format(
     #    ('K7:' + excel_count_cols + str(df_count_rows + 3)),
     #    {'type': 'text', 'criteria': 'containing',
     #     'value': 1, 'format': format3})
-    worksheet.conditional_format('K8:' + excel_count_cols + str(df_count_rows + 3),
+    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
                                  {'type': 'text', 'criteria': 'containing', 'value': 'Present', 'format': format4})
 
     return writer
