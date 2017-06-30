@@ -503,23 +503,27 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     final_df = pd.DataFrame()
 
     for col_name in rs_final_res1:
-        if not col_name[1] == 'OMalleyetal_2016':
-            if rs_final_res1[col_name].str.contains('||').all():
-                # Split 'Analysis' by || into new columns
-                splitted_analysis = rs_final_res1[col_name].str.split('\|\|', expand=True)
-                # The new column names are 0, 1, 2. Let's rename them.
-                splitted_analysis.columns = ['Edges', 'Pvalue', 'Foldchange']
-                splitted_analysis['Pvalue'][splitted_analysis.Edges == ''] = np.nan
-                splitted_analysis['Foldchange'][splitted_analysis.Edges == ''] = np.nan
-                # Recreate MultiIndex
-                splitted_analysis.columns = pd.MultiIndex.from_tuples(
-                    [(col_name[0], col_name[1], c) for c in splitted_analysis.columns])
-                # Concatenate the new columns to the final_df
-                final_df = pd.concat(objs=[final_df, splitted_analysis], axis=1)
+        # checks if an experiment contains fold change and pvlaues: marked with ||
+        if rs_final_res1[col_name].str.contains('\|\|').any():
+            # Split 'Analysis' by || into new columns
+            splitted_analysis = rs_final_res1[col_name].str.split('\|\|', expand=True)
+            # The new column names are 0, 1, 2. Let's rename them.
+            splitted_analysis.columns = ['Edges', 'Pvalue', 'Foldchange']
+            splitted_analysis['Pvalue'][splitted_analysis.Edges == ''] = np.nan
+            splitted_analysis['Foldchange'][splitted_analysis.Edges == ''] = np.nan
+            # Recreate MultiIndex
+            splitted_analysis.columns = pd.MultiIndex.from_tuples(
+                   [(col_name[0], col_name[1], c) for c in splitted_analysis.columns])
+            # Concatenate the new columns to the final_df
+            final_df = pd.concat(objs=[final_df, splitted_analysis], axis=1)
+        # If an experiment does not have fold change and p-value it does not split
         else:
+            third_level= ''
+            if col_name[1] == 'OMalleyetal_2016':
+                third_level= 'DAPEdge'
             tmp_df = pd.DataFrame(rs_final_res1[col_name])
             tmp_df.columns = pd.MultiIndex.from_tuples(
-                [(col_name[0], col_name[1], 'DAPEdge')])
+                [(col_name[0], col_name[1], third_level)])
             # print('tmp_df= ',tmp_df.columns)
             final_df = pd.concat(objs=[final_df, tmp_df], axis=1)
 
@@ -572,19 +576,13 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     new_res_df = new_res_df[multi_cols]
 
     # na_position='first' to leave the header cols (na.nan values) sorted first
-    new_res_df.sort([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
-    # ********************** uncomment this
-    new_res_df.insert(0, ('Ind', 'Index', ''), range(-2, len(new_res_df) - 2))
+    new_res_df.sort_values([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
 
     # new_res_df[('Ind', 'Index','')] = np.where(new_res_df[('Ind', 'Index','')] > 0, 17)
     # new_res_df.loc[new_res_df.Ind<0] = np.nan
 
     # ********************** uncomment this, ix is deprecated to use. Find alternative to this.
-    new_res_df.ix[new_res_df[('Ind', 'Index')] <= 0, ('Ind', 'Index')] = np.NaN
     new_res_df.ix[new_res_df[('ID', 'GeneID', 'GeneID')].isin([0, 1, 2]), ('ID', 'GeneID', 'GeneID')] = np.NaN
-
-    # print('________________________________')
-    # print('new_res_df= ',new_res_df)
 
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
         pk_output = outfile + '_pickle/tabular_output.pkl'
