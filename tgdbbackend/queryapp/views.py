@@ -91,8 +91,8 @@ class HandleQueryView(View):
 
             for i, level in enumerate(df.columns.labels):
                 # don't merge before column 9
-                index = 9
-                for label, group in groupby(level[9:]):
+                index = 8
+                for label, group in groupby(level[8:]):
                     size = sum(1 for _ in group)
                     merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
                     if i == 0:
@@ -104,12 +104,12 @@ class HandleQueryView(View):
 
             for i, num in enumerate(int_cols):
                 if num:
-                    if i < 9:
+                    if i < 8:
                         columns.append({'type': 'numeric'})
                     else:
                         columns.append({'type': 'numeric', 'renderer': 'renderNumber', 'validator': 'exponential'})
                 else:
-                    if i < 9:
+                    if i < 8:
                         columns.append({'type': 'text'})
                     else:
                         columns.append({'type': 'text', 'renderer': 'renderTarget'})
