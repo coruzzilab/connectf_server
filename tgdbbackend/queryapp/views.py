@@ -6,6 +6,7 @@ from itertools import chain, groupby
 
 import environ
 import pandas as pd
+import numpy as np
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -36,11 +37,22 @@ def save_file(dest_path, f):
     return path
 
 
+def set_tf_query(tf_query, tf_file_paths):
+    i = 0
+    j = 0
+    if tf_query is None:
+        return
+    for i in range(len(tf_query)):
+        if tf_query[i].find("{") != -1:
+            begin = tf_query[i].find("{")
+            end = tf_query[i].find("}")
+            tf_query[i] = tf_query[i][0:begin] + tf_file_paths[j] + tf_query[i][
+                                                                    end + 1:]
+            j += 1
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class HandleQueryView(View):
-    def get(self, request, *args, **kwargs):
-        pass
-
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
 
@@ -68,7 +80,7 @@ class HandleQueryView(View):
                         save_file(dirpath, request.FILES["file-" + str(i)]))
                     i += 1
 
-        self.setTFquery(tf_query, tf_file_paths)
+        set_tf_query(tf_query, tf_file_paths)
 
         output = STATIC_DIR.path(request_id)
 
@@ -82,9 +94,15 @@ class HandleQueryView(View):
             # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
 
             # print(df.columns)
-            int_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(
+            num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(
                 0).isin(['UserList', 'Target Count'])
-            df.iloc[3:, int_cols] = df.iloc[3:, int_cols].apply(partial(pd.to_numeric, errors='coerce'))
+            nums = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
+            # df.iloc[3:, num_cols] = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
+
+            nums = nums.where(~np.isinf(nums), None)
+
+            df.iloc[3:, num_cols] = nums
+
             df = df.where(pd.notnull(df), None)
 
             merged_cells = []
@@ -102,7 +120,7 @@ class HandleQueryView(View):
 
             columns = []
 
-            for i, num in enumerate(int_cols):
+            for i, num in enumerate(num_cols):
                 if num:
                     if i < 8:
                         columns.append({'type': 'numeric'})
@@ -129,21 +147,8 @@ class HandleQueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
+            print(e)
             raise Http404('Query not available') from e
-
-    # ----------------------------------------------------------------------
-    def setTFquery(self, TFquery, tfFilePaths):
-        i = 0
-        j = 0
-        if TFquery is None:
-            return
-        for i in range(len(TFquery)):
-            if TFquery[i].find("{") != -1:
-                begin = TFquery[i].find("{")
-                end = TFquery[i].find("}")
-                TFquery[i] = TFquery[i][0:begin] + tfFilePaths[j] + TFquery[i][
-                                                                    end + 1:]
-                j += 1
 
 
 class CytoscapeJSONView(View):

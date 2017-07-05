@@ -6,7 +6,11 @@ __all__ = ('PandasJSONEncoder',)
 
 class PandasJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
+        if np.isinf(o) or np.isnan(o):
+            return None
         if isinstance(o, np.integer):
             return int(o)
+        if isinstance(o, np.floating):
+            return float(o)
         else:
             return super().default(o)
