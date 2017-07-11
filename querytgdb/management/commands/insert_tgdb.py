@@ -21,7 +21,7 @@ class Command(BaseCommand):
         print(options['datafile'])
         self.insertdata(options['datafile'], options['metadata'], options['dapdatafile'])
 
-
+    # Parent function insertdata
     def insertdata(self, datafile, metafile, dapdatafile):
 
         # read target gene input file- store data in a list
@@ -54,11 +54,13 @@ class Command(BaseCommand):
         if metadict['Experiment_Type'.upper()] == 'Expression'.upper():
             if metadict['Experiment'.upper()] == 'Target'.upper():
                 self.insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+        if metadict['Experiment_Type'.upper()] == 'Binding'.upper():
+                self.insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
 
         if flag_dap== 1:
             self.insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
 
-
+    # FUNC1: insert metadata
     def insert_metadata_analysis(self, metadict):
 
         try:
@@ -82,13 +84,11 @@ class Command(BaseCommand):
                 exist_mdata_tmp = ReferenceId.objects.filter(meta_id__meta_fullid__exact=metadict['Experiment_ID'.upper()].
                                   upper()).distinct().values_list('meta_id', flat=True)
                 existed_exp_id= list(exist_mdata_tmp)[0]
-            else: # Can not submit an experiment as both exp and analysis id already exist
+            else: # Cannot submit an experiment as both exp and analysis id already exist
                 print('\nError: Experiment ID and analysis ID provided in the Metadata file ', metadict['Experiment_ID'.upper()].
                       upper(), ' and ', metadict['Analysis_ID'.upper()].upper(), ' already exists in the database')
                 print('Provide a different Experiment ID or analysis ID to submit your data\nEXIT\n')
                 sys.exit(1)
-
-
 
         # Getting the current metaid and analysisid
         meta_curr_val = metadict['Experiment_ID'.upper()]
@@ -96,7 +96,7 @@ class Command(BaseCommand):
 
         try:
             metaid_max = int(Metadata.objects.all().aggregate(Max('meta_id'))['meta_id__max'])
-            #print('metaid_max= ',metaid_max)
+            # print('metaid_max= ',metaid_max)
             # max analysis id for a particular experiment
             analysisid_max = int(Analysis.objects.all().aggregate(Max('analysis_id'))['analysis_id__max'])
             refid_max = int(ReferenceId.objects.all().aggregate(Max('ref_id'))['ref_id__max'])
@@ -187,7 +187,50 @@ class Command(BaseCommand):
             reg_obj.save()
 
 
-    # FUNC6: Insert edges in Edges table
+    # FUNC3: CHIP-SEQ and DAMID
+    def insert_nodes_binding(self, datalist, metadict, curr_metaid, curr_analysisid, curr_refid):
+
+        # insert TF in TargetDBTf table, if TF already does not exist
+        db_TF = TargetDBTF.objects.values_list('db_tf_agi', flat=True)
+
+        #Insert TargetDB TF in TargetDBTF table
+        exp_TF_name = metadict['Transcription_Factor_ID'.upper()]
+        if not exp_TF_name in list(db_TF):
+            tf_obj= TargetDBTF(db_tf_agi=exp_TF_name)
+            tf_obj.save()
+
+        edgelist = list()
+
+        for i in datalist:
+            edge_name = ':'.join([metadict['Experiment'.upper()], metadict['Binding_Type'.upper()],
+                                  i.split('\t')[2].upper().strip(), i.split('\t')[3].upper().strip()])
+            edgelist.append(edge_name)
+
+        edgelist = list(set(edgelist))
+        self.insert_edges(edgelist)
+
+        TF_id = metadict['Transcription_Factor_ID'.upper()]
+        db_tfid = list(TargetDBTF.objects.filter(db_tf_agi=TF_id).values_list('db_tf_id', flat= True))[0]
+        #print('TF_id= ', TF_id, ', db_tfid= ', db_tfid)
+        for k in datalist:
+            tf_tg_edge = ':'.join([metadict['Experiment'.upper()], metadict['Binding_Type'.upper()],
+                               k.split('\t')[2].upper().strip(), k.split('\t')[3].upper().strip()])
+            inter_obj= Interactions(db_tf_id= TargetDBTF.objects.get(db_tf_agi__exact=TF_id),
+                         target_id= Annotation.objects.get(agi_id= k.split('\t')[0]),
+                         edge_id= Edges.objects.get(edge_name=tf_tg_edge),
+                         ref_id= ReferenceId.objects.get(ref_id=curr_refid))
+            inter_obj.save()
+
+            #pval = '%.1E' % Decimal(float(k.split('\t')[1].upper().strip()))
+            #fc = "%.1f" % float(k.split('\t')[4].upper().strip())
+
+            #reg_obj= Regulation(ref_id= ReferenceId.objects.get(ref_id=curr_refid),
+            #                    ath_id= Annotation.objects.get(agi_id= k.split('\t')[0]),
+            #                    foldchange=str(fc), pvalue=str(pval))
+            #reg_obj.save()
+
+
+    # FUNC4: Insert edges in Edges table
     def insert_edges(self, edgelist):
         all_edges = Edges.objects.values_list('edge_name', flat= True)
         for j in edgelist:
@@ -196,7 +239,7 @@ class Command(BaseCommand):
                 edge_obj.save()
 
 
-    # FUNC7: Insert DAP-seq data if TF is already not in the database
+    # FUNC5: Insert DAP-seq data if TF is already not in the database
     def insert_dapseq(self, tfid, dapdatafile):
 
         dapdata = open(dapdatafile, 'r')

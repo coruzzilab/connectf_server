@@ -10,7 +10,7 @@ Call this module to query the TargetDB database. Returns a pandas dataframe.
 from __future__ import absolute_import
 
 import pandas as pd
-
+import warnings
 from ....models import Interactions, ReferenceId
 
 
@@ -20,6 +20,9 @@ from ....models import Interactions, ReferenceId
 # Query the database
 # @profile
 def queryTFDB(q_TFname, rs_meta_list):
+
+    warnings.simplefilter(action='ignore')
+
     rs = list(Interactions.objects.select_related().filter(db_tf_id__db_tf_agi__exact=q_TFname).values_list(
         'db_tf_id__db_tf_agi', 'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id'))
 

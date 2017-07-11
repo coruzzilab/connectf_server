@@ -16,6 +16,7 @@ class Command(BaseCommand):
         parser.add_argument('-r', '--targetgenes',
                             help='list of genes provided by the user to refine the database output')
 
+
     def handle(self, *args, **options):
         try:
             query_tgdb(options['TFname'], options['edges'], options['metadata'],

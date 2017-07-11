@@ -1,8 +1,9 @@
 import operator
 import os
 import pickle
-import re
+import re, math
 from collections import defaultdict
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -49,12 +50,11 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         else:
             rs_final_res_t = rs_final
 
-        # discard 'TARGET:RNASEQ'/'TARGET:CHIPSEQ' from the edges- This manipulation takes too much time (find other
-        # way)
-        rs_final_trim = rs_final_res_t.groupby(rs_final_res_t.columns, axis=1). \
-            apply(
-            lambda x: x.apply(lambda y: ','.join([':'.join(l.split(':')[2:]) for l in y if pd.notnull(l)]), axis=1))
+        # discard 'TARGET:RNASEQ'/'TARGET:CHIPSEQ' from the edges
+        rs_final_res_t, chipdata_summary = tabular(rs_final_res_t)
+        rs_final_trim= rs_final_res_t.replace({'TARGET:RNASEQ:':''},regex=True)
         # rs_final_trim.replace('', np.nan, inplace=True)
+
         ############## Create a df with p-value and FC index=AGI_ID
         res_refid_dict = dict()  # referenceid-metaid analysis id mapping
         refid_tf_mapping = defaultdict(list)  # referenceid-tf_name mapping
@@ -73,6 +73,9 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
         # subset the df for add function. Add does not work on df with different dimensions
         regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
+        # for add to work two dataframes should have same dimensions
+        # If for some of the datasets pval and fc is not available. include those as empty columns
+        #regulation_data_subset['AT4G24020_AS050515_CHIPSEQ_AT4G24020_MACS2_FDR0_05_1']= ''
 
         # get the dap-seq data from the database
         dap_data = pd.DataFrame(
@@ -105,26 +108,26 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
             dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
                                                  dap_data_pivot.columns.tolist() for k in l}, axis=1)
 
-        # print('dap_data_pivot_replaced= ', dap_data_pivot_replaced)
-        # use add func to add pvals and fold change.
-        # print('rs_final_trim.shape= ',rs_final_trim.index)
-        # print('regulation_data_subset.shape= ',regulation_data_subset.index)
-        # ***** Make sure it adds data based on indexes (geneids) not by index position.
-        rs_final_trim = rs_final_trim.astype(str).add('||')
-        # print('rs_final_trim= ',rs_final_trim)
-        rs_reg_df_merge_tmp = rs_final_trim.add(regulation_data_subset.values, axis='index')
-        # print('rs_reg_df_merge_tmp= ',rs_reg_df_merge_tmp.shape)
-        # test_df= pd.merge([rs_reg_df_merge, dap_data_pivot], how="left", left_index= True, indicator=True)
+        for col_trim in rs_final_trim.columns.tolist():
+            if col_trim in regulation_data_subset.columns.tolist():
+                rs_final_trim[col_trim] = rs_final_trim[col_trim].astype(str).add('||').\
+                                          add(regulation_data_subset[col_trim].values.astype(str), axis='index')
+
+        # find an alternative for this
+        rs_final_trim.replace('None||nan', '', inplace=True)
+        rs_final_trim.replace('None||None', '', inplace=True)
+        rs_final_trim.replace('nan||nan', '', inplace=True)
+        rs_final_trim.replace('nan||None', '', inplace=True)
+
         if not dap_data_pivot.empty:
-            rs_reg_df_merge = rs_reg_df_merge_tmp.merge(dap_data_pivot_replaced, how='left',
+            rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
                                                         left_index=True, right_index=True)
         else:
-            rs_reg_df_merge = rs_reg_df_merge_tmp
-        # print('rs_reg_df_merge= ',rs_reg_df_merge)
+            rs_reg_df_merge = rs_final_trim
 
         new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid = create_tabular(output,
                                                                                                  rs_reg_df_merge,
-                                                                                                 targetgenes,
+                                                                                                 targetgenes, chipdata_summary,
                                                                                                  targets_mullist_dict)
 
         # dump rs_final_res_t to a pickle object. This object will be used by create_sif to create a sif file
@@ -263,10 +266,10 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
             # grouped = tf_data.groupby(['TARGET', 'REFID'], axis=0)
             # rs_gp = pd.DataFrame(grouped.EDGE.apply(lambda x: ','.join(x)).unstack('REFID'))
             ## option 2
-            # rs_gp = tf_data.pivot_table(index='TARGET',columns='REFID',values='EDGE',aggfunc=lambda x: ','.join(x))
-
+            rs_gp = tf_data.pivot_table(index='TARGET',columns='REFID',values='EDGE',aggfunc=lambda x: ','.join(x))
             ## option 3 take only 0.1 sec compared to 7 sec with pivot_table
-            rs_gp = tf_data.pivot(index='TARGET', columns='REFID', values='EDGE')
+            # pivot does not support aggfunc
+            #rs_gp = tf_data.pivot(index='TARGET', columns='REFID', values='EDGE')
 
             if edges:  # If edges query are provided by user
                 # make a TMP column in DF to tackle if an edges asked is not present in dbase for a TF
@@ -383,8 +386,8 @@ def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
 
 ##################################
 # Generate tabular output
-# @profile
-def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
+#@profile
+def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets_mullist_dict):
     mid_tfname_dict = dict()  # dict contains metaid to genename mapping+TF target counts
     tmp_mid_counts = dict()  # dict will be used as a reference for sorting final df based on targetcounts
     mid_tfname = dict()  # dict contains metaid to genename mapping
@@ -393,15 +396,15 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     # get the total number of genes targeted by a TF (all target genes in database)
     exp_count = querydb_exp_count(rs_final_res.columns.tolist())
     # counting number of target genes in each column (target genes as per user query)
-    rs_final_res.replace('', np.nan, inplace=True)  # without this replacement it will count '' as an element
-    rs_final_res.replace(0, np.nan, inplace=True)  # without this replacement it will count 0 as an element
+    rs_final_res.replace('', np.nan, inplace=True) # without this replacement it will count '' as an element
+    rs_final_res.replace(0, np.nan, inplace=True) # without this replacement it will count 0 as an element
 
     count_series = rs_final_res.count(axis=0)
     db_metadict = defaultdict(dict)
     # get all the metadata in a nested dict: this dict will also be used to write metadata to avoid re-query the db
     list_refid = [x.split('_')[-1] for x in rs_final_res.columns.tolist() if not x.endswith('OMalleyetal_2016')]
     # print('list_refid= ',list_refid)
-    meta_info = list(Metadata.objects.select_related().filter(referenceid__ref_id__in=list_refid). \
+    meta_info = list(Metadata.objects.select_related().filter(referenceid__ref_id__in=list_refid).\
                      values_list('meta_fullid', 'metaiddata__meta_type', 'metaiddata__meta_value'))
 
     for i in meta_info:
@@ -437,11 +440,9 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
                 else:
                     tmp_rnaseq_summary[i_mid] = 'Induced-0' + ' Repressed-0'
 
-    # sort metaids based on number of targets hit by a TF
-    # sorted_mid_counts = sorted(list(tmp_mid_counts.items()),key=operator.itemgetter(1), reverse=True)
+    # {**x, **y} expression is for combining two dictionaries. Here I combine chipseq and rna-seq summary
     mid_annotate_df = pd.DataFrame(
-        data=[mid_tfname_dict, mid_genotype_control, tmp_rnaseq_summary])  # dump mid_tfname_dict to a df
-    # tmp_chip_coding = pd.DataFrame(data=chipdata_summary,index=[' '])  # dump chipdata_summary to a df
+        data=[mid_tfname_dict, mid_genotype_control, {**chipdata_summary, **tmp_rnaseq_summary}])  # dump mid_tfname_dict to a df
 
     df_genelistid = pd.DataFrame.from_dict(targets_mullist_dict, orient='index')
 
@@ -508,9 +509,9 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
             # Split 'Analysis' by || into new columns
             splitted_analysis = rs_final_res1[col_name].str.split('\|\|', expand=True)
             # The new column names are 0, 1, 2. Let's rename them.
-            splitted_analysis.columns = ['Edges', 'Pvalue', 'Foldchange']
+            splitted_analysis.columns = ['Edges', 'Pvalue', 'Log2FC']
             splitted_analysis['Pvalue'][splitted_analysis.Edges == ''] = np.nan
-            splitted_analysis['Foldchange'][splitted_analysis.Edges == ''] = np.nan
+            splitted_analysis['Log2FC'][splitted_analysis.Edges == ''] = np.nan
             # Recreate MultiIndex
             splitted_analysis.columns = pd.MultiIndex.from_tuples(
                    [(col_name[0], col_name[1], c) for c in splitted_analysis.columns])
@@ -521,6 +522,8 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
             third_level= ''
             if col_name[1] == 'OMalleyetal_2016':
                 third_level= 'DAPEdge'
+            else:
+                third_level= 'Edges'
             tmp_df = pd.DataFrame(rs_final_res1[col_name])
             tmp_df.columns = pd.MultiIndex.from_tuples(
                 [(col_name[0], col_name[1], third_level)])
@@ -564,15 +567,18 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
     # Change column order
     multi_cols = new_res_df.columns.tolist()
     # print('multi_cols= ',multi_cols)
-    list_mid_aid_sorted = list(zip(*sorted_mid_counts))[0]
-    # print('list_mid_aid_sorted= ',list_mid_aid_sorted)
-    list_mid_sorted = [('_'.join(x.split('_')[0:3]), ('_'.join(x.split('_')[3:]))[:-2][::-1].
-                        replace('_', '.', 1)[::-1]) for x in list_mid_aid_sorted]
+    list_mid_sorted = [('_'.join(x.split('_')[0:3])) for x in list(zip(*sorted_mid_counts))[0]]
+
+    list_mid_sorted_mcols= list()
+    for i_sort in list_mid_sorted:
+        for x_unsort in multi_cols:
+            if i_sort in x_unsort:
+                list_mid_sorted_mcols.append(x_unsort)
+
     # rearranging the columns: Columns not sorted at the moment
     multi_cols = [('Full Name', 'Gene Full Name', ' '), ('Family', 'Gene Family', ' '),
                   ('Type', 'Gene Type', ' '), ('Name', 'Gene Name', ' '), ('List', 'UserList', ' '),
-                  ('UserList', 'Count', ' '), ('ID', 'GeneID', 'GeneID')] + multi_cols[-1:] + multi_cols[1:-7]
-
+                  ('UserList', 'Count', ' '), ('ID', 'GeneID', 'GeneID')] + multi_cols[-1:] + list_mid_sorted_mcols
     new_res_df = new_res_df[multi_cols]
 
     # na_position='first' to leave the header cols (na.nan values) sorted first
@@ -583,6 +589,10 @@ def create_tabular(outfile, rs_final_res, targetgenes, targets_mullist_dict):
 
     # ********************** uncomment this, ix is deprecated to use. Find alternative to this.
     new_res_df.ix[new_res_df[('ID', 'GeneID', 'GeneID')].isin([0, 1, 2]), ('ID', 'GeneID', 'GeneID')] = np.NaN
+
+    #writer = pd.ExcelWriter('output.xlsx')
+    #new_res_df.to_excel(writer, 'Sheet1')
+    #writer.save()
 
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
         pk_output = outfile + '_pickle/tabular_output.pkl'
@@ -600,7 +610,7 @@ def querydb_exp_count(rs_final_res_cols):
     # print('rs_final_res_cols= ',rs_final_res_cols)
     for id_val in rs_final_res_cols:
         if not id_val.endswith('OMalleyetal_2016'):
-            rs_count = Regulation.objects.filter(ref_id=id_val.split('_')[-1]).values_list('ath_id').distinct().count()
+            rs_count = Interactions.objects.filter(ref_id=id_val.split('_')[-1]).values_list('target_id_id').distinct().count()
             exp_count[id_val] = int(rs_count)
 
     return exp_count
@@ -616,12 +626,6 @@ def include_targetcount(new_res_df):
     new_tmp_level_sum.replace('', np.nan, inplace=True)
     tmp_level_sum = (
         new_tmp_level_sum.notnull() * 1)  # convert data to binary format to count the Target_count correctly
-    '''
-    writer = pd.ExcelWriter('output.xlsx')
-    new_tmp_level_sum.to_excel(writer, 'Sheet1')
-    tmp_level_sum.to_excel(writer, 'Sheet2')
-    writer.save()
-    '''
 
     tmp_level_sum.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList'],
                        axis=1, inplace=True)  # drop unecsseary columns
@@ -629,6 +633,7 @@ def include_targetcount(new_res_df):
     level_count = tmp_level_sum.sum(level=0, axis=1)
 
     total_no_exp = '(' + str(len(list(set(tmp_level_sum.columns.get_level_values(0))))) + ')'
+
     new_res_df['Target Count', total_no_exp, ''] = (tmp_level_sum).sum(axis=1)
 
     new_res_df['Target Count', total_no_exp, ''] = new_res_df['Target Count', total_no_exp, ''].ix[3:]. \
@@ -637,6 +642,59 @@ def include_targetcount(new_res_df):
         apply(lambda x: '{: >4}'.format(x))
 
     return new_res_df, total_no_exp
+
+
+###################################################################
+# Tabular function
+def tabular(rs_final_res_t):
+    # For targetdbv2 chipseq data for one experiment (for diff time-points) is in a single column
+    chipseq_cols = [col_final_df for col_final_df in rs_final_res_t if
+                    'CHIPSEQ' in col_final_df]
+    # In columns with chip-datasimply replacing all non digits with comma
+    # and then stripping the commas at both ends of the strings
+    for cs_cols in chipseq_cols:
+        rs_final_res_t[cs_cols]= rs_final_res_t[cs_cols].str.replace(r"\D+", ",").str.strip(",")
+    # creating summary for each ChIP-seq column
+    chipdata_summary = dict()
+    for c_c in set(chipseq_cols):
+        all_timepoints = pd.Series(
+            rs_final_res_t[c_c].values.ravel()).dropna().unique().tolist()
+        tmp_summary= list()
+        for k_c_c in list(set(all_timepoints)):
+            if ',' in k_c_c:
+                tmp_summary.extend([int(x_k) for x_k in k_c_c.split(',')])
+            else:
+                tmp_summary.append(int(k_c_c))
+        chipdata_summary[c_c] = ':'.join(str(k) for k in sorted(set(tmp_summary)))
+
+    for col_chip_dict in chipdata_summary:
+        binary_code_dict = dict()
+        count_ele = len(chipdata_summary[col_chip_dict].split(':'))
+        for flag, values in enumerate(chipdata_summary[col_chip_dict].split(':')):
+            binary_code_dict[values] = 10 ** ((count_ele - flag) - 1)
+        rs_final_res_t[col_chip_dict].replace(np.nan, '-', inplace=True)
+        rs_final_res_t[col_chip_dict + '_binary'] = rs_final_res_t.apply(
+            lambda x: convert_to_binary(binary_code_dict, x[col_chip_dict]),
+            axis=1)
+        no_zero = ''.join(['0'] * count_ele)
+
+        rs_final_res_t[col_chip_dict] = rs_final_res_t[col_chip_dict + '_binary']
+
+        rs_final_res_t.drop(col_chip_dict + '_binary', axis=1, inplace=True)
+        rs_final_res_t[col_chip_dict].replace('-', np.nan, inplace=True)
+
+    return rs_final_res_t, chipdata_summary
+
+
+###################################################################
+# function to convert chip-seq experiment values to binary format
+def convert_to_binary(dct, entry):
+    out = 0
+    if not (entry==None or entry=='-'):
+        for i in entry.split(','):
+            if len(i) > 0:
+                out += dct[i]
+        return str(out).zfill(len(dct))
 
 
 ###################################################

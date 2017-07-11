@@ -201,9 +201,9 @@ def read_pickled_metadata(pickledir, writer):
 def create_sif(pickledir, output):
     # read the pickled dataframe
     pickled_sifdf_tmp = pd.read_pickle(pickledir + '/' + 'df_sif.pkl')
+
     # Before creating the sif file exclude the dap-seq column. If required later, find a way to add the dap-seq
-    # validation
-    # column to the .tbl files
+    # validation column to the .tbl files
     keep_cols = list()
     for val_col in pickled_sifdf_tmp.columns:
         if not val_col.endswith('_OMalleyetal_2016'):
@@ -211,17 +211,12 @@ def create_sif(pickledir, output):
 
     pickled_sifdf = pickled_sifdf_tmp[keep_cols]
 
-    # Before creating the sif file I combine chipseq-data from different time-points (from one exp) into one column.
-    # Retains only one edge for multiple time-points: e.g.:Target:CHIPSEQ:0,Target:CHIPSEQ:5 will be replaced by
-    # Target:CHIPSEQ
-    # pickled_sifdf.columns= [''.join(x.split('_')[:3]) for x in pickled_sifdf.columns.tolist()]
     # ** Very Slow (10 sec) Not sure if I need this anymore
     sif_rs_tabular = pickled_sifdf.groupby(pickled_sifdf.columns, axis=1). \
         apply(lambda x: x.apply(lambda y: ','.join([l for l in y if pd.notnull(l)]), axis=1))
+
     sif_rs_tabular.replace('', pd.np.nan, inplace=True)  # purpose of replacing spaces with nan??
 
-    # replace Target:CHIPSEQ:0, Target:CHIPSEQ:5 with Target:CHIPSEQ
-    sif_rs_tabular.replace({'^TARGET:CHIPSEQ.*': 'TARGET:CHIPSEQ'}, regex=True, inplace=True)
     stacked_tmp_df = pd.DataFrame(
         sif_rs_tabular.stack().reset_index())  # stack converts df columns into stacked rows
     stacked_tmp_df.columns = ['TARGET', 'TF', 'EDGE']  # assign new columns
@@ -229,20 +224,29 @@ def create_sif(pickledir, output):
     # extract experimentID from experimentID_analysisID
     stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: '_'.join(x.split('_')[:3]))
     stacked_tmp_df = stacked_tmp_df.drop_duplicates()  # dropping duplicates to solve the problem of multiple
-    # representation of
-    # same experiment (with multiple analysis ID) and chipseq multiple time-points
+    # representation of same experiment (with multiple analysis ID) and chipseq multiple time-points
     stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: x.split('_')[0])  # extract TFname from expID
 
     tf_list = list(set(stacked_tmp_df['TF'].tolist()))
     reordered_tmp_df = pd.DataFrame(stacked_tmp_df, columns=['TF', 'EDGE', 'TARGET'])  # reorder the df
+
     # following is separating pvalue and fold-change from EDGE column.
     # Regular expression parses the code and assigns the column names at the same time
     # For example '(?P<Col2>.*)\|{2,}' will grab everything up to the first double | and call it Col2
     # regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\((?P<FOLDCHANGE>.*)\)'
+
+    # First for chipseq or any other data where edge does not have a pval and fc. Simply add the pattern '||-||-'
+    # this will reflect pval and fc with -
+    reordered_tmp_df.EDGE= reordered_tmp_df.EDGE.apply(lambda x: x+'||-||-' if not '||' in x else x)
     regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\|{2,}(?P<FOLDCHANGE>.*)'
-    reordered_tmp_df = reordered_tmp_df.assign(
-        **reordered_tmp_df.EDGE.str.extract(regex, expand=True).to_dict('list'))
-    reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != '']  # remove the edges that are not linked
+    reordered_tmp_df = reordered_tmp_df.assign(**reordered_tmp_df.EDGE.str.
+                                               extract(regex, expand=True).to_dict('list'))
+
+    # regular expression '^[01]+$' denotes that the string should only contain binary number
+    # ^ means start with 0 or 1, [01]+ contains only 0 and 1, $ means ends with 0 or 1
+    reordered_tmp_df['EDGE'].replace(to_replace='^[01]+$', value='CHIPSEQ', regex=True, inplace=True)
+
+    #reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != '']  # remove the edges that are not linked
     # ALTERNATIVE
     # reordered_tmp_df.EDGE.str.extract(regex, expand=True).combine_first(reordered_tmp_df)
 
