@@ -68,14 +68,12 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
                  values_list('ref_id', 'ath_id__agi_id', 'foldchange', 'pvalue'))
             , columns=['r_refid', 'r_agiid', 'r_fc', 'r_p'])
 
-        regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
-        regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
-        regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
-        # subset the df for add function. Add does not work on df with different dimensions
-        regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
-        # for add to work two dataframes should have same dimensions
-        # If for some of the datasets pval and fc is not available. include those as empty columns
-        #regulation_data_subset['AT4G24020_AS050515_CHIPSEQ_AT4G24020_MACS2_FDR0_05_1']= ''
+        if not regulation_data.empty:
+            regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
+            regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
+            regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
+            # subset the df for add function. Add does not work on df with different dimensions
+            regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
 
         # get the dap-seq data from the database
         dap_data = pd.DataFrame(
@@ -108,16 +106,19 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
             dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
                                                  dap_data_pivot.columns.tolist() for k in l}, axis=1)
 
-        for col_trim in rs_final_trim.columns.tolist():
-            if col_trim in regulation_data_subset.columns.tolist():
-                rs_final_trim[col_trim] = rs_final_trim[col_trim].astype(str).add('||').\
-                                          add(regulation_data_subset[col_trim].values.astype(str), axis='index')
+        if not regulation_data.empty:
+            for col_trim in rs_final_trim.columns.tolist():
+                if col_trim in regulation_data_subset.columns.tolist():
+                    rs_final_trim[col_trim] = rs_final_trim[col_trim].astype(str).add('||').\
+                                              add(regulation_data_subset[col_trim].values.astype(str), axis='index')
 
         # find an alternative for this
         rs_final_trim.replace('None||nan', '', inplace=True)
         rs_final_trim.replace('None||None', '', inplace=True)
         rs_final_trim.replace('nan||nan', '', inplace=True)
         rs_final_trim.replace('nan||None', '', inplace=True)
+        rs_final_trim.replace('||None', '', inplace=True)
+        rs_final_trim.replace('||nan', '', inplace=True)
 
         if not dap_data_pivot.empty:
             rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
@@ -247,6 +248,7 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
     tf_mid_map = defaultdict(list)
 
     for q_tf in q_tf_list:  # fetch data for each TF in a separate DF
+        #print('q_tf= ',q_tf)
         edge_mid_map = defaultdict(list)
         # Combine all the TF dataframes after this loop
         tf_data = module_query.queryTFDB(q_tf, rs_meta_list)
@@ -266,10 +268,11 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
             # grouped = tf_data.groupby(['TARGET', 'REFID'], axis=0)
             # rs_gp = pd.DataFrame(grouped.EDGE.apply(lambda x: ','.join(x)).unstack('REFID'))
             ## option 2
-            rs_gp = tf_data.pivot_table(index='TARGET',columns='REFID',values='EDGE',aggfunc=lambda x: ','.join(x))
+            #rs_gp = tf_data.pivot_table(index='TARGET',columns='REFID',values='EDGE',aggfunc=lambda x: ','.join(x))
+            #print('rs_gp= ',rs_gp)
             ## option 3 take only 0.1 sec compared to 7 sec with pivot_table
             # pivot does not support aggfunc
-            #rs_gp = tf_data.pivot(index='TARGET', columns='REFID', values='EDGE')
+            rs_gp = tf_data.pivot(index='TARGET', columns='REFID', values='EDGE')
 
             if edges:  # If edges query are provided by user
                 # make a TMP column in DF to tackle if an edges asked is not present in dbase for a TF
@@ -277,7 +280,6 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
                 # for values in this column and get false as a result of expression
                 rs_gp['TMP'] = None
                 edgequery = create_edges_query(edges, edgelist, edge_mid_map)
-
                 rs_gp.query(edgequery, inplace=True)  # query the df of each TF for edges
                 cols_discard_rsgp = list()
                 for rs_gp_cols in rs_gp.columns.tolist():
@@ -285,10 +287,16 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
                         cols_discard_rsgp.append(rs_gp_cols)
                 rs_gp.drop(cols_discard_rsgp, 1, inplace=True)
 
-            if 'TMP' in rs_gp.columns:  # discard the tmp column from the df after query
-                rs_gp.drop('TMP', 1, inplace=True)
-            if not rs_gp.empty:  # if dataframe for a TF is not empty after query then append it to the multiple TFs
-                tf_frames.append(rs_gp)  # append all the dataframes to a list
+            for x_col in rs_gp.columns:
+                if 'CHIPSEQ' in x_col:
+                    rs_gp.rename(columns={x_col: '_'.join(x_col.split('_')[:-1])}, inplace=True)
+            rs_gp_new = rs_gp.groupby(rs_gp.columns, axis=1).apply(
+                lambda x: x.apply(lambda y: ','.join([l for l in y if l is not None]),axis=1))
+
+            if 'TMP' in rs_gp_new.columns:  # discard the tmp column from the df after query
+                rs_gp_new.drop('TMP', 1, inplace=True)
+            if not rs_gp_new.empty:  # if dataframe for a TF is not empty after query then append it to the multiple TFs
+                tf_frames.append(rs_gp_new)  # append all the dataframes to a list
 
     if tf_frames:
         rs_pd_all = pd.concat(tf_frames, axis=1, join='outer')  # join= 'outer' represents union of multiple df
@@ -298,7 +306,7 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
             rs_pd_all.query(tfquery, inplace=True)  # query the dataframe for intersection and complex query expression
     else:  # if no data is fetched for the given query then raise an exception and exit
         rs_pd_all = pd.DataFrame(columns=['No_data'], dtype='float')
-
+    #print('rs_pd_all.cols= ', rs_pd_all.columns.tolist())
     return rs_pd_all
 
 
@@ -398,8 +406,12 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     # counting number of target genes in each column (target genes as per user query)
     rs_final_res.replace('', np.nan, inplace=True) # without this replacement it will count '' as an element
     rs_final_res.replace(0, np.nan, inplace=True) # without this replacement it will count 0 as an element
-
+    rs_final_res.fillna(value=np.nan, inplace=True)
+    wr= pd.ExcelWriter('rs_final_res.xlsx')
+    rs_final_res.to_excel(wr,'Sheet')
+    wr.close()
     count_series = rs_final_res.count(axis=0)
+    #print('rs_final_res= ',rs_final_res)
     db_metadict = defaultdict(dict)
     # get all the metadata in a nested dict: this dict will also be used to write metadata to avoid re-query the db
     list_refid = [x.split('_')[-1] for x in rs_final_res.columns.tolist() if not x.endswith('OMalleyetal_2016')]
@@ -663,7 +675,7 @@ def tabular(rs_final_res_t):
         for k_c_c in list(set(all_timepoints)):
             if ',' in k_c_c:
                 tmp_summary.extend([int(x_k) for x_k in k_c_c.split(',')])
-            else:
+            elif k_c_c:
                 tmp_summary.append(int(k_c_c))
         chipdata_summary[c_c] = ':'.join(str(k) for k in sorted(set(tmp_summary)))
 
@@ -682,6 +694,7 @@ def tabular(rs_final_res_t):
 
         rs_final_res_t.drop(col_chip_dict + '_binary', axis=1, inplace=True)
         rs_final_res_t[col_chip_dict].replace('-', np.nan, inplace=True)
+        rs_final_res_t[col_chip_dict].replace(no_zero, np.nan, inplace=True)
 
     return rs_final_res_t, chipdata_summary
 

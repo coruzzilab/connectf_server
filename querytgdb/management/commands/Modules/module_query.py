@@ -36,14 +36,10 @@ def queryTFDB(q_TFname, rs_meta_list):
     # print('list_ref_id= ',list_ref_id)
     meta_ref = ReferenceId.objects.select_related().filter(ref_id__in=list_ref_id). \
         values_list('ref_id', 'meta_id__meta_fullid', 'analysis_id__analysis_fullid')
-    # print('meta_ref= ',meta_ref)
-    # print('meta_ref= ', meta_ref)
 
     meta_ref_dict = dict()
     for val_m in meta_ref:
         meta_ref_dict[val_m[0]] = '_'.join([val_m[1], val_m[2], str(val_m[0])])
-
-    # print('meta_ref_dict= ',meta_ref_dict)
 
     # Pandas query func throws an error if columns names are numbers so I had to include meta_id in RefID
     # column name '1', '1_2', '1_a' etc. will not work
@@ -51,6 +47,7 @@ def queryTFDB(q_TFname, rs_meta_list):
         rs_pd.REFID.replace(to_replace=meta_ref_dict, inplace=True)
         # pvalues '.' are replaces because pandas does not allow to use these chars with pandas.query
         rs_pd['REFID'] = rs_pd['REFID'].str.replace('.', '_')
-
-    # print('rs_pd= ',rs_pd)
+        # attach time point with each Chipseq referenceid
+        pattern= rs_pd.REFID.str.split('_').str.get(2) == 'CHIPSEQ'
+        rs_pd.loc[pattern,'REFID'] = rs_pd.loc[pattern,'REFID'] + '_' +rs_pd.loc[pattern,'EDGE'].str.split(':').str.get(2)
     return rs_pd
