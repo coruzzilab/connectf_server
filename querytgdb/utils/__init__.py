@@ -113,12 +113,14 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
                                               add(regulation_data_subset[col_trim].values.astype(str), axis='index')
 
         # find an alternative for this
+        # None are returned by the mysql queries and nan included by pandas
         rs_final_trim.replace('None||nan', '', inplace=True)
         rs_final_trim.replace('None||None', '', inplace=True)
         rs_final_trim.replace('nan||nan', '', inplace=True)
         rs_final_trim.replace('nan||None', '', inplace=True)
         rs_final_trim.replace('||None', '', inplace=True)
         rs_final_trim.replace('||nan', '', inplace=True)
+        rs_final_trim.replace(to_replace='^nan\|\|', value=np.nan, regex=True, inplace=True)
 
         if not dap_data_pivot.empty:
             rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
@@ -407,9 +409,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     rs_final_res.replace('', np.nan, inplace=True) # without this replacement it will count '' as an element
     rs_final_res.replace(0, np.nan, inplace=True) # without this replacement it will count 0 as an element
     rs_final_res.fillna(value=np.nan, inplace=True)
-    wr= pd.ExcelWriter('rs_final_res.xlsx')
-    rs_final_res.to_excel(wr,'Sheet')
-    wr.close()
+
     count_series = rs_final_res.count(axis=0)
     #print('rs_final_res= ',rs_final_res)
     db_metadict = defaultdict(dict)
