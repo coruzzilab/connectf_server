@@ -113,7 +113,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
                                               add(regulation_data_subset[col_trim].values.astype(str), axis='index')
 
         # find an alternative for this
-        # None are returned by the mysql queries and nan included by pandas
+        # None are retruned by the mysql queries and nan included by pandas
         rs_final_trim.replace('None||nan', '', inplace=True)
         rs_final_trim.replace('None||None', '', inplace=True)
         rs_final_trim.replace('nan||nan', '', inplace=True)
@@ -309,6 +309,7 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
     else:  # if no data is fetched for the given query then raise an exception and exit
         rs_pd_all = pd.DataFrame(columns=['No_data'], dtype='float')
     #print('rs_pd_all.cols= ', rs_pd_all.columns.tolist())
+
     return rs_pd_all
 
 
@@ -516,26 +517,37 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     final_df = pd.DataFrame()
 
     for col_name in rs_final_res1:
-        # checks if an experiment contains fold change and pvlaues: marked with ||
-        if rs_final_res1[col_name].str.contains('\|\|').any():
-            # Split 'Analysis' by || into new columns
-            splitted_analysis = rs_final_res1[col_name].str.split('\|\|', expand=True)
-            # The new column names are 0, 1, 2. Let's rename them.
-            splitted_analysis.columns = ['Edges', 'Pvalue', 'Log2FC']
-            splitted_analysis['Pvalue'][splitted_analysis.Edges == ''] = np.nan
-            splitted_analysis['Log2FC'][splitted_analysis.Edges == ''] = np.nan
-            # Recreate MultiIndex
-            splitted_analysis.columns = pd.MultiIndex.from_tuples(
-                   [(col_name[0], col_name[1], c) for c in splitted_analysis.columns])
-            # Concatenate the new columns to the final_df
-            final_df = pd.concat(objs=[final_df, splitted_analysis], axis=1)
-        # If an experiment does not have fold change and p-value it does not split
-        else:
-            third_level= ''
-            if col_name[1] == 'OMalleyetal_2016':
-                third_level= 'DAPEdge'
+        if not rs_final_res1[col_name].isnull().all():
+            # checks if an experiment contains fold change and pvlaues: marked with ||
+            if rs_final_res1[col_name].str.contains('\|\|').any():
+                # Split 'Analysis' by || into new columns
+                splitted_analysis = rs_final_res1[col_name].str.split('\|\|', expand=True)
+                # The new column names are 0, 1, 2. Let's rename them.
+                splitted_analysis.columns = ['Edges', 'Pvalue', 'Log2FC']
+                splitted_analysis['Pvalue'][splitted_analysis.Edges == ''] = np.nan
+                splitted_analysis['Log2FC'][splitted_analysis.Edges == ''] = np.nan
+                # Recreate MultiIndex
+                splitted_analysis.columns = pd.MultiIndex.from_tuples(
+                       [(col_name[0], col_name[1], c) for c in splitted_analysis.columns])
+                # Concatenate the new columns to the final_df
+                final_df = pd.concat(objs=[final_df, splitted_analysis], axis=1)
+            # If an experiment does not have fold change and p-value it does not split
             else:
-                third_level= 'Edges'
+                third_level= ''
+                if col_name[1] == 'OMalleyetal_2016':
+                    third_level= 'DAPEdge'
+                else:
+                    third_level= 'Edges'
+                tmp_df = pd.DataFrame(rs_final_res1[col_name])
+                tmp_df.columns = pd.MultiIndex.from_tuples(
+                    [(col_name[0], col_name[1], third_level)])
+                # print('tmp_df= ',tmp_df.columns)
+                final_df = pd.concat(objs=[final_df, tmp_df], axis=1)
+        else:
+            if col_name[1] == 'OMalleyetal_2016':
+                third_level = 'DAPEdge'
+            else:
+                third_level = 'Edges'
             tmp_df = pd.DataFrame(rs_final_res1[col_name])
             tmp_df.columns = pd.MultiIndex.from_tuples(
                 [(col_name[0], col_name[1], third_level)])
@@ -601,10 +613,6 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
 
     # ********************** uncomment this, ix is deprecated to use. Find alternative to this.
     new_res_df.ix[new_res_df[('ID', 'GeneID', 'GeneID')].isin([0, 1, 2]), ('ID', 'GeneID', 'GeneID')] = np.NaN
-
-    #writer = pd.ExcelWriter('output.xlsx')
-    #new_res_df.to_excel(writer, 'Sheet1')
-    #writer.save()
 
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
         pk_output = outfile + '_pickle/tabular_output.pkl'
