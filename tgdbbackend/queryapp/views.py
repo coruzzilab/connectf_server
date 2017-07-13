@@ -5,8 +5,8 @@ from functools import partial
 from itertools import chain, groupby
 
 import environ
-import pandas as pd
 import numpy as np
+import pandas as pd
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -86,18 +86,10 @@ class HandleQueryView(View):
 
         try:
             df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, str(output))
-            # df = pd.read_pickle("testdf.pickle")
-            # out_metadata_df = pd.read_pickle("testmeta.pickle")
 
-            # df_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
-
-            # res = [{'columns': df_columns, 'data': df.to_json(orient='index')}]
-
-            # print(df.columns)
-            num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Foldchange']) | df.columns.get_level_values(
+            num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Log2FC']) | df.columns.get_level_values(
                 0).isin(['UserList', 'Target Count'])
             nums = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
-            # df.iloc[3:, num_cols] = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
 
             nums = nums.where(~np.isinf(nums), None)
 
@@ -147,7 +139,6 @@ class HandleQueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
-            print(e)
             raise Http404('Query not available') from e
 
 
