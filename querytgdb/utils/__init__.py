@@ -15,6 +15,7 @@ __all__ = ('query_tgdb',)
 
 
 def query_tgdb(TFquery, edges, metadata, targetgenes, output):
+
     # check if the command line arguments provided are ok
     if TFquery is None:
         raise TypeError('Either generate a table for all the TFs (--t= OR [ALLTF] \n or '
@@ -263,7 +264,13 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
                 edge_mid_map[k] = list(set(g['REFID']))
 
             for i, j in tf_data.groupby('TF'):
-                tf_mid_map[i].extend(list(set(j['REFID'])))
+                refidlist_eachTF= list()
+                for val_test_chip in list(set(j['REFID'])):
+                    if 'CHIPSEQ' in val_test_chip:
+                        refidlist_eachTF.append('_'.join(val_test_chip.split('_')[:-1]))
+                    else:
+                        refidlist_eachTF.append(val_test_chip)
+                tf_mid_map[i].extend(list(set(refidlist_eachTF)))
 
             # apply and pivot_table are slower than pivot
             ## option 1
