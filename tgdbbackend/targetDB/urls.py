@@ -11,4 +11,5 @@ router.register(r'edges', views.EdgesValueDistinctViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
+    url(r'^feedback/', include('feedback.urls'))
 ]
