@@ -49,7 +49,7 @@ def write_to_excel(writer, new_res_df):
     header_dict = defaultdict(list)
     id_headerdict = defaultdict(list)
     header_df = new_res_df.iloc[0:3]
-    header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'Target Count'],
+    header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'TF Count'],
                    axis=1, inplace=True)  # drop unecsseary columns
 
     #####################################################################################

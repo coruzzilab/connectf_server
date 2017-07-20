@@ -613,7 +613,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     new_res_df = new_res_df[multi_cols]
 
     # na_position='first' to leave the header cols (na.nan values) sorted first
-    new_res_df.sort_values([('Target Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
+    new_res_df.sort_values([('TF Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
 
     # new_res_df[('Ind', 'Index','')] = np.where(new_res_df[('Ind', 'Index','')] > 0, 17)
     # new_res_df.loc[new_res_df.Ind<0] = np.nan
@@ -661,11 +661,11 @@ def include_targetcount(new_res_df):
 
     total_no_exp = '(' + str(len(list(set(tmp_level_sum.columns.get_level_values(0))))) + ')'
 
-    new_res_df['Target Count', total_no_exp, ''] = (tmp_level_sum).sum(axis=1)
+    new_res_df['TF Count', total_no_exp, ''] = (tmp_level_sum).sum(axis=1)
 
-    new_res_df['Target Count', total_no_exp, ''] = new_res_df['Target Count', total_no_exp, ''].ix[3:]. \
+    new_res_df['TF Count', total_no_exp, ''] = new_res_df['TF Count', total_no_exp, ''].ix[3:]. \
         astype(np.int64).astype(str)
-    new_res_df['Target Count', total_no_exp, ''] = new_res_df['Target Count', total_no_exp, ''].ix[3:]. \
+    new_res_df['TF Count', total_no_exp, ''] = new_res_df['TF Count', total_no_exp, ''].ix[3:]. \
         apply(lambda x: '{: >4}'.format(x))
 
     return new_res_df, total_no_exp
