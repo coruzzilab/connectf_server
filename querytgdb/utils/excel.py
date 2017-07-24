@@ -47,7 +47,8 @@ def write_to_excel(writer, new_res_df):
     df_count_cols = new_res_df.shape[1]
 
     header_dict = defaultdict(list)
-    id_headerdict = defaultdict(list)
+    #id_headerdict = defaultdict(list)
+    id_headerdict= dict()
     header_df = new_res_df.iloc[0:3]
     header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'TF Count'],
                    axis=1, inplace=True)  # drop unecsseary columns
@@ -57,32 +58,30 @@ def write_to_excel(writer, new_res_df):
     ## Can be moved to a different function
     listlen = 0
     header_list = header_df.columns.tolist()
-    count = 10 # start merging with column 10/J. Columns before J are annotation columns.
+    count = 10 # start merging with column 10/J. Columns before J are annotation columns
+    for val_hls_tmp in header_list:
+        id_headerdict[val_hls_tmp[0]] = defaultdict(list)
     for val_hls in header_list:
-        # print('val_hls= ',val_hls)
         listlen = listlen + 1
         lines = None
         if count == 10:
             prev_count = 10
             prev_header_level0 = val_hls[0]
             prev_header_level1 = val_hls[1]
-
         if val_hls[2] == 'Edges':
-            id_headerdict[val_hls[0]].append(header_df.xs(0, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-            id_headerdict[val_hls[0]].append(header_df.xs(1, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-            id_headerdict[val_hls[0]].append(header_df.xs(2, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-        # print('id_headerdict=',id_headerdict)
+            id_headerdict[val_hls[0]][val_hls[1]].append(header_df.xs(0, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
+            id_headerdict[val_hls[0]][val_hls[1]].append(header_df.xs(1, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
+            id_headerdict[val_hls[0]][val_hls[1]].append(header_df.xs(2, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
         if val_hls[0] == prev_header_level0 and val_hls[1] == prev_header_level1:
             count += 1
             if listlen == len(header_list):
                 lines = str(prev_count) + ':' + str(count - 1)
-                header_dict[lines].append(id_headerdict[prev_header_level0][0])  # get annotation at index 0
-                header_dict[lines].append(id_headerdict[prev_header_level0][1])  # get annotation at index 1
-                header_dict[lines].append(id_headerdict[prev_header_level0][2])  # get annotation at index 2
+                header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][0])  # get annotation at index 0
+                header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][1])  # get annotation at index 1
+                header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][2])  # get annotation at index 2
         else:
             if not prev_header_level1 == 'OMalleyetal_2016':
                 lines = str(prev_count) + ':' + str(count - 1)
-
                 if val_hls[1] == 'OMalleyetal_2016':
                     count = count + 1
                     prev_count = count
@@ -90,9 +89,9 @@ def write_to_excel(writer, new_res_df):
                     prev_count = count
                     count = count + 1
                 if lines:
-                    header_dict[lines].append(id_headerdict[prev_header_level0][0])  # get annotation at index 0
-                    header_dict[lines].append(id_headerdict[prev_header_level0][1])  # get annotation at index 1
-                    header_dict[lines].append(id_headerdict[prev_header_level0][2])  # get annotation at index 2
+                    header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][0])  # get annotation at index 0
+                    header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][1])  # get annotation at index 1
+                    header_dict[lines].append(id_headerdict[prev_header_level0][prev_header_level1][2])  # get annotation at index 2
                 prev_header_level0 = val_hls[0]
                 prev_header_level1 = val_hls[1]
             else:
@@ -100,7 +99,6 @@ def write_to_excel(writer, new_res_df):
                 prev_header_level1 = val_hls[1]
                 prev_count = count
                 count = count + 1
-    # print('header_dict= ',header_dict)
     #####################################################################################
 
     excel_count_cols = colToExcel(df_count_cols + 1)

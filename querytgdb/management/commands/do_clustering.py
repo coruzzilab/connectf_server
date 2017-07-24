@@ -15,6 +15,8 @@ from ...utils.clustering import heatmap
 class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('-p', '--pickledir', help='Pickle Directory', required=False)
+        parser.add_argument('-c', '--cutoff', help='cutoff number of genes for enrichment test, default= 10', required=False)
+        parser.add_argument('-b', '--background', help='background Araport11/TAIR10, default= 28775', required=False)
 
     def handle(self, *args, **options):
-        heatmap(options['pickledir'])
+        heatmap(options['pickledir'], options['cutoff'], options['background'])

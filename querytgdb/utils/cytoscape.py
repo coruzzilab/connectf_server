@@ -26,6 +26,14 @@ def read_pickled_json(pickledir):
     if not os.path.exists(outdir):  # create output directory
         os.makedirs(outdir)
 
+    # I am replacing here '',' ','    ' empty spaces with np.nan
+    # cross check this with Zach: can this match with a string trapped inside space
+    tgdb_df.replace(r'^\s*$', np.nan, regex=True, inplace=True)
+
+    wr= pd.ExcelWriter('json_pd_test.xlsx')
+    tgdb_df.to_excel(wr)
+    wr.close()
+
     # get the absolute path of the directory
     outdirpath = os.path.abspath(outdir)
 
@@ -41,8 +49,7 @@ def create_json(query_res_df, mid_tfname, db_tf, output):
     edges_gm_rawdata, out_tf_genome, tf_genome_matrix_concat = get_json_root_edges_genome \
         (query_res_df, mid_tfname)
     geneid_genome = list(set(tf_genome_matrix_concat.columns.tolist() +
-                             tf_genome_matrix_concat.index.tolist()))  # For database TF matrix cols and rows (
-    # genome TF) are nodes
+                    tf_genome_matrix_concat.index.tolist())) # For database TF matrix cols and rows (genome TF) are nodes
 
     create_json_object(geneid_genome, edges_gm_rawdata, out_tf_genome, mid_tfname, output_x)
 
@@ -224,6 +231,23 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, db_mid_tfname, output_
                 tmp_tfdict['data']['type'] = db_mid_tfname[col_tfs][1]  # gene type
                 tmp_tfdict['data']['color'] = "#FF9900"  # Assign color to non-TFs
                 tmp_tfdict['data']['shape'] = "roundrectangle"  # Assign shape to non-TFs
+            else:
+                tmp_tfdict['data']['type'] = db_mid_tfname[col_tfs][1]  # gene type
+                tmp_tfdict['data']['color'] = "#FF9900"  # Assign color to non-TFs
+                tmp_tfdict['data']['shape'] = "roundrectangle"  # Assign shape to non-TFs
+
+            '''
+            elif (db_mid_tfname[col_tfs][1] == 'MOLECULE' or db_mid_tfname[col_tfs][1] == 'TRANSPOSABLE_ELEMENT_GENE' or
+                  db_mid_tfname[col_tfs][1] == 'antisense_long_noncoding_rna' or
+                  db_mid_tfname[col_tfs][1] == 'antisense_rna' or db_mid_tfname[col_tfs][1] == 'long_noncoding_rna' or
+                  db_mid_tfname[col_tfs][1] == 'mirna' or db_mid_tfname[col_tfs][1] == 'novel_transcribed_region' or
+                  db_mid_tfname[col_tfs][1] == 'other_rna' or db_mid_tfname[col_tfs][1] == 'pre_trna' or
+                  db_mid_tfname[col_tfs][1] == 'pseudogene' or db_mid_tfname[col_tfs][1] == 'ribosomal_rna' or
+                  db_mid_tfname[col_tfs][1] == 'ribosomal_rna' or db_mid_tfname[col_tfs][1] == 'small_nuclear_rna' or
+                  db_mid_tfname[col_tfs][1] == 'small_nucleolar_rna'):
+                tmp_tfdict['data']['type'] = db_mid_tfname[col_tfs][1]  # gene type
+                tmp_tfdict['data']['color'] = "#FF9900"  # Assign color to non-TFs
+                tmp_tfdict['data']['shape'] = "roundrectangle"  # Assign shape to non-TFs '''
 
         # assign node position
         tmp_tfdict['renderedPosition'] = dict()
@@ -267,4 +291,4 @@ def create_json_object(geneid_x, edges_rawdata, out_tf_x, db_mid_tfname, output_
     if output_x:
         dir_path = os.path.dirname(os.path.realpath(output_x))
         with open(dir_path + '/' + output_x.split('/')[-1] + '_cy.json', 'w') as out_jsonfile:
-            json.dump(json_output_dict, out_jsonfile, sort_keys=True, ensure_ascii=False)
+            json.dump(json_output_dict, out_jsonfile, sort_keys=True, indent=4, ensure_ascii=False)

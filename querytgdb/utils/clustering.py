@@ -12,17 +12,25 @@ import seaborn as sns
 from scipy.stats import hypergeom
 
 
-def heatmap(pickledir):
-    read_pickled_targetdbout(pickledir)  # Func. to write
+def heatmap(pickledir, cutoff, background):
+    read_pickled_targetdbout(pickledir, cutoff, background)  # Func. to write
 
 
 ##################################################################
 # function to read TargetDB output dataframe from pickles and
 # convert into list of targets for each tF
-def read_pickled_targetdbout(pickledir, save_file=True):
+def read_pickled_targetdbout(pickledir, cutoff, background, save_file=True):
     pickled_pandas = pd.read_pickle(pickledir + '/' + 'tabular_output.pkl')
     anno_df = pd.read_pickle(pickledir + '/' + 'df_jsonanno.pkl')
-    print('anno_df= ',type(anno_df))
+
+    # default cutoff is 10
+    if not cutoff:
+        cutoff=10
+    # default background:
+    # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
+    if not background:
+        background= 28775
+
     # raising exception here if target genes are not uploaded by the user
     try:
         pickled_targetgenes = pd.read_pickle(pickledir + '/' + 'df_targetgenes.pkl')
@@ -36,8 +44,6 @@ def read_pickled_targetdbout(pickledir, save_file=True):
     col_ignore = ['Full Name', 'Family', 'Type', 'Name', 'List', 'UserList', 'TF Count']
     subset = pickled_pandas.iloc[:, ~(pickled_pandas.columns.get_level_values(0).isin(col_ignore))]
 
-    # expid_list= subset.columns.levels[0].tolist()
-
     expid_list = subset.columns.tolist()
 
     for val_expid in subset.columns.tolist():
@@ -47,83 +53,74 @@ def read_pickled_targetdbout(pickledir, save_file=True):
             genename= anno_df[val_expid[0].split('_')[0]][0]
             if genename == '-':
                 genename = val_expid[0].split('_')[0]
-            targets_eachtf[genename+'_'+val_expid[0]+'_'+val_expid[1]] = [l[0] for l in target_eachanalysis]
-
-    # print('targets_eachtf= ',len(targets_eachtf.keys()))
+            targets_eachtf[genename+' || '+val_expid[0]+' || '+val_expid[1]] = [l[0] for l in target_eachanalysis]
 
     # Get data from modules
     module_names = list()
-    # in case a target is in multiple lists, multiple lists will be separated by comma.
-    # However for modules, this is not required as gene list is unique for different modules
-    '''
-    for x_tmp in pickled_targetgenes.List___UserList.unique():
-        if ' ' in x_tmp.strip():
-            for x_tmp_tmp in x_tmp.strip().split(' '):
-                    module_names.append(x_tmp_tmp)
-        else:
-            module_names.append(x_tmp.strip())
 
-    module_names_list= list(set(module_names))
-
-    print('module_names_list= ',len(module_names_list))
-    '''
-    # Alternative: Testing is required for this part
-    # If a gene is in multiple lists. Separate the space lists by
+    # If a gene is in multiple lists, separate the lists by spaces and store all the names of user target gene lists in a list
+    # This comes with a restriction that user should not include any spaces in loaded targetgene lists.
     module_names_list = list(set(" ".join(pickled_targetgenes.List___UserList).split(" ")))
-    # print('module_names_list= ',len(module_names_list))
+    # Replacing the dataframe spaces with $. If a gene is in multiple lists. These were separated by spaces
     pickled_targetgenes.replace(r'\s+', '$', regex=True, inplace=True)
 
-    #wrs= pd.ExcelWriter('pickled_tggenes.xlsx')
-    ##pickled_targetgenes.to_excel(wrs)
-    #wrs.save()
-
-    # print('pickled_targetgenes= ',pickled_targetgenes)
-
-    # empty pandas dataframe with rows= analysis and columns= modules
+    # empty pandas dataframe for overlaps and pvalues. Dataframes rows= analysis and columns= modules
     df_forheatmap = pd.DataFrame(np.nan, index=list(targets_eachtf.keys()), columns=module_names_list)
     dfpval_forheatmap = pd.DataFrame(np.nan, index=list(targets_eachtf.keys()), columns=module_names_list)
-    # print('df_forheatmap.columns= ',df_forheatmap.columns)
-    # print('df_forheatmap.index= ', df_forheatmap.index)
 
     rownamedict= dict()
     colnamedict= dict()
 
+    # For loop for each user loaded list of target genes
     for val_module in module_names_list:
-        #print('val_module= ',val_module)
+        # Get the genes in each module
         eachmodule_tg = pickled_targetgenes[(pickled_targetgenes['List___UserList'] == val_module) |
                                             (pickled_targetgenes['List___UserList'].str.startswith(val_module + '$')) |
                                             (pickled_targetgenes['List___UserList'].str.endswith('$' + val_module)) |
                                             (pickled_targetgenes['List___UserList'].str.contains('\$' + val_module + '\$'))]. \
                                             index.tolist()
+        # If the length of a loaded user list is less than 10 (by default), do not include this on the heatmap. However this will
+        # appear on the tabular output
+        if len(set(eachmodule_tg)) >= int(cutoff):
+            colnamedict[val_module]= val_module+' ('+str(len(set(eachmodule_tg)))+')'
 
-        colnamedict[val_module]= val_module+' ('+str(len(set(eachmodule_tg)))+')'
+            for val_tg in targets_eachtf.keys():
 
-        for val_tg in targets_eachtf.keys():
-            rownamedict[val_tg]= val_tg+' ('+str(len(set(targets_eachtf[val_tg])))+')'
-            intersect_tg_mod = len(list(set(eachmodule_tg) & set(targets_eachtf[val_tg])))
-            df_forheatmap.ix[val_tg, val_module] = intersect_tg_mod  # assigning values to the dataframe
-            #print('intersect_tg_mod= ',intersect_tg_mod)
-            #print('eachmodule_tg= ', len(set(eachmodule_tg)))
-            #print('targets_eachtf[val_tg]= ',len(set(targets_eachtf[val_tg])))
-            pval_uppertail = hypergeom.sf(intersect_tg_mod, 27655, len(set(eachmodule_tg)),
-                                          len(set(targets_eachtf[val_tg])))
-            dfpval_forheatmap.ix[val_tg, val_module] = pval_uppertail
+                # If for an experiment, the number of target genes remaining are less than 10 (by default). By remaining I mean
+                #  when user upload a list of target genes then
+                # Exclude this from
+                # the heatmap. ## this is not very correct check the bitbucket issue #30
+                if len(set(targets_eachtf[val_tg])) >= int(cutoff):
+                    rownamedict[val_tg]= val_tg+' ('+str(len(set(targets_eachtf[val_tg])))+')'
+                    intersect_tg_mod = len(list(set(eachmodule_tg) & set(targets_eachtf[val_tg])))
+                    df_forheatmap.ix[val_tg, val_module] = intersect_tg_mod  # assigning values to the dataframe
+                    # The background here is from virtualplant
+                    # Set one as a default and ask user for a parameter if they want to change the background
+                    pval_uppertail = hypergeom.sf(intersect_tg_mod, int(background), len(set(eachmodule_tg)),
+                                                  len(set(targets_eachtf[val_tg])))
+                    dfpval_forheatmap.ix[val_tg, val_module] = pval_uppertail
+
+    # drops columns where all the values are nan. Modules with less than 10 genes
+    dfpval_forheatmap.dropna(axis=1, how='all', inplace= True)
+    # drops rows where all the values are nan. TFs with less than 10 targets for uploaded target list
+    dfpval_forheatmap.dropna(axis=0, how='all', inplace=True)
+
+
+    #wr2 = pd.ExcelWriter('raw_output_pval.xlsx')
+    #df_forheatmap.to_excel(wr2, 'Sheet1')
+    #wr2.save()
 
     dfpval_forheatmap.rename(columns=colnamedict, inplace=True)
     dfpval_forheatmap.rename(index=rownamedict, inplace=True)
-
-    #wr2 = pd.ExcelWriter('raw_output_pval.xlsx')
-    #dfpval_forheatmap.to_excel(wr2, 'Sheet1')
-    #wr2.save()
 
     dfpval_forheatmap[dfpval_forheatmap < 1e-30] = 1e-30
     scaleddfpval_forhmap = -1 * np.log10(dfpval_forheatmap)
     scaleddfpval_forhmap.replace(np.inf, 1000, inplace=True)
 
-    if save_file:
-        writer = pd.ExcelWriter('output_scaledpval.xlsx')
-        scaleddfpval_forhmap.to_excel(writer, 'Sheet1')
-        writer.save()
+    #if save_file:
+    #    writer = pd.ExcelWriter('output_scaledpval.xlsx')
+    #    scaleddfpval_forhmap.to_excel(writer, 'Sheet1')
+    #    writer.save()
 
     '''
     writer = pd.ExcelWriter('output.xlsx')
