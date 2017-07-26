@@ -105,7 +105,7 @@ class HandleQueryView(View):
                 for label, group in groupby(level[8:]):
                     size = sum(1 for _ in group)
                     merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
-                    if i == 0:
+                    if i == 1:
                         merged_cells.extend(
                             {'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
                     index += size
