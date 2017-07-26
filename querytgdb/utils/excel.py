@@ -9,7 +9,7 @@ __all__ = ('create_excel_zip',)
 
 def create_excel_zip(pickledir):
     writer, outdirpath = read_pickled_targetdbout(pickledir)  # Func. to write
-    read_pickled_metadata(pickledir, writer)
+    read_pickled_metadata(pickledir, writer) # writer allows it to write to the same excel different sheet
     return create_sif(pickledir, outdirpath)
 
 
@@ -257,6 +257,8 @@ def create_sif(pickledir, output):
                                       reordered_tmp_df['TARGET']
     reordered_tmp_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_all_tbl, sep='\t', index=False)
 
+    create_genelists(reordered_tmp_df, output)
+
     # SIF output in tab-delimited format
     for tf_val in tf_list:
         sub_df = reordered_tmp_df[reordered_tmp_df['TF'] == tf_val]
@@ -298,11 +300,13 @@ def create_sif(pickledir, output):
     reordered_common_targets = stacked_common_targets.assign(
         **stacked_common_targets.EDGE.str.extract(regex, expand=True).to_dict('list'))
     reordered_common_targets[['TF', 'EDGE', 'TARGET']].to_csv(outfile_common, sep='\t', index=False, header=False)
-    reordered_common_targets['shared name'] = reordered_common_targets['TARGET'] + ' (' + \
-                                              reordered_common_targets['EDGE'] + ') ' + \
-                                              reordered_common_targets['TF']
-    reordered_common_targets[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_common_tbl, sep='\t',
-                                                                             index=False)
+
+    if not reordered_common_targets.empty:
+        reordered_common_targets['shared name'] = reordered_common_targets['TARGET'] + ' (' + \
+                                                  reordered_common_targets['EDGE'] + ') ' + \
+                                                  reordered_common_targets['TF']
+        reordered_common_targets[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_common_tbl, sep='\t',
+                                                                                 index=False)
 
     # Generates sif output file for shared targets
     outfile_shared = open(output + '/' + output.split('/')[-1] + '_sharedTargets.sif', 'w')
@@ -334,3 +338,17 @@ def create_sif(pickledir, output):
     shutil.rmtree(output)  # delete the output directory after creating zip file
 
     return zip_name
+
+
+#################################
+# Generate genelists
+def create_genelists(reordered_tmp_df, output):
+    # read the pickled dataframe
+    reordered_subdf= reordered_tmp_df[['TF','TARGET']]
+
+    reordered_subdf_concat= (reordered_subdf.groupby('TF', as_index=False).apply(lambda x: pd.concat(
+        [pd.Series('>' + x.iloc[0]['TF']),pd.Series(x.loc[:, 'TARGET'])])).reset_index(drop=True))
+    #print('reordered_subdf_concat= ',reordered_subdf_concat)
+    outfile_genelist = open(output + '/' + output.split('/')[-1] + '_genelist_allTFs.fa','w') # Generates genelists for all TF
+    reordered_subdf_concat.to_csv(outfile_genelist, sep='\t', index=False, header=False)
+    outfile_genelist.close()

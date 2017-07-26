@@ -2,7 +2,7 @@ import operator
 import os
 import pickle
 import re, math
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from datetime import datetime
 
 import numpy as np
@@ -440,6 +440,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
             tf_id = i_mid.split('_')[0]
             tf_exp = db_metadict['_'.join(i_mid.split('_')[0:3])]['EXPERIMENT']
             tf_control = db_metadict['_'.join(i_mid.split('_')[0:3])]['CONTROL']
+            tf_tissue = db_metadict['_'.join(i_mid.split('_')[0:3])]['TISSUE']
             tf_geno = db_metadict['_'.join(i_mid.split('_')[0:3])]['GENOTYPE']
             if tf_name == '-':  # if TF does not have a name use agiid, e.g. AT2G22200- 3036 (3036)
                 mid_tfname_dict[i_mid] = str(tf_id) + '- ' + str(count_series[i_mid]) + ' (' + str(
@@ -450,7 +451,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
             tmp_mid_counts[i_mid] = count_series[i_mid]
             mid_tfname[tf_id] = str(tf_name)
 
-            mid_genotype_control[i_mid] = str(tf_exp) + ' | ' + str(tf_geno) + ' | ' + str(tf_control)
+            mid_genotype_control[i_mid] = str(tf_exp) + ' | ' + str(tf_geno) + ' | '+str(tf_tissue)+' | ' + str(tf_control)
             # add number of induced and repressed genes for each experiment
             if not 'CHIPSEQ' in i_mid:
                 if not rs_final_res[i_mid].isnull().all():
@@ -602,7 +603,9 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     # exp with max target will come first without considering the fact which analysis has more targets. It is simply comparing
     # with other experiments not within.
     multi_cols = new_res_df.columns.tolist()
-    list_mid_sorted = list(set([('_'.join(x.split('_')[0:3])) for x in list(zip(*sorted_mid_counts))[0]]))
+    # set destroys the order of my sorted list (sorted by targets). Using ordereddict for getting unique expids (for multiple
+    # analysis) and then fetching the dict keys.
+    list_mid_sorted= OrderedDict.fromkeys([('_'.join(x.split('_')[0:3])) for x in list(zip(*sorted_mid_counts))[0]]).keys()
     list_mid_sorted_mcols= list()
     for i_sort in list_mid_sorted:
         for x_unsort in multi_cols:

@@ -26,7 +26,7 @@ class Command(BaseCommand):
 
         # read target gene input file- store data in a list
         datalist = list()
-        data = open(datafile, 'r')
+        data = open(datafile, 'r', encoding='utf-8')
         for vald in data:
             datalist.append(vald)
 
