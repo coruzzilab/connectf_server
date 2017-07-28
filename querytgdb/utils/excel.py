@@ -203,20 +203,30 @@ def create_sif(pickledir, output):
     # Before creating the sif file exclude the dap-seq column. If required later, find a way to add the dap-seq
     # validation column to the .tbl files
     keep_cols = list()
+    dap_cols= list()
     for val_col in pickled_sifdf_tmp.columns:
-        if not val_col.endswith('_OMalleyetal_2016'):
+        if val_col.endswith('_OMalleyetal_2016'):
+            dap_cols.append(val_col)
+        else:
             keep_cols.append(val_col)
 
     pickled_sifdf = pickled_sifdf_tmp[keep_cols]
 
+    # creating df for DAP edges and this will be concatenated to reordered_tmp_df for additional an column for DAP edges
+    # presence in Eedge table
+    dap_df= pickled_sifdf_tmp[dap_cols]
+    stacked_dap_df = pd.DataFrame(dap_df.stack().reset_index())  # stack converts df columns into stacked rows
+    stacked_dap_df.columns = ['TARGET', 'TF', 'DAPEDGE']  # assign new columns
+    stacked_dap_df['TF'] = stacked_dap_df['TF'].apply(lambda x: x.split('_')[0])
+
     # ** Very Slow (10 sec) Not sure if I need this anymore
-    sif_rs_tabular = pickled_sifdf.groupby(pickled_sifdf.columns, axis=1). \
-        apply(lambda x: x.apply(lambda y: ','.join([l for l in y if pd.notnull(l)]), axis=1))
+    #sif_rs_tabular = pickled_sifdf.groupby(pickled_sifdf.columns, axis=1). \
+    #    apply(lambda x: x.apply(lambda y: ','.join([l for l in y if pd.notnull(l)]), axis=1))
 
-    sif_rs_tabular.replace('', pd.np.nan, inplace=True)  # purpose of replacing spaces with nan??
+    pickled_sifdf.replace('', pd.np.nan, inplace=True)  # purpose of replacing spaces with nan??
 
-    stacked_tmp_df = pd.DataFrame(
-        sif_rs_tabular.stack().reset_index())  # stack converts df columns into stacked rows
+    stacked_tmp_df = pd.DataFrame(pickled_sifdf.stack().reset_index())  # stack converts df columns into stacked rows
+
     stacked_tmp_df.columns = ['TARGET', 'TF', 'EDGE']  # assign new columns
 
     # extract experimentID from experimentID_analysisID
@@ -244,6 +254,21 @@ def create_sif(pickledir, output):
     # ^ means start with 0 or 1, [01]+ contains only 0 and 1, $ means ends with 0 or 1
     reordered_tmp_df['EDGE'].replace(to_replace='^[01]+$', value='CHIPSEQ', regex=True, inplace=True)
 
+    #reordered_tmp_df.set_index('TF',inplace=True)
+    #stacked_dap_df.set_index('TF',inplace=True)
+
+    #print('reordered_tmp_df.index= ',reordered_tmp_df.index)
+    #print('stacked_dap_df.index= ',stacked_dap_df.index)
+
+    # Merge is super slow
+    #reordered_df_concatdap= reordered_tmp_df.merge(stacked_dap_df,on='TF')
+    #reordered_df_concatdap = reordered_tmp_df.merge(stacked_dap_df, on='TF', how='left')
+
+    #reordered_df_concatdap = reordered_tmp_df.join(stacked_dap_df)
+    #wr= pd.ExcelWriter('reordered_df_concatdap.xlsx')
+    #reordered_df_concatdap.to_excel(wr)
+    #wr.close()
+
     #reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != '']  # remove the edges that are not linked
     # ALTERNATIVE
     # reordered_tmp_df.EDGE.str.extract(regex, expand=True).combine_first(reordered_tmp_df)
@@ -257,7 +282,7 @@ def create_sif(pickledir, output):
                                       reordered_tmp_df['TARGET']
     reordered_tmp_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_all_tbl, sep='\t', index=False)
 
-    create_genelists(reordered_tmp_df, output)
+    create_genelists_allTFs(reordered_tmp_df, output)
 
     # SIF output in tab-delimited format
     for tf_val in tf_list:
@@ -272,13 +297,13 @@ def create_sif(pickledir, output):
         outfile.close()  # close the file resources
         outfile_tbl.close()
 
-    total_exp = len(sif_rs_tabular.columns.tolist())  # count the total number of experiments
+    total_exp = len(pickled_sifdf.columns.tolist())  # count the total number of experiments
 
-    sif_rs_tabular['target_count'] = (sif_rs_tabular.notnull() * 1).sum(axis=1)
+    pickled_sifdf['target_count'] = (pickled_sifdf.notnull() * 1).sum(axis=1)
     # df subset of common targets (i.e. targets repersented across all the exps)
-    sub_common_targets = sif_rs_tabular[sif_rs_tabular['target_count'] == total_exp]
+    sub_common_targets = pickled_sifdf[pickled_sifdf['target_count'] == total_exp]
     # df subset of shared targets (i.e. target genes present in >1 exp)
-    sub_shared_targets = sif_rs_tabular[sif_rs_tabular['target_count'] > 1]
+    sub_shared_targets = pickled_sifdf[pickled_sifdf['target_count'] > 1]
 
     # I get warnings from pandas for using inplace with drop
     # sub_common_targets.drop('target_count', 1, inplace=True) # drop the target_count column
@@ -342,12 +367,14 @@ def create_sif(pickledir, output):
 
 #################################
 # Generate genelists
-def create_genelists(reordered_tmp_df, output):
+def create_genelists_allTFs(reordered_tmp_df, output):
     # read the pickled dataframe
     reordered_subdf= reordered_tmp_df[['TF','TARGET']]
 
+    # x.loc[:, 'TARGET'].unique() '.unique()' here enforces retaining only the unique values in case a TF has multiple exp and
+    # multiple analysis
     reordered_subdf_concat= (reordered_subdf.groupby('TF', as_index=False).apply(lambda x: pd.concat(
-        [pd.Series('>' + x.iloc[0]['TF']),pd.Series(x.loc[:, 'TARGET'])])).reset_index(drop=True))
+        [pd.Series('>' + x.iloc[0]['TF']),pd.Series(x.loc[:, 'TARGET'].unique())])).reset_index(drop=True))
     #print('reordered_subdf_concat= ',reordered_subdf_concat)
     outfile_genelist = open(output + '/' + output.split('/')[-1] + '_genelist_allTFs.fa','w') # Generates genelists for all TF
     reordered_subdf_concat.to_csv(outfile_genelist, sep='\t', index=False, header=False)
