@@ -4,6 +4,8 @@ from datetime import date
 
 from django import forms
 from django.core.files.storage import FileSystemStorage
+from django.core.mail import send_mail
+from django.utils.translation import ugettext_lazy as _
 
 storage = FileSystemStorage()
 
@@ -193,4 +195,16 @@ class UploadForm(forms.Form):
             experiment_id=self.cleaned_data['experiment_id'],
             uid=uid),
             io.StringIO(META_DATA.format(**self.cleaned_data))
+        )
+
+    def send_mail(self):
+        experimenter = self.cleaned_data['experimenter']
+        send_mail(
+            _("%(name)s has uploaded an experiment") % {"name": experimenter},
+            "as titled",
+            "noreply@coruzzilab-macpro.bio.nyu.edu",
+            [
+                "rt76@nyu.edu",
+                "clj327@nyu.edu"
+            ]
         )

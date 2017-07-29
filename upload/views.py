@@ -11,4 +11,5 @@ class UploadView(FormView):
 
     def form_valid(self, form: forms.UploadForm):
         form.save_files()
+        form.send_mail()
         return super().form_valid(form)
