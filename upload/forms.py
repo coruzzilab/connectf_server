@@ -6,6 +6,7 @@ from django import forms
 from django.core.files.storage import FileSystemStorage
 from django.core.mail import send_mail
 from django.utils.translation import ugettext_lazy as _
+from django.conf import settings
 
 storage = FileSystemStorage()
 
@@ -203,8 +204,5 @@ class UploadForm(forms.Form):
             _("%(name)s has uploaded an experiment") % {"name": experimenter},
             "as titled",
             "noreply@coruzzilab-macpro.bio.nyu.edu",
-            [
-                "rt76@nyu.edu",
-                "clj327@nyu.edu"
-            ]
+            settings.ALERT_EMAILS
         )
