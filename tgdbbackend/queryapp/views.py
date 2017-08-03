@@ -38,16 +38,14 @@ def save_file(dest_path, f):
 
 
 def set_tf_query(tf_query, tf_file_paths):
-    i = 0
     j = 0
     if tf_query is None:
         return
-    for i in range(len(tf_query)):
-        if tf_query[i].find("{") != -1:
-            begin = tf_query[i].find("{")
-            end = tf_query[i].find("}")
-            tf_query[i] = tf_query[i][0:begin] + tf_file_paths[j] + tf_query[i][
-                                                                    end + 1:]
+    for i, val in enumerate(tf_query):
+        begin = val.find("{")
+        if begin != -1:
+            end = val.find("}")
+            tf_query[i] = val[:begin] + tf_file_paths[j] + val[end + 1:]
             j += 1
 
 
