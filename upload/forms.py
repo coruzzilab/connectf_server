@@ -30,6 +30,7 @@ Batch: {batch}
 Analysis_method: {analysis_method}
 Analysis_cutoff: {analysis_cutoff}
 Analysis_command: {analysis_command}
+Analysis_batch: {analysis_batch}
 Analysis_notes: {analysis_notes}
 TF_History: {tf_history_notes}
 Experimenter: {experimenter}
@@ -42,7 +43,7 @@ file: {design.name}
 """
 
 
-class UploadForm(forms.Form):
+class ExperimentUploadForm(forms.Form):
     experiment_id = forms.SlugField(widget=forms.TextInput(attrs={
         'placeholder': 'e.g. AT4G24020_AS090116_RNASEQ ('
                        'TFID_ExperimenterInitials&ExperimentDate_Type)'
@@ -135,6 +136,7 @@ class UploadForm(forms.Form):
                        'dataframe$y~dataframe$Nitrogen*dataframe$Genotype'
                        '*dataframe$Tissue)'
     }))
+    analysis_batch = forms.CharField()
     analysis_notes = forms.CharField(widget=forms.Textarea(attrs={
         'placeholder': 'e.g. Add notes about the analysis (alignment method, '
                        'annotation version, read count tool  etc.)'
