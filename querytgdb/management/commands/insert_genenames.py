@@ -26,7 +26,7 @@ class Command(BaseCommand):
 
     def insert_data(self, datafile):
 
-        tairdata= open(datafile,'r')
+        tairdata= open(datafile,'r', encoding='utf-8')
 
         for valt in tairdata:
             anno_obj= Annotation(agi_id=valt.split('\t')[0].upper().strip(),
