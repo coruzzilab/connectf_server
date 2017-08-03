@@ -6,7 +6,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import detail_route
 from rest_framework.response import Response
 
-from querytgdb.models import Edges, MetaIddata, TargetDBTF
+from querytgdb.models import AnalysisIddata, Edges, MetaIddata, TargetDBTF
 from .models import Nodes
 from .serializers import EdgesValueSerializer, MetaValueSerializer, TFValueSerializer
 
@@ -25,7 +25,11 @@ class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
         """"""
         # uinput = request.query_params.get("uinput", '')
         pk = pk.upper()
-        queryset = MetaIddata.objects.filter(meta_type=pk).values("meta_value").distinct()
+        queryset = chain(
+            MetaIddata.objects.filter(meta_type=pk).values("meta_value").distinct(),
+            AnalysisIddata.objects.filter(analysis_type=pk).extra(
+                select={'meta_value': 'analysis_value'}).values('meta_value').distinct()
+        )
         serializer = MetaValueSerializer(queryset, many=True)
         return Response(serializer.data)
 
