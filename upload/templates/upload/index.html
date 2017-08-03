@@ -180,6 +180,13 @@
         {{ form.analysis_command }}
     </div>
     <div>
+        {{ form.analysis_batch.errors }}
+        <label class="normal"
+               for="{{ form.analysis_batch.id_for_label }}">Analysis
+            Batch:</label>
+        {{ form.analysis_batch }}
+    </div>
+    <div>
         {{ form.analysis_notes.errors }}
         <label class="normal"
                for="{{ form.analysis_notes.id_for_label }}">Analysis
