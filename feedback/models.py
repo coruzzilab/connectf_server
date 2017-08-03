@@ -28,4 +28,4 @@ def send_feedback_alert(sender: Type[models.Model], instance: Feedback, *args, *
     )
 
 
-post_save.connect(send_feedback_alert)
+post_save.connect(send_feedback_alert, sender=Feedback)
