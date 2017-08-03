@@ -18,17 +18,13 @@ def heatmap(pickledir, cutoff, background):
 ##################################################################
 # function to read TargetDB output dataframe from pickles and
 # convert into list of targets for each tF
-def read_pickled_targetdbout(pickledir, cutoff, background, save_file=True):
+def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=True):
     pickled_pandas = pd.read_pickle(pickledir + '/' + 'tabular_output.pkl')
     anno_df = pd.read_pickle(pickledir + '/' + 'df_jsonanno.pkl')
 
     # default cutoff is 10
-    if not cutoff:
-        cutoff = 10
     # default background:
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
-    if not background:
-        background = 28775
 
     # raising exception here if target genes are not uploaded by the user
     try:
@@ -151,7 +147,8 @@ def read_pickled_targetdbout(pickledir, cutoff, background, save_file=True):
         # get the absolute path of the directory
         outdirpath = os.path.abspath(pickledir)
         dirpath = '/'.join(outdirpath.split('/')[:-1])
-        sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
+        #sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
+        sns_heatmap.savefig('/Users/Reetu/Documents/Projects/TargetDB_V2/tgdbbackend/Matt_heatmap_targetdb.svg')
         plt.show()
         print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.svg')))
     else:
