@@ -26,6 +26,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
     if metadata:
         q_meta = getquerylist(metadata)
         rs_meta_list = filter_meta(q_meta, metadata)
+        print('rs_meta_list= ',rs_meta_list)
     if edges:
         edge_list = getquerylist(edges)
 
@@ -787,24 +788,27 @@ def filter_meta(q_meta, user_q_meta):
         valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
 
         user_q_meta_format = user_q_meta_format.replace(valm, valm_format)  #
-
         # creating query expression- replace query with example:
         # 'ANNA_SCHINKE in EXPERIMENTER'
         rs_meta_tmp.extend([x[0] for x in rs_meta])
 
+    print('rs_meta_tmp= ',rs_meta_tmp)
+
     db_metadict = dict()
     for valm1 in set(rs_meta_tmp):  # This loop is to make combinations on the metaids identified in upper loop
-        metadata_df = pd.DataFrame(list(Metadata.objects.select_related().filter(meta_id__exact=valm1). \
+        metadata_df = pd.DataFrame(list(Metadata.objects.prefetch_related().filter(meta_id__exact=valm1). \
                                         values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type',
                                                     'referenceid__ref_id')),
                                    columns=['m_id', 'm_val', 'm_type', 'ref_id'])
+
 
         metadata_df_new = metadata_df.pivot(index='ref_id', columns='m_type',
                                             values='m_val')
 
         m_df_out = metadata_df_new.query(user_q_meta_format)
+
         if not m_df_out.empty:
-            rs_meta_id.append(m_df_out.index[0])
+            rs_meta_id.extend(m_df_out.index)
 
     if not rs_meta_id:
         raise ValueError('No data matched your metadata query!\n')
