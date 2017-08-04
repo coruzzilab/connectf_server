@@ -100,8 +100,6 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
                     df_forheatmap.ix[val_tg, val_module] = intersect_tg_mod  # assigning values to the dataframe
                     # The background here is from virtualplant
                     # Set one as a default and ask user for a parameter if they want to change the background
-                    print('val_tg= ',val_tg)
-                    print('len(set(targets_eachtf[val_tg]))= ',len(set(targets_eachtf[val_tg])))
                     type_set2_length= type2_set_dict[val_tg.split('||')[1].strip()][val_tg.split('||')[2].strip()]
                     pval_uppertail = hypergeom.sf(intersect_tg_mod, int(background), len(set(eachmodule_tg)),
                                                   type_set2_length)
@@ -124,27 +122,8 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
     scaleddfpval_forhmap = -1 * np.log10(dfpval_forheatmap)
     scaleddfpval_forhmap.replace(np.inf, 1000, inplace=True)
 
-    # if save_file:
-    #    writer = pd.ExcelWriter('output_scaledpval.xlsx')
-    #    scaleddfpval_forhmap.to_excel(writer, 'Sheet1')
-    #    writer.save()
-
     '''
-    writer = pd.ExcelWriter('output.xlsx')
-    df_forheatmap.to_excel(writer, 'Sheet1')
-    writer.save()
-
-    writer = pd.ExcelWriter('output_pval.xlsx')
-    dfpval_forheatmap.to_excel(writer, 'Sheet1')
-    writer.save()
-
     #hypergeom.sf(100, 12000, 3000, 400) is equal to 1-phyper(100,3000,12000-3000,400)
-
-
-    # create an empty dataframe for storing p-values
-    # dataframe should be of dimension (number of analysis x number of modules)
-    #df = pd.DataFrame(np.nan, index=[0, 1, 2, 3], columns=['A'])
-    #df.ix['rowname', 'colname'] = 5.0
     '''
 
     sns_heatmap = sns.clustermap(scaleddfpval_forhmap, cmap="YlGnBu", cbar_kws={'label': 'Enrichment(-log10 p)'})

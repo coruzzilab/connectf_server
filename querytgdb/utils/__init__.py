@@ -47,15 +47,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
     for val_dict in count_rs_finaldict:
         count_nesteddict['_'.join(val_dict.split('_')[:3])][('_'.join(val_dict.split('_')[3:-1]))[::-1].replace('_','.',1)[::-1]]\
                                             = count_rs_finaldict[val_dict]
-    '''
-    count_nesteddict dict will be used when creating heatmaps
-    While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of targetgenes for
-    each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test. It should be
-    instead total number of target genes for each TF- nested dict is stored as pickles
-    '''
-    pickled_totaltgs = open(output+'_pickle/df_eachtf_tgcount.pkl', 'wb')
-    pickle.dump(count_nesteddict, pickled_totaltgs)
-    pickled_totaltgs.close()
+
 
     if not rs_final.empty:
         # if file with list of target genes is provided with -r option
@@ -117,14 +109,21 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # Create directory to save pickle files (if the dir does not exist)
         if not os.path.exists(output + '_pickle'):  # create output directory
             os.makedirs(output + '_pickle')
+
+        '''
+        count_nesteddict dict will be used when creating heatmaps
+        While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of targetgenes for
+        each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test. It should be
+        instead total number of target genes for each TF- nested dict is stored as pickles
+        '''
+        pickled_totaltgs = open(output + '_pickle/df_eachtf_tgcount.pkl', 'wb')
+        pickle.dump(count_nesteddict, pickled_totaltgs)
+        pickled_totaltgs.close()
+
         # dump rs_final_trim df. Will be used by module_createjson.
         pickled_jsondata = output + '_pickle/df_jsondata.pkl'  # dump rs_final_trim
         rs_final_trim.to_pickle(pickled_jsondata)
 
-        # print('regulation_data_subset= ',regulation_data_subset)
-        # print('rs_final_trim= ',rs_final_trim)
-        # print('dap_data_pivot= ',dap_data_pivot)
-        # print('refid_tf_mapping= ',refid_tf_mapping)
         # code for replacing a tf name in dap_data_pivot table to experiment ids
         # if a TF has multiple experiments then it repeats the df column
         if not dap_data_pivot.empty:
