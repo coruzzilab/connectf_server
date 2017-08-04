@@ -33,6 +33,30 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
     q_tf_list, tf_name = get_TFlist(TFquery)
     rs_final = query_tf(q_tf_list, tf_name, edges, edge_list, rs_meta_list, metadata)
 
+    # Check this:- Why there are empty spaces in my dataframe? The code works well without fillna() replacement. Means there
+    # are no None what I expected from mysql query. This needs to be tested.
+    rs_final.replace('', np.nan, inplace=True)
+    rs_final.fillna(value=np.nan, inplace=True)
+    # counting the number of targets for each experiment+analysis
+    # count_rs_final is a series
+    count_rs_final = rs_final.count(axis=0)
+    # convert series to a dict
+    count_rs_finaldict= count_rs_final.to_dict()
+    # convert count_rs_finaldict to a nested dict
+    count_nesteddict= defaultdict(dict)
+    for val_dict in count_rs_finaldict:
+        count_nesteddict['_'.join(val_dict.split('_')[:3])][('_'.join(val_dict.split('_')[3:-1]))[::-1].replace('_','.',1)[::-1]]\
+                                            = count_rs_finaldict[val_dict]
+    '''
+    count_nesteddict dict will be used when creating heatmaps
+    While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of targetgenes for
+    each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test. It should be
+    instead total number of target genes for each TF- nested dict is stored as pickles
+    '''
+    pickled_totaltgs = open(output+'_pickle/df_eachtf_tgcount.pkl', 'wb')
+    pickle.dump(count_nesteddict, pickled_totaltgs)
+    pickled_totaltgs.close()
+
     if not rs_final.empty:
         # if file with list of target genes is provided with -r option
         # Get the subset of results df for target genes asked in targets query file

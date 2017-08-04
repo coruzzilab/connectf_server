@@ -32,7 +32,7 @@ class Command(BaseCommand):
 
         # read meta data input file- store data in a dictionary
         metadict = dict()
-        metadata = open(metafile, 'r')
+        metadata = open(metafile, 'r', encoding='utf-8')
         for valm in metadata:
             if not valm.split(':')[1].strip().upper() == 'NA':
                 metadict[valm.split(':')[0].strip().upper()] = valm.split(':')[1].upper().strip()
