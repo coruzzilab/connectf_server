@@ -98,6 +98,9 @@ class HandleQueryView(View):
             merged_cells = []
 
             for i, level in enumerate(df.columns.labels):
+                if i == 2:
+                    continue
+
                 # don't merge before column 9
                 index = 8
                 for label, group in groupby(level[8:]):
