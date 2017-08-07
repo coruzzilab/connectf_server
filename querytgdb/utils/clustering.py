@@ -21,8 +21,15 @@ def heatmap(pickledir, cutoff, background):
 def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=True):
     pickled_pandas = pd.read_pickle(pickledir + '/' + 'tabular_output.pkl')
     anno_df = pd.read_pickle(pickledir + '/' + 'df_jsonanno.pkl')
+    # type2_set is a nested dict, storing number of target genes for each exp and analysis
+    # I had to store this data before filtering dataframe for target genes
+    type2_set_dict= pd.read_pickle(pickledir+ '/' + 'df_eachtf_tgcount.pkl')
 
     # default cutoff is 10
+    if not cutoff:
+        cutoff=10
+    if not background:
+        background=28775
     # default background:
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
 
@@ -75,30 +82,29 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
                                             (pickled_targetgenes['List___UserList'].str.startswith(val_module + '$')) |
                                             (pickled_targetgenes['List___UserList'].str.endswith('$' + val_module)) |
                                             (pickled_targetgenes['List___UserList'].str.contains(
-                                                '\$' + val_module + '\$'))]. \
-            index.tolist()
+                                                '\$' + val_module + '\$'))].index.tolist()
         # If the length of a loaded user list is less than 10 (by default), do not include this on the heatmap.
-        # However this will
-        # appear on the tabular output
+        # However this will appear on the tabular output
         if len(set(eachmodule_tg)) >= int(cutoff):
             colnamedict[val_module] = val_module + ' (' + str(len(set(eachmodule_tg))) + ')'
 
             for val_tg in targets_eachtf.keys():
-
                 # If for an experiment, the number of target genes remaining are less than 10 (by default). By
                 # remaining I mean
                 #  when user upload a list of target genes then
                 # Exclude this from
                 # the heatmap. ## this is not very correct check the bitbucket issue #30
                 if len(set(targets_eachtf[val_tg])) >= int(cutoff):
-                    rownamedict[val_tg] = val_tg + ' (' + str(len(set(targets_eachtf[val_tg]))) + ')'
+
                     intersect_tg_mod = len(list(set(eachmodule_tg) & set(targets_eachtf[val_tg])))
                     df_forheatmap.ix[val_tg, val_module] = intersect_tg_mod  # assigning values to the dataframe
                     # The background here is from virtualplant
                     # Set one as a default and ask user for a parameter if they want to change the background
+                    type_set2_length= type2_set_dict[val_tg.split('||')[1].strip()][val_tg.split('||')[2].strip()]
                     pval_uppertail = hypergeom.sf(intersect_tg_mod, int(background), len(set(eachmodule_tg)),
-                                                  len(set(targets_eachtf[val_tg])))
+                                                  type_set2_length)
                     dfpval_forheatmap.ix[val_tg, val_module] = pval_uppertail
+                    rownamedict[val_tg] = val_tg + ' (' + str(type_set2_length) + ')'
 
     # drops columns where all the values are nan. Modules with less than 10 genes
     dfpval_forheatmap.dropna(axis=1, how='all', inplace=True)
@@ -116,27 +122,8 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
     scaleddfpval_forhmap = -1 * np.log10(dfpval_forheatmap)
     scaleddfpval_forhmap.replace(np.inf, 1000, inplace=True)
 
-    # if save_file:
-    #    writer = pd.ExcelWriter('output_scaledpval.xlsx')
-    #    scaleddfpval_forhmap.to_excel(writer, 'Sheet1')
-    #    writer.save()
-
     '''
-    writer = pd.ExcelWriter('output.xlsx')
-    df_forheatmap.to_excel(writer, 'Sheet1')
-    writer.save()
-
-    writer = pd.ExcelWriter('output_pval.xlsx')
-    dfpval_forheatmap.to_excel(writer, 'Sheet1')
-    writer.save()
-
     #hypergeom.sf(100, 12000, 3000, 400) is equal to 1-phyper(100,3000,12000-3000,400)
-
-
-    # create an empty dataframe for storing p-values
-    # dataframe should be of dimension (number of analysis x number of modules)
-    #df = pd.DataFrame(np.nan, index=[0, 1, 2, 3], columns=['A'])
-    #df.ix['rowname', 'colname'] = 5.0
     '''
 
     sns_heatmap = sns.clustermap(scaleddfpval_forhmap, cmap="YlGnBu", cbar_kws={'label': 'Enrichment(-log10 p)'})
@@ -147,8 +134,7 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
         # get the absolute path of the directory
         outdirpath = os.path.abspath(pickledir)
         dirpath = '/'.join(outdirpath.split('/')[:-1])
-        #sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
-        sns_heatmap.savefig('/Users/Reetu/Documents/Projects/TargetDB_V2/tgdbbackend/Matt_heatmap_targetdb.svg')
+        sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
         plt.show()
         print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.svg')))
     else:

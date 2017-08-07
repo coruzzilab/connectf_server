@@ -26,12 +26,29 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
     if metadata:
         q_meta = getquerylist(metadata)
         rs_meta_list = filter_meta(q_meta, metadata)
+        print('rs_meta_list= ',rs_meta_list)
     if edges:
         edge_list = getquerylist(edges)
 
     # get_TFlist(TFquery)
     q_tf_list, tf_name = get_TFlist(TFquery)
     rs_final = query_tf(q_tf_list, tf_name, edges, edge_list, rs_meta_list, metadata)
+
+    # Check this:- Why there are empty spaces in my dataframe? The code works well without fillna() replacement. Means there
+    # are no None what I expected from mysql query. This needs to be tested.
+    rs_final.replace('', np.nan, inplace=True)
+    rs_final.fillna(value=np.nan, inplace=True)
+    # counting the number of targets for each experiment+analysis
+    # count_rs_final is a series
+    count_rs_final = rs_final.count(axis=0)
+    # convert series to a dict
+    count_rs_finaldict= count_rs_final.to_dict()
+    # convert count_rs_finaldict to a nested dict
+    count_nesteddict= defaultdict(dict)
+    for val_dict in count_rs_finaldict:
+        count_nesteddict['_'.join(val_dict.split('_')[:3])][('_'.join(val_dict.split('_')[3:-1]))[::-1].replace('_','.',1)[::-1]]\
+                                            = count_rs_finaldict[val_dict]
+
 
     if not rs_final.empty:
         # if file with list of target genes is provided with -r option
@@ -93,14 +110,21 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # Create directory to save pickle files (if the dir does not exist)
         if not os.path.exists(output + '_pickle'):  # create output directory
             os.makedirs(output + '_pickle')
+
+        '''
+        count_nesteddict dict will be used when creating heatmaps
+        While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of targetgenes for
+        each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test. It should be
+        instead total number of target genes for each TF- nested dict is stored as pickles
+        '''
+        pickled_totaltgs = open(output + '_pickle/df_eachtf_tgcount.pkl', 'wb')
+        pickle.dump(count_nesteddict, pickled_totaltgs)
+        pickled_totaltgs.close()
+
         # dump rs_final_trim df. Will be used by module_createjson.
         pickled_jsondata = output + '_pickle/df_jsondata.pkl'  # dump rs_final_trim
         rs_final_trim.to_pickle(pickled_jsondata)
 
-        # print('regulation_data_subset= ',regulation_data_subset)
-        # print('rs_final_trim= ',rs_final_trim)
-        # print('dap_data_pivot= ',dap_data_pivot)
-        # print('refid_tf_mapping= ',refid_tf_mapping)
         # code for replacing a tf name in dap_data_pivot table to experiment ids
         # if a TF has multiple experiments then it repeats the df column
         if not dap_data_pivot.empty:
@@ -764,24 +788,27 @@ def filter_meta(q_meta, user_q_meta):
         valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
 
         user_q_meta_format = user_q_meta_format.replace(valm, valm_format)  #
-
         # creating query expression- replace query with example:
         # 'ANNA_SCHINKE in EXPERIMENTER'
         rs_meta_tmp.extend([x[0] for x in rs_meta])
 
+    print('rs_meta_tmp= ',rs_meta_tmp)
+
     db_metadict = dict()
     for valm1 in set(rs_meta_tmp):  # This loop is to make combinations on the metaids identified in upper loop
-        metadata_df = pd.DataFrame(list(Metadata.objects.select_related().filter(meta_id__exact=valm1). \
+        metadata_df = pd.DataFrame(list(Metadata.objects.prefetch_related().filter(meta_id__exact=valm1). \
                                         values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type',
                                                     'referenceid__ref_id')),
                                    columns=['m_id', 'm_val', 'm_type', 'ref_id'])
+
 
         metadata_df_new = metadata_df.pivot(index='ref_id', columns='m_type',
                                             values='m_val')
 
         m_df_out = metadata_df_new.query(user_q_meta_format)
+
         if not m_df_out.empty:
-            rs_meta_id.append(m_df_out.index[0])
+            rs_meta_id.extend(m_df_out.index)
 
     if not rs_meta_id:
         raise ValueError('No data matched your metadata query!\n')
