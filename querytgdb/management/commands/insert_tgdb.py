@@ -106,7 +106,8 @@ class Command(BaseCommand):
             analysisid_max = 0
             refid_max = 0
 
-        analysis_datatypes = ['ANALYSIS_ID', 'ANALYSIS_METHOD', 'ANALYSIS_CUTOFF', 'ANALYSIS_COMMAND', 'ANALYSIS NOTES']
+        analysis_datatypes = ['ANALYSIS_ID', 'ANALYSIS_METHOD', 'ANALYSIS_CUTOFF', 'ANALYSIS_COMMAND', 'ANALYSIS NOTES',
+                              'ANALYSIS_BATCHEFFECT']
 
         # inserts data to Metadata table:Experiment_ID as metaid
         if meta_exist_flag == 0:
