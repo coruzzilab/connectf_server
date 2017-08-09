@@ -45,8 +45,6 @@ class Command(BaseCommand):
         if not metadict['Transcription_Factor_ID'.upper()] in alltfs:
             flag_dap= 1
 
-        #print('flag_dap= ',flag_dap)
-
         # Function to insert metadata
         curr_metaid, curr_analysisid, curr_refid= self.insert_metadata_analysis(metadict)
 
@@ -54,9 +52,12 @@ class Command(BaseCommand):
         if metadict['Experiment_Type'.upper()] == 'Expression'.upper():
             if metadict['Experiment'.upper()] == 'Target'.upper():
                 self.insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+            if metadict['Experiment'.upper()] == 'Inplanta'.upper():
+                self.insert_nodes_inplanta(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
         if metadict['Experiment_Type'.upper()] == 'Binding'.upper():
                 self.insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
 
+        # If DAP-data does not exist for this TF in the database, check if the TF exist in DAP data and insert the data
         if flag_dap== 1:
             self.insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
 
@@ -221,13 +222,39 @@ class Command(BaseCommand):
                          ref_id= ReferenceId.objects.get(ref_id=curr_refid))
             inter_obj.save()
 
-            #pval = '%.1E' % Decimal(float(k.split('\t')[1].upper().strip()))
-            #fc = "%.1f" % float(k.split('\t')[4].upper().strip())
 
-            #reg_obj= Regulation(ref_id= ReferenceId.objects.get(ref_id=curr_refid),
-            #                    ath_id= Annotation.objects.get(agi_id= k.split('\t')[0]),
-            #                    foldchange=str(fc), pvalue=str(pval))
-            #reg_obj.save()
+    # FUNC6: Insert inplanta data
+    def insert_nodes_inplanta(self, datalist, metadict, curr_metaid, curr_analysisid, curr_refid):
+
+        # insert TF in TargetDBTf table, if TF already does not exist
+        db_TF = TargetDBTF.objects.values_list('db_tf_agi', flat=True)
+
+        # Insert TargetDB TF in TargetDBTF table
+        exp_TF_name = metadict['Transcription_Factor_ID'.upper()]
+        if not exp_TF_name in list(db_TF):
+            tf_obj = TargetDBTF(db_tf_agi=exp_TF_name)
+            tf_obj.save()
+
+        edgelist = list()
+        for i in datalist:
+            edge_name = ':'.join([metadict['Experiment'.upper()], metadict['Expression_Type'.upper()],
+                                  i.split('\t')[1].upper().strip()])
+            edgelist.append(edge_name)
+
+        edgelist = list(set(edgelist))
+        self.insert_edges(edgelist)
+
+        TF_id = metadict['Transcription_Factor_ID'.upper()]
+        db_tfid = list(TargetDBTF.objects.filter(db_tf_agi=TF_id).values_list('db_tf_id', flat=True))[0]
+
+        for k in datalist:
+            tf_tg_edge = ':'.join([metadict['Experiment'.upper()], metadict['Expression_Type'.upper()],
+                               k.split('\t')[1].upper().strip()])
+            inter_obj= Interactions(db_tf_id= TargetDBTF.objects.get(db_tf_agi__exact=TF_id),
+                         target_id= Annotation.objects.get(agi_id= k.split('\t')[0]),
+                         edge_id= Edges.objects.get(edge_name=tf_tg_edge),
+                         ref_id= ReferenceId.objects.get(ref_id=curr_refid))
+            inter_obj.save()
 
 
     # FUNC4: Insert edges in Edges table

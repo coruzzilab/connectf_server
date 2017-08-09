@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 
 from querytgdb.management.commands.Modules import module_query
-from ..models import Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, Regulation, TargetDBTF
+from ..models import Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, Regulation, \
+                     TargetDBTF, Analysis, AnalysisIddata
 
 __all__ = ('query_tgdb',)
 
@@ -26,7 +27,6 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
     if metadata:
         q_meta = getquerylist(metadata)
         rs_meta_list = filter_meta(q_meta, metadata)
-        print('rs_meta_list= ',rs_meta_list)
     if edges:
         edge_list = getquerylist(edges)
 
@@ -71,6 +71,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # discard 'TARGET:RNASEQ'/'TARGET:CHIPSEQ' from the edges
         rs_final_res_t, chipdata_summary = tabular(rs_final_res_t)
         rs_final_trim= rs_final_res_t.replace({'TARGET:RNASEQ:':''},regex=True)
+        rs_final_trim.replace({'INPLANTA:MICROARRAY:': ''}, regex=True, inplace=True)
         # rs_final_trim.replace('', np.nan, inplace=True)
 
         ############## Create a df with p-value and FC index=AGI_ID
@@ -773,44 +774,64 @@ def getmetadata(db_metadict, mid_tfname_dict):
 # Filter data for given METADATA
 def filter_meta(q_meta, user_q_meta):
     rs_meta_tmp = list()
+    rs_ref= list()
     rs_meta_id = list()
     user_q_metastr = ' '.join(user_q_meta)
-    user_q_meta_format = user_q_metastr.upper().replace(' AND ', ' & ').replace(
-        ' OR ', ' | '). \
-        replace(' ANDNOT ', ' &~ ').replace('[', '(').replace(']', ')')
-    for valm in q_meta:  # This loop is to simply get the metaids from the
-        # data for multiple conditions in the query
+    user_q_meta_format = user_q_metastr.upper().replace(' AND ', ' & ').replace(' OR ', ' | ').\
+                                                replace(' ANDNOT ', ' &~ ').replace('[', '(').replace(']', ')')
+
+    # This first for loop is simply to short list the metaids that have the given value. Now it also short list the metaid,
+    # if an entity from the analysis is asked.
+    for valm in q_meta:  # This loop is to simply get the metaids from the data for multiple conditions in the query
         # filtering the metadata and type given in the user query
         rs_meta = list(
-            MetaIddata.objects.filter(meta_type__exact=valm.split('=')[0], meta_value__exact=valm.split('=')[1]). \
+            MetaIddata.objects.filter(meta_type__exact=valm.split('=')[0], meta_value__exact=valm.split('=')[1]).\
                 values_list('meta_id', 'meta_type', 'meta_value'))
 
-        valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
-
-        user_q_meta_format = user_q_meta_format.replace(valm, valm_format)  #
-        # creating query expression- replace query with example:
-        # 'ANNA_SCHINKE in EXPERIMENTER'
         rs_meta_tmp.extend([x[0] for x in rs_meta])
+        if 'ANALYSIS_METHOD' in valm.upper() or 'ANALYSIS_CUTOFF' in valm.upper() or 'ANALYSIS_BATCHEFEECT' in valm.upper():
+            rs_analysis= list(AnalysisIddata.objects.filter(analysis_type__exact=valm.split('=')[0],
+                                                            analysis_value__exact=valm.split('=')[1]).\
+                                                            values_list('analysis_id', flat=True))
+            rs_analysis_meta= list(ReferenceId.objects.filter(analysis_id__in=rs_analysis).\
+                                   values_list('meta_id',flat=True))
+            rs_meta_tmp.extend(rs_analysis_meta)
 
-    print('rs_meta_tmp= ',rs_meta_tmp)
+        # creating query expression- replace query with example: 'ANNA_SCHINKE in EXPERIMENTER'
+        valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
+        user_q_meta_format = user_q_meta_format.replace(valm, valm_format)
 
+    # This loop does the real job based on metaids collected from upper loop. It gets all the reference ids from meta table and
+    #  all its related analysis. Combines the data from metaiddata tables and analysisiddata ito one dataframe. Now pandas
+    # query function is performed simply on this dataframe and list of reference ids passed the condition are selected for
+    # further database queries.
+    # A quick note to remember- one metaid can have multiple analysis and reference id are unique for
+    #  each analysis. Only a subset of reference ids will be selected for a metaid if user is making query on analysis entities.
     db_metadict = dict()
     for valm1 in set(rs_meta_tmp):  # This loop is to make combinations on the metaids identified in upper loop
-        metadata_df = pd.DataFrame(list(Metadata.objects.prefetch_related().filter(meta_id__exact=valm1). \
-                                        values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type',
-                                                    'referenceid__ref_id')),
-                                   columns=['m_id', 'm_val', 'm_type', 'ref_id'])
+        metadata_df = pd.DataFrame(list(Metadata.objects.select_related().filter(meta_id__exact=valm1).\
+                          values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type', 'referenceid__ref_id',
+                          'referenceid__analysis_id')), columns=['m_id', 'val', 'type', 'ref_id', 'analysis_id'])
+        metadata_df_final = metadata_df.pivot(index='ref_id', columns='type', values='val')
+        analysis_ids_meta= metadata_df.analysis_id.unique()
+        analysisdata_df = pd.DataFrame()
+        for vala1 in set(analysis_ids_meta):
+            tmp_analysisdata_df= pd.DataFrame(list(Analysis.objects.select_related().filter(analysis_id__exact=vala1).\
+                          values_list('analysis_id', 'analysisiddata__analysis_value', 'analysisiddata__analysis_type',
+                          'referenceid__ref_id')), columns=['a_id', 'val', 'type', 'ref_id'])
+            analysisdata_df= pd.concat([analysisdata_df,tmp_analysisdata_df])
+        analysisdata_df_final = analysisdata_df.pivot(index='ref_id', columns='type', values='val')
 
+        df_refid_query= pd.concat([metadata_df_final, analysisdata_df_final], axis=1, join='inner')
 
-        metadata_df_new = metadata_df.pivot(index='ref_id', columns='m_type',
-                                            values='m_val')
-
-        m_df_out = metadata_df_new.query(user_q_meta_format)
+        m_df_out = df_refid_query.query(user_q_meta_format)
 
         if not m_df_out.empty:
+            #print('final ref id passed query= ',m_df_out.index)
             rs_meta_id.extend(m_df_out.index)
 
     if not rs_meta_id:
         raise ValueError('No data matched your metadata query!\n')
 
     return rs_meta_id
+
