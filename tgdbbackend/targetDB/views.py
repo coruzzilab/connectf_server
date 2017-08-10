@@ -6,19 +6,14 @@ from rest_framework import viewsets
 from rest_framework.decorators import detail_route
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Edges, MetaIddata, TargetDBTF
+from querytgdb.models import AnalysisIddata, Edges, MetaIddata, Metadata, TargetDBTF
 from .models import Nodes
-from .serializers import EdgesValueSerializer, MetaValueSerializer, TFValueSerializer
+from .serializers import EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, TFValueSerializer
 
 
 class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = MetaValueSerializer
-    queryset = MetaIddata.objects.all()
-
-    def list(self, request, *args, **kwargs):
-        queryset = MetaIddata.objects.values("meta_value").distinct()
-        serializer = MetaValueSerializer(queryset, many=True)
-        return Response(serializer.data)
+    serializer_class = ExperimentIdSerializer
+    queryset = Metadata.objects.values("meta_fullid").distinct()
 
     @detail_route()
     def searchType(self, request, pk=None):
