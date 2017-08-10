@@ -57,7 +57,7 @@ node_modules/
 .env
 
 # User-uploaded media
-tgdbbackend/media/
+media/
 
 # Hitch directory
 tests/.hitch

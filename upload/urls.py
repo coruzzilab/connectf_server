@@ -4,5 +4,6 @@ from . import views
 
 app_name = 'upload'
 urlpatterns = [
-    url(r'^$', views.UploadView.as_view())
+    url(r'^$', views.UploadView.as_view()),
+    url(r'^analysis/$', views.UploadAnalysisView.as_view())
 ]

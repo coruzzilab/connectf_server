@@ -193,11 +193,11 @@ class ExperimentUploadForm(forms.Form):
                 experiment_id=self.cleaned_data['experiment_id']),
             upload_file)
 
-    def save_metadata(self, uid):
+    def save_metadata(self, uid, meta_str=META_DATA):
         storage.save('{experiment_id}_{uid}_metadata.txt'.format(
             experiment_id=self.cleaned_data['experiment_id'],
             uid=uid),
-            io.StringIO(META_DATA.format(**self.cleaned_data))
+            io.StringIO(meta_str.format(**self.cleaned_data))
         )
 
     def send_mail(self):

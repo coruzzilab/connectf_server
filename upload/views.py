@@ -1,6 +1,8 @@
 from django.views.generic import FormView
+from rest_framework.generics import CreateAPIView
+from rest_framework.permissions import AllowAny
 
-from . import forms
+from . import forms, serializers
 
 
 # Create your views here.
@@ -13,3 +15,8 @@ class UploadView(FormView):
         form.save_files()
         form.send_mail()
         return super().form_valid(form)
+
+
+class UploadAnalysisView(CreateAPIView):
+    serializer_class = serializers.AnalysisSerializer
+    permission_classes = (AllowAny,)
