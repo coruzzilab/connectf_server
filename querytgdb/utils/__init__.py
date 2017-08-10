@@ -789,7 +789,7 @@ def filter_meta(q_meta, user_q_meta):
                 values_list('meta_id', 'meta_type', 'meta_value'))
 
         rs_meta_tmp.extend([x[0] for x in rs_meta])
-        if 'ANALYSIS_METHOD' in valm.upper() or 'ANALYSIS_CUTOFF' in valm.upper() or 'ANALYSIS_BATCHEFEECT' in valm.upper():
+        if ('ANALYSIS_METHOD' in valm.upper() or 'ANALYSIS_CUTOFF' in valm.upper() or 'ANALYSIS_BATCHEFFECT' in valm.upper()):
             rs_analysis= list(AnalysisIddata.objects.filter(analysis_type__exact=valm.split('=')[0],
                                                             analysis_value__exact=valm.split('=')[1]).\
                                                             values_list('analysis_id', flat=True))
@@ -800,7 +800,7 @@ def filter_meta(q_meta, user_q_meta):
         # creating query expression- replace query with example: 'ANNA_SCHINKE in EXPERIMENTER'
         valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
         user_q_meta_format = user_q_meta_format.replace(valm, valm_format)
-
+    #print('rs_meta_tmp= ',set(rs_meta_tmp))
     # This loop does the real job based on metaids collected from upper loop. It gets all the reference ids from meta table and
     #  all its related analysis. Combines the data from metaiddata tables and analysisiddata ito one dataframe. Now pandas
     # query function is performed simply on this dataframe and list of reference ids passed the condition are selected for
