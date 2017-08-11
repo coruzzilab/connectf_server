@@ -87,6 +87,9 @@ class HandleQueryView(View):
 
             num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Log2FC']) | df.columns.get_level_values(
                 0).isin(['UserList', 'Target Count'])
+
+            p_values = df.columns.get_level_values(2) == 'Pvalue'
+
             nums = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
 
             nums = nums.where(~np.isinf(nums), None)
@@ -113,17 +116,21 @@ class HandleQueryView(View):
 
             columns = []
 
-            for i, num in enumerate(num_cols):
+            for (i, num), p in zip(enumerate(num_cols), p_values):
+                opt = {}
                 if num:
-                    if i < 8:
-                        columns.append({'type': 'numeric'})
+                    if p:
+                        opt.update({'type': 'p_value'})
                     else:
-                        columns.append({'type': 'numeric', 'renderer': 'renderNumber', 'validator': 'exponential'})
+                        opt.update({'type': 'numeric'})
+                    if i >= 8:
+                        opt.update({'renderer': 'renderNumber', 'validator': 'exponential'})
                 else:
-                    if i < 8:
-                        columns.append({'type': 'text'})
-                    else:
-                        columns.append({'type': 'text', 'renderer': 'renderTarget'})
+                    opt.update({'type': 'text'})
+                    if i >= 8:
+                        opt.update({'renderer': 'renderTarget'})
+
+                columns.append(opt)
 
             res = [{
                 'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
