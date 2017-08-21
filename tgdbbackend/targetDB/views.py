@@ -3,7 +3,7 @@ from collections import OrderedDict
 from itertools import chain
 
 from rest_framework import viewsets
-from rest_framework.decorators import detail_route
+from rest_framework.decorators import detail_route, list_route
 from rest_framework.response import Response
 
 from querytgdb.models import AnalysisIddata, Edges, MetaIddata, Metadata, TargetDBTF
@@ -16,7 +16,7 @@ class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Metadata.objects.values("meta_fullid").distinct()
 
     @detail_route()
-    def searchType(self, request, pk=None):
+    def search_type(self, request, pk=None):
         """"""
         # uinput = request.query_params.get("uinput", '')
         pk = pk.upper()
@@ -51,7 +51,7 @@ class EdgesValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Edges.objects.values("edge_name").distinct()
 
     @detail_route()
-    def searchName(self, request, pk=None):
+    def search_name(self, request, *args, **kwargs):
         queryset = Edges.objects.values("edge_name").distinct()
         serializer = EdgesValueSerializer(queryset, many=True)
         return Response(serializer.data)
