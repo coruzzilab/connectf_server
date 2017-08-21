@@ -2,11 +2,13 @@
 from collections import OrderedDict
 from itertools import chain
 
+import pandas as pd
+from django.db import connection
 from rest_framework import viewsets
 from rest_framework.decorators import detail_route, list_route
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Edges, MetaIddata, Metadata, TargetDBTF
+from querytgdb.models import AnalysisIddata, Edges, MetaIddata, Metadata
 from .models import Nodes
 from .serializers import EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, TFValueSerializer
 
@@ -31,17 +33,39 @@ class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
 
 class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TFValueSerializer
-    queryset = Nodes.objects.all().values("text").distinct()
+    # @todo: This is the old table, use new one
+    queryset = Nodes.objects.values("text").distinct()
 
-    @detail_route()
-    def searchName(self, request, pk=None):
-        # uinput = request.query_params.get("uinput", None)
-        queryset = TargetDBTF.objects.raw("SELECT db_tf_id, db_tf_agi, ath_name FROM querytgdb_targetdbtf "
-                                          "LEFT JOIN querytgdb_annotation ON agi_id = db_tf_agi")
+    @list_route()
+    def search_name(self, request, *args, **kwargs):
+        all_opt = request.GET.get('all')
 
-        serializer = TFValueSerializer(
-            chain([OrderedDict([('db_tf_agi', 'OR [ALLTF]')]), OrderedDict([('db_tf_agi', 'AND [ALLTF]')])], queryset),
-            many=True)
+        queryset = []
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT DISTINCT db_tf_id, db_tf_agi, ath_name, meta_fullid FROM querytgdb_targetdbtf "
+                           "LEFT JOIN querytgdb_annotation ON agi_id = db_tf_agi "
+                           "INNER JOIN querytgdb_interactions ON db_tf_id = db_tf_id_id "
+                           "INNER JOIN querytgdb_referenceid ON ref_id_id = ref_id "
+                           "INNER JOIN querytgdb_metadata ON meta_id_id = meta_id "
+                           "ORDER BY db_tf_agi, ath_name, meta_fullid")
+            data = pd.DataFrame.from_records(
+                list(cursor),
+                columns=("db_tf_id", "db_tf_agi", "ath_name", "meta_fullid"))
+
+            for (db_tf_id, db_tf_agi, ath_name), group in data.groupby(["db_tf_id", "db_tf_agi", "ath_name"]):
+                queryset.append(OrderedDict([
+                    ("db_tf_id", db_tf_id),
+                    ("db_tf_agi", db_tf_agi),
+                    ("ath_name", ath_name),
+                    ("meta_fullid", group.meta_fullid.tolist())
+                ]))
+
+        if all_opt:
+            queryset = [OrderedDict([('db_tf_agi', 'OR [ALLTF]')]),
+                        OrderedDict([('db_tf_agi', 'AND [ALLTF]')])] + queryset
+
+        serializer = TFValueSerializer(queryset, many=True)
 
         return Response(serializer.data)
 
