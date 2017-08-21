@@ -22,7 +22,7 @@ class AnalysisSerializer(serializers.Serializer):
     analysis_id = serializers.SlugField()
     analysis_cutoff = serializers.CharField()
     analysis_method = serializers.CharField()
-    analysis_batch = serializers.CharField()
+    analysis_batch = serializers.ChoiceField(('YES', 'NO'))
     analysis_notes = serializers.CharField()
     gene_list = serializers.FileField()
     experimental_design = serializers.FileField()
