@@ -29,11 +29,8 @@ STATIC_DIR = APPS_DIR.path('static').path('queryBuilder')
 
 # Create your views here.
 def save_file(dest_path, f):
-    # original_name, file_extension = os.path.splitext(f.name)
-    # filename = filename + '-' + datetime.datetime.now().strftime(
-    # '%Y-%m-%d-%H-%M-%S') + file_extension
-    path = os.path.join(dest_path, f.name)
-    destination = open(path, 'wb+')
+    path = os.path.join(dest_path, os.path.basename(f.name))
+    destination = open(path, 'wb')
     for chunk in f.chunks():
         destination.write(chunk)
     destination.close()
