@@ -1,9 +1,6 @@
 from rest_framework import serializers
 
-from querytgdb.models import Edges, MetaIddata, Metadata, TargetDBTF
-
-
-# from .models import Nodes
+from querytgdb.models import Annotation, Edges, MetaIddata, Metadata, TargetDBTF
 
 
 class MetaValueSerializer(serializers.ModelSerializer):
@@ -20,6 +17,15 @@ class ExperimentIdSerializer(serializers.ModelSerializer):
     class Meta:
         model = Metadata
         fields = ("value",)
+
+
+class AnnotationSerializer(serializers.ModelSerializer):
+    value = serializers.CharField(source='agi_id')
+    name = serializers.CharField(required=False, source='ath_name')
+
+    class Meta:
+        model = Annotation
+        fields = ("value", "name")
 
 
 class TFValueSerializer(serializers.ModelSerializer):

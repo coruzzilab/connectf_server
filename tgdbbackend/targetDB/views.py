@@ -1,4 +1,5 @@
 # Create your views here.
+
 from collections import OrderedDict
 from itertools import chain
 
@@ -8,9 +9,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import detail_route, list_route
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Edges, MetaIddata, Metadata
-from .models import Nodes
-from .serializers import EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, TFValueSerializer
+from querytgdb.models import AnalysisIddata, Annotation, Edges, MetaIddata, Metadata
+from .serializers import AnnotationSerializer, EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, \
+    TFValueSerializer
 
 
 class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
@@ -32,9 +33,8 @@ class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = TFValueSerializer
-    # @todo: This is the old table, use new one
-    queryset = Nodes.objects.values("text").distinct()
+    serializer_class = AnnotationSerializer
+    queryset = Annotation.objects.filter(ath_gene_type='TXNFACTOR')
 
     @list_route()
     def search_name(self, request, *args, **kwargs):
