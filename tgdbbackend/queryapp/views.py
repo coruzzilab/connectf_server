@@ -7,6 +7,7 @@ from itertools import chain, groupby
 import environ
 import numpy as np
 import pandas as pd
+from django.core.files.storage import FileSystemStorage
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -18,6 +19,8 @@ from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
 from .utils import PandasJSONEncoder
 
+storage = FileSystemStorage('commongenelists/')
+
 ROOT_DIR = environ.Path(
     __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
 APPS_DIR = ROOT_DIR.path('tgdbbackend')
@@ -26,11 +29,8 @@ STATIC_DIR = APPS_DIR.path('static').path('queryBuilder')
 
 # Create your views here.
 def save_file(dest_path, f):
-    # original_name, file_extension = os.path.splitext(f.name)
-    # filename = filename + '-' + datetime.datetime.now().strftime(
-    # '%Y-%m-%d-%H-%M-%S') + file_extension
-    path = os.path.join(dest_path, f.name)
-    destination = open(path, 'wb+')
+    path = os.path.join(dest_path, os.path.basename(f.name))
+    destination = open(path, 'wb')
     for chunk in f.chunks():
         destination.write(chunk)
     destination.close()
@@ -54,29 +54,33 @@ class HandleQueryView(View):
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
 
-        tf_query = request.POST['tfs'].split(" ") if request.POST[
-                                                         'tfs'] != '' else None
-        edges = request.POST['edges'].split(" ") if request.POST[
-                                                        'edges'] != '' else \
-            None
-        metadata = request.POST['metas'].split(" ") if request.POST[
-                                                           'metas'] != '' \
-            else None
+        tf_query = request.POST['tfs'].split(" ") if request.POST['tfs'] != '' else None
+        edges = request.POST['edges'].split(" ") if request.POST['edges'] != '' else None
+        metadata = request.POST['metas'].split(" ") if request.POST['metas'] != '' else None
 
         targetgenes_file_path = None
         dirpath = tempfile.mkdtemp()
 
         tf_file_paths = []
-        if len(request.FILES) != 0:
-            if "targetgenes" in request.FILES:
+
+        if 'targetgenes' in request.POST:
+            try:
                 targetgenes_file_path = save_file(dirpath,
-                                                  request.FILES["targetgenes"])
+                                                  storage.open("{}.txt".format(request.POST['targetgenes']), "rb"))
+            except FileNotFoundError:
+                pass
+
+        if len(request.FILES):
+            if "targetgenes" in request.FILES:
+                targetgenes_file_path = save_file(dirpath, request.FILES["targetgenes"])
             if "file-0" in request.FILES:
                 i = 0
-                while "file-" + str(i) in request.FILES:
+                name = "file-{}".format(i)
+                while name in request.FILES:
                     tf_file_paths.append(
-                        save_file(dirpath, request.FILES["file-" + str(i)]))
+                        save_file(dirpath, request.FILES[name]))
                     i += 1
+                    name = "file-{}".format(i)
 
         set_tf_query(tf_query, tf_file_paths)
 
@@ -87,6 +91,9 @@ class HandleQueryView(View):
 
             num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Log2FC']) | df.columns.get_level_values(
                 0).isin(['UserList', 'Target Count'])
+
+            p_values = df.columns.get_level_values(2) == 'Pvalue'
+
             nums = df.iloc[3:, num_cols].apply(partial(pd.to_numeric, errors='coerce'))
 
             nums = nums.where(~np.isinf(nums), None)
@@ -113,17 +120,21 @@ class HandleQueryView(View):
 
             columns = []
 
-            for i, num in enumerate(num_cols):
+            for (i, num), p in zip(enumerate(num_cols), p_values):
+                opt = {}
                 if num:
-                    if i < 8:
-                        columns.append({'type': 'numeric'})
+                    if p:
+                        opt.update({'type': 'p_value'})
                     else:
-                        columns.append({'type': 'numeric', 'renderer': 'renderNumber', 'validator': 'exponential'})
+                        opt.update({'type': 'numeric'})
+                    if i >= 8:
+                        opt.update({'renderer': 'renderNumber', 'validator': 'exponential'})
                 else:
-                    if i < 8:
-                        columns.append({'type': 'text'})
-                    else:
-                        columns.append({'type': 'text', 'renderer': 'renderTarget'})
+                    opt.update({'type': 'text'})
+                    if i >= 8:
+                        opt.update({'renderer': 'renderTarget'})
+
+                columns.append(opt)
 
             res = [{
                 'data': list(chain(zip(*df.columns), df.itertuples(index=False, name=None))),
