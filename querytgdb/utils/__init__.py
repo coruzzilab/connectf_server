@@ -97,8 +97,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # get the dap-seq data from the database
         dap_data = pd.DataFrame(
             list(DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).
-                 values_list('db_tfid__db_tf_agi', 'ath_id__agi_id'))
-            , columns=['DAP_tf', 'DAP_target'])
+                 values_list('db_tfid__db_tf_agi', 'ath_id__agi_id')), columns=['DAP_tf', 'DAP_target'])
         # dap_data.DAP_tf.replace(to_replace=refid_tf_mapping, inplace=True)
         dap_data['present'] = 'Present'
         dap_data_pivot = dap_data.pivot(columns='DAP_tf', index='DAP_target', values='present')
