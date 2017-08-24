@@ -9,5 +9,6 @@ router.register(r'tfs', views.TFValueDistinctViewSet)
 router.register(r'edges', views.EdgesValueDistinctViewSet)
 
 urlpatterns = [
-                  url(r'^feedback/', include('feedback.urls'))
+                  url(r'^feedback/', include('feedback.urls')),
+                  url(r'^lists/$', views.InterestingListsView.as_view())
               ] + router.urls
