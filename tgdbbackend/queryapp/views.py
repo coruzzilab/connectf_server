@@ -7,6 +7,7 @@ from itertools import chain, groupby
 import environ
 import numpy as np
 import pandas as pd
+from django.core.files.storage import FileSystemStorage
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -17,6 +18,8 @@ from querytgdb.utils.clustering import read_pickled_targetdbout
 from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
 from .utils import PandasJSONEncoder
+
+storage = FileSystemStorage('commongenelists/')
 
 ROOT_DIR = environ.Path(
     __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
@@ -54,29 +57,33 @@ class HandleQueryView(View):
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
 
-        tf_query = request.POST['tfs'].split(" ") if request.POST[
-                                                         'tfs'] != '' else None
-        edges = request.POST['edges'].split(" ") if request.POST[
-                                                        'edges'] != '' else \
-            None
-        metadata = request.POST['metas'].split(" ") if request.POST[
-                                                           'metas'] != '' \
-            else None
+        tf_query = request.POST['tfs'].split(" ") if request.POST['tfs'] != '' else None
+        edges = request.POST['edges'].split(" ") if request.POST['edges'] != '' else None
+        metadata = request.POST['metas'].split(" ") if request.POST['metas'] != '' else None
 
         targetgenes_file_path = None
         dirpath = tempfile.mkdtemp()
 
         tf_file_paths = []
-        if len(request.FILES) != 0:
-            if "targetgenes" in request.FILES:
+
+        if 'targetgenes' in request.POST:
+            try:
                 targetgenes_file_path = save_file(dirpath,
-                                                  request.FILES["targetgenes"])
+                                                  storage.open("{}.txt".format(request.POST['targetgenes']), "rb"))
+            except FileNotFoundError:
+                pass
+
+        if len(request.FILES):
+            if "targetgenes" in request.FILES:
+                targetgenes_file_path = save_file(dirpath, request.FILES["targetgenes"])
             if "file-0" in request.FILES:
                 i = 0
-                while "file-" + str(i) in request.FILES:
+                name = "file-{}".format(i)
+                while name in request.FILES:
                     tf_file_paths.append(
-                        save_file(dirpath, request.FILES["file-" + str(i)]))
+                        save_file(dirpath, request.FILES[name]))
                     i += 1
+                    name = "file-{}".format(i)
 
         set_tf_query(tf_query, tf_file_paths)
 
