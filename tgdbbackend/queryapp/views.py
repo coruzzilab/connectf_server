@@ -7,7 +7,7 @@ from itertools import chain, groupby
 import environ
 import numpy as np
 import pandas as pd
-from django.core.files.storage import FileSystemStorage
+from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -67,7 +67,7 @@ class HandleQueryView(View):
             try:
                 targetgenes_file_path = save_file(dirpath,
                                                   storage.open("{}.txt".format(request.POST['targetgenes']), "rb"))
-            except FileNotFoundError:
+            except (FileNotFoundError, SuspiciousFileOperation):
                 pass
 
         if len(request.FILES):
