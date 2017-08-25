@@ -5,8 +5,11 @@ from django.core.files.storage import FileSystemStorage
 from django.views.generic import FormView
 from rest_framework.generics import CreateAPIView
 from rest_framework.permissions import AllowAny
+from rest_framework.serializers import ValidationError
 
-from . import forms, serializers, models
+from querytgdb.utils import validate_autosubmit as validate
+from querytgdb.utils.insert_tgdb import insertdata
+from . import forms, models, serializers
 
 storage = FileSystemStorage()
 
@@ -55,20 +58,24 @@ file: {experimental_design.name}
 
 
 def save_metadata(uid, data, meta_str=META_DATA):
-    storage.save('{experiment_id}_{uid}_metadata.txt'.format(
+    name = storage.save('{experiment_id}_{uid}_metadata.txt'.format(
         experiment_id=data['experiment_id'],
         uid=uid),
         io.StringIO(meta_str.format(**data))
     )
 
+    return storage.path(name)
+
 
 def handle_file(upload_file, data, suffix, uid):
-    storage.save(
+    name = storage.save(
         '{experiment_id}_{uuid}_{suffix}.txt'.format(
             uuid=uid,
             suffix=suffix,
             experiment_id=data['experiment_id']),
         upload_file)
+
+    return storage.path(name)
 
 
 def handle_analysis_file(validated_data, key, suffix, uid):
@@ -124,10 +131,23 @@ class UploadExperimentView(CreateAPIView):
         data = serializer.validated_data
 
         uid = uuid.uuid1()
+        try:
+            # save data even if checks don't pass
+            meta_path = save_metadata(uid, data)
+            gene_list_path = handle_file(data['gene_list'], data, "genelist", uid)
+            exp_value_path = handle_file(data['expression_values'], data, "rawdata", uid)
+            design_path = handle_file(data['design'], data, "expdesign", uid)
+            models.Experiment.objects.create(name=data['experiment_id'])
 
-        save_metadata(uid, data)
-        handle_file(data['gene_list'], data, "genelist", uid)
-        handle_file(data['expression_values'], data, "rawdata", uid)
-        handle_file(data['design'], data, "expdesign", uid)
+            # actually check
+            metadict = validate.validate_metadata(meta_path)
+            validate.validate_genelist(gene_list_path, metadict)
+            validate.validate_readcount_expdesign(exp_value_path, design_path)
 
-        models.Experiment.objects.create(name=data['experiment_id'])
+            # insert if checks pass
+            insertdata(gene_list_path, meta_path,
+                       '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
+                       '.all.txt')
+
+        except ValueError as e:
+            raise ValidationError(str(e)) from e
