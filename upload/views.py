@@ -139,15 +139,16 @@ class UploadExperimentView(CreateAPIView):
             design_path = handle_file(data['design'], data, "expdesign", uid)
             models.Experiment.objects.create(name=data['experiment_id'])
 
-            # actually check
-            metadict = validate.validate_metadata(meta_path)
-            validate.validate_genelist(gene_list_path, metadict)
-            validate.validate_readcount_expdesign(exp_value_path, design_path)
+            if self.request.GET.get('auto'):
+                # actually check
+                metadict = validate.validate_metadata(meta_path)
+                validate.validate_genelist(gene_list_path, metadict)
+                validate.validate_readcount_expdesign(exp_value_path, design_path)
 
-            # insert if checks pass
-            insertdata(gene_list_path, meta_path,
-                       '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
-                       '.all.txt')
+                # insert if checks pass
+                insertdata(gene_list_path, meta_path,
+                           '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
+                           '.all.txt')
 
         except ValueError as e:
             raise ValidationError(str(e)) from e
