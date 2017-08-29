@@ -17,6 +17,7 @@ class AnalysisSerializer(serializers.Serializer):
 
 class ExperimentSerializer(serializers.Serializer):
     experiment_id = serializers.SlugField()
+    analysis_id = serializers.SlugField()
     tf_id = serializers.SlugField()
     experiment = serializers.CharField()
     experiment_type = serializers.ChoiceField(("expression", "binding"))
@@ -35,6 +36,7 @@ class ExperimentSerializer(serializers.Serializer):
     growth_medium = serializers.CharField()
     plasmid = serializers.CharField()
     control = serializers.CharField()
+    tissue = serializers.ChoiceField(("shoot", "root"))
     treatments = serializers.CharField()
     replicates = serializers.CharField()
     batch = serializers.CharField()

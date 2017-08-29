@@ -15,6 +15,7 @@ storage = FileSystemStorage()
 
 META_DATA = """\
 Experiment_ID: {experiment_id}
+Analysis_ID: {analysis_id}
 Transcription_Factor_ID: {tf_id}
 Experiment: {experiment}
 Experiment_Type: {experiment_type}
@@ -27,6 +28,7 @@ Growth_Period: {growth_period}
 Growth_Medium: {growth_medium}
 Plasmids: {plasmid}
 Control: {control}
+Tissue: {tissue}
 Treatments: {treatments}
 Replicates: {replicates}
 Batch: {batch}
