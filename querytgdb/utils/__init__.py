@@ -40,6 +40,13 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
     # remove p-value for now
     metadata = re.sub(r'\b\s*(?:And|Or|AndNot)?\s*p-value\s*=.+?(?=\s|])', '', orig_meta, flags=re.I)
     metadata = re.sub(r'(?<=\[)\s*(?:And|Or|AndNot)\s*', '', metadata, flags=re.I)
+    metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
+    while metadata:
+        _metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
+        if _metadata == metadata:
+            break
+        else:
+            metadata = _metadata
     metadata = metadata.split(" ") if metadata else None
 
     edge_list = []
