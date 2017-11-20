@@ -3,6 +3,8 @@ import os
 import pickle
 import re
 from collections import OrderedDict, defaultdict
+from string import whitespace
+from typing import Generator
 
 import numpy as np
 import pandas as pd
@@ -14,11 +16,31 @@ from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Interactions
 __all__ = ('query_tgdb',)
 
 
-def query_tgdb(TFquery, edges, metadata, targetgenes, output):
+def get_p_values(orig_meta: str) -> Generator[float, None, None]:
+    p_values = re.findall(r'p-value\s*=\s*(.+?)(?=\s|])', orig_meta, flags=re.I)
+
+    for p in p_values:
+        try:
+            yield float(p)
+        except ValueError:
+            pass
+
+
+def query_tgdb(tf_query, edges, metadata, target_genes, output):
     # check if the command line arguments provided are ok
-    if TFquery is None:
-        raise TypeError('Either generate a table for all the TFs (--t= OR [ALLTF] \n or '
-                        'query TFs, both can not be none \n')
+    if tf_query is None or not any(map((lambda x: str.strip(x, '[]' + whitespace)), tf_query)):
+        tf_query = ['[OR', '[ALLTF]]']
+        # raise TypeError('Either generate a table for all the TFs (--t= OR [ALLTF] \n or '
+        #                 'query TFs, both can not be none \n')
+
+    orig_meta = ' '.join(metadata)
+
+    p_value = min(get_p_values(orig_meta))
+
+    # remove p-value for now
+    metadata = re.sub(r'\b\s*(?:And|Or|AndNot)?\s*p-value\s*=.+?(?=\s|])', '', orig_meta, flags=re.I)
+    metadata = re.sub(r'(?<=\[)\s*(?:And|Or|AndNot)\s*', '', metadata, flags=re.I)
+    metadata = metadata.split(" ") if metadata else None
 
     edge_list = []
     rs_meta_list = []
@@ -29,7 +51,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         edge_list = getquerylist(edges)
 
     # get_TFlist(TFquery)
-    q_tf_list, tf_name = get_TFlist(TFquery)
+    q_tf_list, tf_name = get_tf_list(tf_query)
     rs_final = query_tf(q_tf_list, tf_name, edges, edge_list, rs_meta_list, metadata)
 
     # Check this:- Why there are empty spaces in my dataframe? The code works well without fillna() replacement.
@@ -54,15 +76,17 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # Get the subset of results df for target genes asked in targets query file
         # Code below can handle multiple lists
         targets_mullist_dict = defaultdict(list)
-        if targetgenes:
+        if target_genes:
             q_tg_list = list()
-            q_tg = open(targetgenes, 'r')
-            for i_q_tg in q_tg:
-                if not i_q_tg[0] == '>':
-                    q_tg_list.append(i_q_tg.strip().upper())
-                    targets_mullist_dict[i_q_tg.strip().upper()].append(list_id)
-                else:
-                    list_id = i_q_tg[1:].strip()
+            # @todo: bellow only works if the file starts with ">"
+            # we're screwed if someone uploads a file with incorrect format
+            with open(target_genes, 'r') as q_tg:
+                for i_q_tg in q_tg:
+                    if not i_q_tg.startswith('>'):
+                        q_tg_list.append(i_q_tg.strip().upper())
+                        targets_mullist_dict[i_q_tg.strip().upper()].append(list_id)
+                    else:
+                        list_id = i_q_tg[1:].strip()
             rs_final_res_t = rs_final[rs_final.index.isin(q_tg_list)]
         else:
             rs_final_res_t = rs_final
@@ -86,10 +110,15 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
                  values_list('ref_id', 'ath_id__agi_id', 'foldchange', 'pvalue'))
             , columns=['r_refid', 'r_agiid', 'r_fc', 'r_p'])
 
+        # filter out p-values that don't make the cutoff
+        regulation_data = regulation_data[regulation_data.r_p.astype(float) < p_value]
+
         if not regulation_data.empty:
             regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
             regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
             regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
+            # filter out rows that don't make the p-value cutoff
+            rs_final_trim = rs_final_trim.loc[rs_final_trim.index.intersection(regulation_data_new.index)]
             # subset the df for add function. Add does not work on df with different dimensions
             regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
 
@@ -128,10 +157,6 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
 
         # code for replacing a tf name in dap_data_pivot table to experiment ids
         # if a TF has multiple experiments then it repeats the df column
-        if not dap_data_pivot.empty:
-            dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
-                                                 dap_data_pivot.columns.tolist() for k in l}, axis=1)
-
         if not regulation_data.empty:
             for col_trim in rs_final_trim.columns.tolist():
                 if col_trim in regulation_data_subset.columns.tolist():
@@ -150,6 +175,8 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
         # rs_final_trim.replace(r'^\s*$', np.nan, regex=True, inplace=True)
 
         if not dap_data_pivot.empty:
+            dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
+                                                 dap_data_pivot.columns.tolist() for k in l}, axis=1)
             rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
                                                   left_index=True, right_index=True)
         else:
@@ -157,7 +184,7 @@ def query_tgdb(TFquery, edges, metadata, targetgenes, output):
 
         new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid = create_tabular(output,
                                                                                                  rs_reg_df_merge,
-                                                                                                 targetgenes,
+                                                                                                 target_genes,
                                                                                                  chipdata_summary,
                                                                                                  targets_mullist_dict)
 
@@ -223,33 +250,33 @@ def getquerylist(query):  # should be able to handle any user entered list: TFs 
 
 ######################################################
 # Function to convert TF query to query list: TF query could be simply a list, file or ALLTF format
-def get_TFlist(TFquery):
-    q_tf_list = list()
+def get_tf_list(tf_query):
+    q_tf_list = []
     # if query is given as an input file for transcription factors
-    tmptf = ' '.join(TFquery)
+    tmptf = ' '.join(tf_query)
     # The following code can handle the queries like: -t AT2G22200 or and[tf_test.txt]
     if '.TXT' in tmptf.upper():  # if input query is a txt file
-        file_index = [i for i, s in enumerate(TFquery) if '.txt' in s][0]  # get index of txt file in the list
-        tf_input = TFquery[file_index].replace(']', '').replace('[', '')  # get the file name
+        file_index = [i for i, s in enumerate(tf_query) if '.txt' in s][0]  # get index of txt file in the list
+        tf_input = tf_query[file_index].replace(']', '').replace('[', '')  # get the file name
         q_list = list()
         with open(tf_input, 'r') as fl_tf:  # read the file
             for val_tf in fl_tf:
                 q_list.append(val_tf.strip().upper())
-        tmp_TFname = (' ' + TFquery[file_index - 1].strip().upper().replace('[', '').replace(']', '') + ' ').join(
+        tmp_TFname = (' ' + tf_query[file_index - 1].strip().upper().replace('[', '').replace(']', '') + ' ').join(
             q_list)
         # to set the start brackets around the file elements
-        s_brac = ''.join(['['] * (TFquery[file_index - 1].count('['))) + ''.join(
-            ['['] * (TFquery[file_index].count('[')))
+        s_brac = ''.join(['['] * (tf_query[file_index - 1].count('['))) + ''.join(
+            ['['] * (tf_query[file_index].count('[')))
         # to set the end brackets around the file elements
-        e_brac = ''.join([']'] * (TFquery[file_index].count(']')))
+        e_brac = ''.join([']'] * (tf_query[file_index].count(']')))
         my_TFname = (
             s_brac + tmp_TFname + e_brac)  # replace the file name and condition (and/or) with query constructed
-        del TFquery[
+        del tf_query[
             file_index - 1:file_index + 1]  # delete the file name and condition from the user provided query list
-        TFquery.insert(file_index - 1,
-                       my_TFname)  # insert the file name and condition with query constructed in user provided list
+        tf_query.insert(file_index - 1,
+                        my_TFname)  # insert the file name and condition with query constructed in user provided list
 
-        TFname = ' '.join(TFquery).split()  # split by space (bcoz the newly inserted query part is still a list)
+        TFname = ' '.join(tf_query).split()  # split by space (bcoz the newly inserted query part is still a list)
 
         q_tf_list = getquerylist(TFname)
 
@@ -260,11 +287,11 @@ def get_TFlist(TFquery):
     if 'ALLTF' in tmptf.upper():
         # all_tfs = sess.query(TargetDBTF.db_tf_agi).all()
         q_tf_list = list(TargetDBTF.objects.values_list('db_tf_agi', flat=True))
-        TFname = (' ' + TFquery[0].strip().upper().replace('[', '') + ' ').join(q_tf_list).split()
+        TFname = (' ' + tf_query[0].strip().upper().replace('[', '') + ' ').join(q_tf_list).split()
 
     if not ('.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if
         # input query is an expression or selection of one TF
-        TFname = [x.upper() for x in TFquery]
+        TFname = [x.upper() for x in tf_query]
         q_tf_list = getquerylist(TFname)
 
     return q_tf_list, TFname
@@ -273,7 +300,7 @@ def get_TFlist(TFquery):
 ############################################################
 # Function to filter pandas dataframe for user query provided
 # @profile
-def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
+def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
     tf_frames = list()  # stores frames for all TFs
     tf_mid_map = defaultdict(list)
 
@@ -335,13 +362,14 @@ def query_tf(q_tf_list, TFname, edges, edgelist, rs_meta_list, metadata):
                 tf_frames.append(rs_gp_new)  # append all the dataframes to a list
 
     if tf_frames:
-        rs_pd_all = pd.concat(tf_frames, axis=1, join='outer')  # join= 'outer' represents union of multiple df
-        if 'AND' in ''.join(TFname):
+        rs_pd_all: pd.DataFrame = pd.concat(tf_frames, axis=1,
+                                            join='outer')  # join= 'outer' represents union of multiple df
+        if 'AND' in ''.join(tf_name):
             filtered_columns = rs_pd_all.columns.tolist()  # after edges were removed df contains only valid edges
-            tfquery = create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns)
+            tfquery = create_tf_query(tf_name, q_tf_list, tf_mid_map, filtered_columns)
             rs_pd_all.query(tfquery, inplace=True)  # query the dataframe for intersection and complex query expression
     else:  # if no data is fetched for the given query then raise an exception and exit
-        rs_pd_all = pd.DataFrame(columns=['No_data'], dtype='float')
+        raise ValueError("No data.")
     # print('rs_pd_all.cols= ', rs_pd_all.columns.tolist())
 
     return rs_pd_all
@@ -792,31 +820,36 @@ def filter_meta(q_meta, user_q_meta):
     # if an entity from the analysis is asked.
     for valm in q_meta:  # This loop is to simply get the metaids from the data for multiple conditions in the query
         # filtering the metadata and type given in the user query
-        rs_meta = list(
-            MetaIddata.objects.filter(meta_type__exact=valm.split('=')[0], meta_value__exact=valm.split('=')[1]). \
-                values_list('meta_id', 'meta_type', 'meta_value'))
+        valm_split = valm.split('=')
+        valm_upper = valm.upper()
+        rs_meta = MetaIddata.objects.filter(meta_type__exact=valm_split[0], meta_value__exact=valm_split[1]). \
+            values_list('meta_id', 'meta_type', 'meta_value')
 
-        rs_meta_tmp.extend([x[0] for x in rs_meta])
-        if ('ANALYSIS_METHOD' in valm.upper() or 'ANALYSIS_CUTOFF' in valm.upper() or 'ANALYSIS_BATCHEFFECT' in valm.upper()):
-            rs_analysis= list(AnalysisIddata.objects.filter(analysis_type__exact=valm.split('=')[0],
-                                                            analysis_value__exact=valm.split('=')[1]).\
-                                                            values_list('analysis_id', flat=True))
-            rs_analysis_meta= list(ReferenceId.objects.filter(analysis_id__in=rs_analysis).\
-                                   values_list('meta_id',flat=True))
+        rs_meta_tmp.extend(x[0] for x in rs_meta)
+        if 'ANALYSIS_METHOD' in valm_upper or 'ANALYSIS_CUTOFF' in valm_upper or 'ANALYSIS_BATCHEFFECT' in valm_upper:
+            rs_analysis = AnalysisIddata.objects.filter(analysis_type__exact=valm_split[0],
+                                                        analysis_value__exact=valm_split[1]).values_list('analysis_id',
+                                                                                                         flat=True)
+            rs_analysis_meta = list(ReferenceId.objects.filter(analysis_id__in=rs_analysis). \
+                                    values_list('meta_id', flat=True))
             rs_meta_tmp.extend(rs_analysis_meta)
 
         # creating query expression- replace query with example: 'ANNA_SCHINKE in EXPERIMENTER'
-        valm_format = '"%s"' % (valm.split('=')[1]) + ' in ' + valm.split('=')[0]  # create query for meta_data
+        valm_format = '"{1}" in {0}'.format(*valm_split)  # create query for meta_data
+
         user_q_meta_format = user_q_meta_format.replace(valm, valm_format)
-    #print('rs_meta_tmp= ',set(rs_meta_tmp))
-    # This loop does the real job based on metaids collected from upper loop. It gets all the reference ids from meta table and
-    #  all its related analysis. Combines the data from metaiddata tables and analysisiddata ito one dataframe. Now pandas
-    # query function is performed simply on this dataframe and list of reference ids passed the condition are selected for
+
+    # print('rs_meta_tmp= ',set(rs_meta_tmp))
+    # This loop does the real job based on metaids collected from upper loop. It gets all the reference ids from meta
+    #  table and
+    #  all its related analysis. Combines the data from metaiddata tables and analysisiddata ito one dataframe. Now
+    # pandas
+    # query function is performed simply on this dataframe and list of reference ids passed the condition are
+    # selected for
     # further database queries.
     # A quick note to remember- one metaid can have multiple analysis and reference id are unique for
     #  each analysis. Only a subset of reference ids will be selected for a metaid if user is making query on
     # analysis entities.
-    db_metadict = dict()
     for valm1 in set(rs_meta_tmp):  # This loop is to make combinations on the metaids identified in upper loop
         metadata_df = pd.DataFrame(list(Metadata.objects.select_related().filter(meta_id__exact=valm1). \
                                         values_list('meta_id', 'metaiddata__meta_value', 'metaiddata__meta_type',
@@ -843,7 +876,8 @@ def filter_meta(q_meta, user_q_meta):
             # print('final ref id passed query= ',m_df_out.index)
             rs_meta_id.extend(m_df_out.index)
 
+    # only hits here if the query didn't return stuff
     if not rs_meta_id:
-        raise ValueError('No data matched your metadata query!\n')
+        raise ValueError('No data matched your metadata query!')
 
     return rs_meta_id

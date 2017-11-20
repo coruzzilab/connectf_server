@@ -54,9 +54,9 @@ class HandleQueryView(View):
     def post(self, request, *args, **kwargs):
         request_id = request.POST['requestId']
 
-        tf_query = request.POST['tfs'].split(" ") if request.POST['tfs'] != '' else None
-        edges = request.POST['edges'].split(" ") if request.POST['edges'] != '' else None
-        metadata = request.POST['metas'].split(" ") if request.POST['metas'] != '' else None
+        tf_query = request.POST['tfs'].split(" ") if request.POST['tfs'] else None
+        edges = request.POST['edges'].split(" ") if request.POST['edges'] else None
+        metadata = request.POST['metas'].split(" ") if request.POST['metas'] else None
 
         targetgenes_file_path = None
         dirpath = tempfile.mkdtemp()

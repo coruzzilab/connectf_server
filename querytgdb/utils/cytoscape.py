@@ -30,9 +30,9 @@ def read_pickled_json(pickledir):
     # cross check this with Zach: can this match with a string trapped inside space
     tgdb_df.replace(r'^\s*$', np.nan, regex=True, inplace=True)
 
-    wr= pd.ExcelWriter('json_pd_test.xlsx')
-    tgdb_df.to_excel(wr)
-    wr.close()
+    # wr= pd.ExcelWriter('json_pd_test.xlsx')
+    # tgdb_df.to_excel(wr)
+    # wr.close()
 
     # get the absolute path of the directory
     outdirpath = os.path.abspath(outdir)
