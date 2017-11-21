@@ -33,21 +33,26 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         # raise TypeError('Either generate a table for all the TFs (--t= OR [ALLTF] \n or '
         #                 'query TFs, both can not be none \n')
 
-    orig_meta = ' '.join(metadata)
+    p_value = None
+    if metadata:
+        orig_meta = ' '.join(metadata)
 
-    p_value = min(get_p_values(orig_meta))
+        try:
+            p_value = min(get_p_values(orig_meta))
+        except ValueError:
+            pass
 
-    # remove p-value for now
-    metadata = re.sub(r'\b\s*(?:And|Or|AndNot)?\s*p-value\s*=.+?(?=\s|])', '', orig_meta, flags=re.I)
-    metadata = re.sub(r'(?<=\[)\s*(?:And|Or|AndNot)\s*', '', metadata, flags=re.I)
-    metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
-    while metadata:
-        _metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
-        if _metadata == metadata:
-            break
-        else:
-            metadata = _metadata
-    metadata = metadata.split(" ") if metadata else None
+        # remove p-value for now
+        metadata = re.sub(r'\b\s*(?:And|Or|AndNot)?\s*p-value\s*=.+?(?=\s|])', '', orig_meta, flags=re.I)
+        metadata = re.sub(r'(?<=\[)\s*(?:And|Or|AndNot)\s*', '', metadata, flags=re.I)
+        metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
+        while metadata:
+            _metadata = re.sub(r'\s*\[\s*\]', '', metadata, flags=re.I)
+            if _metadata == metadata:
+                break
+            else:
+                metadata = _metadata
+        metadata = metadata.split(" ") if metadata else None
 
     edge_list = []
     rs_meta_list = []
@@ -118,11 +123,14 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
             , columns=['r_refid', 'r_agiid', 'r_fc', 'r_p'])
 
         # filter out p-values that don't make the cutoff
-        regulation_data = regulation_data[regulation_data.r_p.astype(float) < p_value]
+        if p_value:
+            regulation_data = regulation_data[regulation_data.r_p.astype(float) < p_value]
 
         if not regulation_data.empty:
             regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
             regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
+            for name, group in regulation_data.groupby('r_refid'):
+                rs_final_trim.loc[:, name] = rs_final_trim.loc[group.r_agiid, name]
             regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
             # filter out rows that don't make the p-value cutoff
             rs_final_trim = rs_final_trim.loc[rs_final_trim.index.intersection(regulation_data_new.index)]
