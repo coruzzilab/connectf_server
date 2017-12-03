@@ -4,7 +4,7 @@ import pickle
 import re
 from collections import OrderedDict, defaultdict
 from string import whitespace
-from typing import Generator
+from typing import Dict, Generator, Tuple
 
 import numpy as np
 import pandas as pd
@@ -129,11 +129,12 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         if not regulation_data.empty:
             regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
             regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
+
             for name, group in regulation_data.groupby('r_refid'):
                 rs_final_trim.loc[:, name] = rs_final_trim.loc[group.r_agiid, name]
+
             regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
             # filter out rows that don't make the p-value cutoff
-            rs_final_trim = rs_final_trim.loc[rs_final_trim.index.intersection(regulation_data_new.index)]
             # subset the df for add function. Add does not work on df with different dimensions
             regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
 
@@ -188,6 +189,11 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         rs_final_trim.replace('||nan', np.nan, inplace=True)
         rs_final_trim.replace(to_replace='^nan\|\|', value=np.nan, regex=True, inplace=True)
         # rs_final_trim.replace(r'^\s*$', np.nan, regex=True, inplace=True)
+
+        rs_final_trim.replace('', np.nan, inplace=True)
+        rs_final_trim.replace(0, np.nan, inplace=True)
+
+        rs_final_trim.dropna(how='all', inplace=True)
 
         if not dap_data_pivot.empty:
             dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
@@ -500,6 +506,8 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     for i in meta_info:
         db_metadict[i[0]][i[1]] = i[2]
 
+    rs_final_res.dropna(how='all', inplace=True)
+
     ################ creating data for excel sheet headers
     for i_mid in rs_final_res.columns:
         if not i_mid.endswith('OMalleyetal_2016'):
@@ -757,7 +765,7 @@ def include_targetcount(new_res_df):
 
 ###################################################################
 # Tabular function
-def tabular(rs_final_res_t):
+def tabular(rs_final_res_t) -> Tuple[pd.DataFrame, Dict]:
     # For targetdbv2 chipseq data for one experiment (for diff time-points) is in a single column
     chipseq_cols = [col_final_df for col_final_df in rs_final_res_t if
                     'CHIPSEQ' in col_final_df]
