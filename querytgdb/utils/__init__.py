@@ -131,7 +131,10 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
             regulation_data.r_refid.replace(to_replace=res_refid_dict, inplace=True)
 
             for name, group in regulation_data.groupby('r_refid'):
-                rs_final_trim.loc[:, name] = rs_final_trim.loc[group.r_agiid, name]
+                try:
+                    rs_final_trim.loc[:, name] = rs_final_trim.loc[group.r_agiid, name]
+                except KeyError:
+                    rs_final_trim.loc[:, name] = np.nan
 
             regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
             # filter out rows that don't make the p-value cutoff

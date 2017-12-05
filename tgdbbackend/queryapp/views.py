@@ -193,3 +193,5 @@ class HeatMapPNGView(View):
             return response
         except FileNotFoundError as e:
             raise Http404 from e
+        except ValueError as e:
+            raise Http404 from e
