@@ -10,5 +10,6 @@ router.register(r'edges', views.EdgesValueDistinctViewSet)
 
 urlpatterns = [
                   url(r'^feedback/', include('feedback.urls')),
-                  url(r'^lists/$', views.InterestingListsView.as_view())
+                  url(r'^lists/$', views.InterestingListsView.as_view()),
+                  url(r'^analysis_meta/(?P<analysis_id>[A-Z\d._]+)/$', views.AnalysisMetadataView.as_view())
               ] + router.urls

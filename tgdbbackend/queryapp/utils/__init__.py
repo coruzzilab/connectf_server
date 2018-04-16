@@ -12,5 +12,5 @@ class PandasJSONEncoder(DjangoJSONEncoder):
             return int(o)
         if isinstance(o, np.floating):
             return float(o)
-        else:
-            return super().default(o)
+
+        return super().default(o)

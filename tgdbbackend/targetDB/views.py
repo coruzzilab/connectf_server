@@ -1,18 +1,17 @@
-# Create your views here.
-
+import os
 from collections import OrderedDict
 from itertools import chain
-from os.path import splitext
 from typing import Generator, Iterable
 
 import pandas as pd
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
+from django.http import Http404
 from rest_framework import views, viewsets
 from rest_framework.decorators import detail_route, list_route
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Annotation, Edges, MetaIddata, Metadata
+from querytgdb.models import Analysis, AnalysisIddata, Annotation, Edges, MetaIddata, Metadata
 from .serializers import AnnotationSerializer, EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, \
     TFValueSerializer
 
@@ -21,7 +20,7 @@ storage = FileSystemStorage('commongenelists/')
 
 def get_lists(files: Iterable) -> Generator[str, None, None]:
     for f in files:
-        name, ext = splitext(f)
+        name, ext = os.path.splitext(f)
         if ext == '.txt':
             yield name
 
@@ -98,3 +97,14 @@ class InterestingListsView(views.APIView):
         directories, files = storage.listdir('./')
 
         return Response(get_lists(files))
+
+
+class AnalysisMetadataView(views.APIView):
+    def get(self, request, analysis_id, *args, **kwargs):
+        try:
+            return Response(OrderedDict(
+                Analysis.objects.get(
+                    analysis_fullid=analysis_id
+                ).analysisiddata_set.values_list('analysis_type', 'analysis_value')))
+        except (Analysis.MultipleObjectsReturned, Analysis.DoesNotExist):
+            raise Http404
