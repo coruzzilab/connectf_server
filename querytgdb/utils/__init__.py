@@ -174,6 +174,15 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         pickled_jsondata = output + '_pickle/df_jsondata.pkl'  # dump rs_final_trim
         rs_final_trim.to_pickle(pickled_jsondata)
 
+        # dump target gene lists to pickle
+        target_lists = defaultdict(list)
+        for key, val in targets_mullist_dict.items():
+            for v in val:
+                target_lists[v].append(key)
+
+        with open(output + '_pickle/target_lists.pkl', 'wb') as f:
+            pickle.dump(OrderedDict(target_lists), f, protocol=pickle.HIGHEST_PROTOCOL)
+
         # code for replacing a tf name in dap_data_pivot table to experiment ids
         # if a TF has multiple experiments then it repeats the df column
         if not regulation_data.empty:

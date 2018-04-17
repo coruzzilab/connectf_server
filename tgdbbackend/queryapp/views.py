@@ -7,10 +7,11 @@ from collections import OrderedDict
 from functools import partial, reduce
 from itertools import chain, groupby
 from operator import or_
+from threading import Lock
 from typing import Dict, Tuple
+import pickle
 
 import environ
-import matplotlib
 import numpy as np
 import pandas as pd
 from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
@@ -28,9 +29,7 @@ from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
 from .utils import PandasJSONEncoder
 
-matplotlib.use('SVG')
-import matplotlib.pyplot as plt
-import seaborn as sns
+lock = Lock()
 
 storage = FileSystemStorage('commongenelists/')
 
@@ -272,7 +271,7 @@ def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject
     else:
         rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
         rejects.columns = columns
-        df = df[rejects]
+        df[~rejects] = np.nan
         df.dropna(how='all', inplace=True)
 
     return df
@@ -280,73 +279,98 @@ def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject
 
 class MotifEnrichmentView(View):
     def get(self, request, request_id):
-        if not request_id:
-            return JsonResponse({}, status=404)
-        try:
-            alpha = float(request.GET.get('alpha', 0.05))
+        with lock:
+            if not request_id:
+                return JsonResponse({}, status=404)
+            try:
+                alpha = float(request.GET.get('alpha', 0.05))
 
-            p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
+                p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
 
-            if not os.path.exists(p):
-                time.sleep(3)
+                if not os.path.exists(p):
+                    time.sleep(3)
 
-            data = pd.read_pickle(p)
-            res = OrderedDict((name, col.index[col.notnull()]) for name, col in data.iteritems())
+                data = pd.read_pickle(p)
+                res = OrderedDict((name, col.index[col.notnull()].unique()) for name, col in data.iteritems())
 
-            parsed_keys = list(map(parse_key, res.keys()))
-            meta_ids, analysis_ids = zip(*parsed_keys)
-            analyses = Analysis.objects.filter(analysis_fullid__in=analysis_ids)
-            metadata = Metadata.objects.filter(meta_fullid__in=meta_ids)
+                parsed_keys = list(map(parse_key, res.keys()))
+                meta_ids, analysis_ids = zip(*parsed_keys)
+                analyses = Analysis.objects.filter(analysis_fullid__in=analysis_ids)
+                metadata = Metadata.objects.filter(meta_fullid__in=meta_ids)
 
-            meta_dicts = []
+                meta_dicts = []
 
-            for meta_id, analysis_id in parsed_keys:
-                data = OrderedDict(
-                    analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
-                                                                                             'analysis_value'))
-                data.update(metadata.get(meta_fullid=meta_id).metaiddata_set.values_list('meta_type', 'meta_value'))
-                meta_dicts.append(data)
+                for meta_id, analysis_id in parsed_keys:
+                    data = OrderedDict(
+                        analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
+                                                                                                 'analysis_value'))
+                    data.update(metadata.get(meta_fullid=meta_id).metaiddata_set.values_list('meta_type', 'meta_value'))
+                    meta_dicts.append(data)
 
-            df = motif_enrichment(res, alpha=alpha, show_reject=False)
-            df = df.where(pd.notnull(df), None)
+                try:
+                    with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
+                        target_lists = pickle.load(f)
+                        meta_dicts.extend([{}] * len(target_lists))
+                        res.update(target_lists)
+                except FileNotFoundError:
+                    pass
 
-            return JsonResponse({
-                'columns': OrderedDict(zip(res.keys(), meta_dicts)),
-                'result': list(df.itertuples(name=None))
-            }, encoder=PandasJSONEncoder)
-        except FileNotFoundError:
-            return JsonResponse({}, status=404)
-        except (ValueError, TypeError):
-            return JsonResponse({}, status=400)
+                df = motif_enrichment(res, alpha=alpha, show_reject=False)
+                df = df.where(pd.notnull(df), None)
+
+                return JsonResponse({
+                    'columns': OrderedDict(zip(res.keys(), meta_dicts)),
+                    'result': list(df.itertuples(name=None))
+                }, encoder=PandasJSONEncoder)
+            except FileNotFoundError as e:
+                return JsonResponse({}, status=404)
+            except (ValueError, TypeError) as e:
+                return JsonResponse({}, status=400)
 
 
 class MotifEnrichmentHeatmapView(View):
     def get(self, request, request_id):
-        if not request_id:
-            return HttpResponseNotFound(content_type='image/svg+xml')
-        try:
-            alpha = float(request.GET.get('alpha', 0.05))
+        with lock:
+            import matplotlib
+            matplotlib.use('SVG')
+            import matplotlib.pyplot as plt
+            import seaborn as sns
 
-            p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
+            if not request_id:
+                return HttpResponseNotFound(content_type='image/svg+xml')
+            try:
+                alpha = float(request.GET.get('alpha', 0.05))
 
-            if not os.path.exists(p):
-                time.sleep(3)
+                p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
 
-            data = pd.read_pickle(p)
-            res = OrderedDict((name, col.index[col.notnull()]) for name, col in data.iteritems())
+                if not os.path.exists(p):
+                    time.sleep(3)
 
-            df = motif_enrichment(res, alpha=alpha)
-            df = -np.log10(df)
+                data = pd.read_pickle(p)
+                res = OrderedDict((name, col.index[col.notnull()].unique()) for name, col in data.iteritems())
 
-            heatmap = sns.clustermap(df, cmap="YlGnBu", metric='correlation', method='average')
-            plt.setp(heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-            plt.setp(heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
+                try:
+                    with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
+                        target_lists = pickle.load(f)
+                        res.update(target_lists)
+                except FileNotFoundError:
+                    pass
 
-            response = HttpResponse(content_type='image/svg+xml')
-            heatmap.savefig(response)
+                df = motif_enrichment(res, alpha=alpha)
+                df = -np.log10(df)
+                df = df.loc[:, (df != 0).any(axis=0)]
+                # make max 30 for overly small p-values
+                df[df > 30] = 30
 
-            return response
-        except FileNotFoundError:
-            return HttpResponseNotFound(content_type='image/svg+xml')
-        except (ValueError, TypeError):
-            return HttpResponseBadRequest(content_type='image/svg+xml')
+                heatmap = sns.clustermap(df, cmap="YlGnBu", metric='correlation', method='average')
+                plt.setp(heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+                plt.setp(heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
+
+                response = HttpResponse(content_type='image/svg+xml')
+                heatmap.savefig(response)
+
+                return response
+            except FileNotFoundError:
+                return HttpResponseNotFound(content_type='image/svg+xml')
+            except (ValueError, TypeError):
+                return HttpResponseBadRequest(content_type='image/svg+xml')
