@@ -527,10 +527,10 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
                 list(Annotation.objects.filter(agi_id__exact=i_mid.split('_')[0]).values_list('ath_name', flat=True))[0]
 
             tf_id = i_mid.split('_')[0]
-            tf_exp = db_metadict['_'.join(i_mid.split('_')[0:3])]['EXPERIMENT']
-            tf_control = db_metadict['_'.join(i_mid.split('_')[0:3])]['CONTROL']
-            tf_tissue = db_metadict['_'.join(i_mid.split('_')[0:3])]['TISSUE']
-            tf_geno = db_metadict['_'.join(i_mid.split('_')[0:3])]['GENOTYPE']
+            tf_exp = db_metadict['_'.join(i_mid.split('_')[0:3])].get('EXPERIMENT', '')
+            tf_control = db_metadict['_'.join(i_mid.split('_')[0:3])].get('CONTROL', '')
+            tf_tissue = db_metadict['_'.join(i_mid.split('_')[0:3])].get('TISSUE', '')
+            tf_geno = db_metadict['_'.join(i_mid.split('_')[0:3])].get('GENOTYPE', '')
             if tf_name == '-':  # if TF does not have a name use agiid, e.g. AT2G22200- 3036 (3036)
                 mid_tfname_dict[i_mid] = str(tf_id) + '- ' + str(count_series[i_mid]) + ' (' + str(
                     exp_count[i_mid]) + ')'

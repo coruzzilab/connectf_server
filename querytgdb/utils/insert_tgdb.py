@@ -38,7 +38,10 @@ def insertdata(datafile, metafile, dapdatafile):
         if metadict['Experiment'.upper()] == 'Target'.upper():
             insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
         if metadict['Experiment'.upper()] == 'Inplanta'.upper():
-            insert_nodes_inplanta(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+            if metadict['Expression_Type'.upper()] == 'MICROARRAY':
+                insert_nodes_inplanta(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+            elif metadict['Expression_Type'.upper()] == 'RNASEQ':
+                insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
     if metadict['Experiment_Type'.upper()] == 'Binding'.upper():
         insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
 

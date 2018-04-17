@@ -1,4 +1,5 @@
 import os
+import pickle
 import re
 import shutil
 import tempfile
@@ -9,7 +10,6 @@ from itertools import chain, groupby
 from operator import or_
 from threading import Lock
 from typing import Dict, Tuple
-import pickle
 
 import environ
 import numpy as np
@@ -301,10 +301,18 @@ class MotifEnrichmentView(View):
                 meta_dicts = []
 
                 for meta_id, analysis_id in parsed_keys:
-                    data = OrderedDict(
-                        analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
-                                                                                                 'analysis_value'))
-                    data.update(metadata.get(meta_fullid=meta_id).metaiddata_set.values_list('meta_type', 'meta_value'))
+                    data = OrderedDict()
+                    try:
+                        data.update(OrderedDict(
+                            analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
+                                                                                                     'analysis_value')))
+                    except Analysis.DoesNotExist:
+                        pass
+                    try:
+                        data.update(
+                            metadata.get(meta_fullid=meta_id).metaiddata_set.values_list('meta_type', 'meta_value'))
+                    except Metadata.DoesNotExist:
+                        pass
                     meta_dicts.append(data)
 
                 try:
