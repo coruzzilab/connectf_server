@@ -3,6 +3,8 @@ import os
 import pickle
 import re
 from collections import OrderedDict, defaultdict
+from itertools import groupby, tee
+from operator import itemgetter
 from string import whitespace
 from typing import Dict, Generator, Tuple
 
@@ -545,8 +547,8 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
             # add number of induced and repressed genes for each experiment
             if not 'CHIPSEQ' in i_mid:
                 if not rs_final_res[i_mid].isnull().all():
-                    induced_eachexp = (rs_final_res[i_mid].str.contains('INDUCED') * 1).sum()
-                    repressed_eachexp = (rs_final_res[i_mid].str.contains('REPRESSED') * 1).sum()
+                    induced_eachexp = (rs_final_res[i_mid].str.contains('INDUCED')).sum()
+                    repressed_eachexp = (rs_final_res[i_mid].str.contains('REPRESSED')).sum()
                     tmp_rnaseq_summary[i_mid] = 'Induced-' + str(induced_eachexp) + ' Repressed-' + str(
                         repressed_eachexp)
                 else:
@@ -588,7 +590,6 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     df_target_names = df_target.loc[df_genelistid_new.index.values]
     # Remove the referenceid and replace the last occurence of '_' with '.'
     # rs_final_res.rename(columns=lambda x: x[:-2][::-1].replace('_', '.', 1)[::-1], inplace=True)
-
 
     renamedict = dict()
     for val_rename in rs_final_res.columns:
@@ -653,6 +654,15 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
                 [(col_name[0], col_name[1], third_level)])
             # print('tmp_df= ',tmp_df.columns)
             final_df = pd.concat(objs=[final_df, tmp_df], axis=1)
+
+    # ensure DAP column comes last
+    multi_cols = []
+    for name, group in groupby(final_df.columns.tolist(), key=itemgetter(0)):
+        g = tee(group, 2)
+        multi_cols.extend(filter(lambda x: x[1] != 'OMalleyetal_2016', g[0]))
+        multi_cols.extend(filter(lambda x: x[1] == 'OMalleyetal_2016', g[1]))
+
+    final_df = final_df[multi_cols]
 
     # print('final_df= ', final_df.columns)
 

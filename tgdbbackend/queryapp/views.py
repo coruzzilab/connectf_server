@@ -12,6 +12,7 @@ from threading import Lock
 from typing import Dict, Tuple
 
 import environ
+import matplotlib
 import numpy as np
 import pandas as pd
 from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
@@ -28,6 +29,10 @@ from querytgdb.utils.clustering import read_pickled_targetdbout
 from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_excel_zip
 from .utils import PandasJSONEncoder
+
+matplotlib.use('SVG')
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 lock = Lock()
 
@@ -48,6 +53,11 @@ PROMO_CLUSTER_SIZE = ANN_PROMO_DEDUP.groupby('#pattern name').size()
 ANNOTATED_BODY = ANNOTATED[ANNOTATED['dist'] > 0]
 ANN_BODY_DEDUP = ANNOTATED_BODY.drop_duplicates('match_id')
 BODY_CLUSTER_SIZE = ANN_BODY_DEDUP.groupby('#pattern name').size()
+
+CLUSTER_INFO = pd.read_pickle(
+    str(APPS_DIR.path('static').path('cluster_info.pickle.gz')),
+    compression='gzip'
+).to_dict('index')
 
 
 def save_file(dest_path, f):
@@ -71,13 +81,12 @@ def set_tf_query(tf_query, tf_file_paths):
             j += 1
 
 
-def parse_key(key: str) -> Tuple[str, str]:
-    keys = key.split('_', maxsplit=3)
-
-    right, *r = "_".join(keys[3:]).rpartition("_")
-    right = re.sub(r'(\d+)_(\d+)$', r'\1.\2', right)
-
-    return "_".join(keys[:3]), right
+def parse_key(key: str) -> Tuple[str, int]:
+    keys = re.match(r'(at[1-5cm]g\d{5}.+)_at[1-5cm]g\d{5}.+_(\d+)', key, re.I)
+    try:
+        return keys.group(1), int(keys.group(2))
+    except (AttributeError, ValueError):
+        return '', -1
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -226,7 +235,8 @@ class HeatMapPNGView(View):
             return HttpResponseNotFound(content_type='image/svg+xml')
 
 
-def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject: bool = True) -> pd.DataFrame:
+def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject: bool = True,
+                     body: bool = False) -> pd.DataFrame:
     def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
                             alpha: float = 0.05) -> Tuple[pd.Series, pd.Series]:
         list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
@@ -252,29 +262,51 @@ def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject
                                                   annotated=ANNOTATED_PROMO,
                                                   annotated_dedup=ANN_PROMO_DEDUP,
                                                   ann_cluster_size=PROMO_CLUSTER_SIZE), res.values()))
+    if body:
+        body_enrich, body_reject = zip(*map(partial(get_list_enrichment,
+                                                    alpha=alpha,
+                                                    annotated=ANNOTATED_BODY,
+                                                    annotated_dedup=ANN_BODY_DEDUP,
+                                                    ann_cluster_size=BODY_CLUSTER_SIZE), res.values()))
 
-    body_enrich, body_reject = zip(*map(partial(get_list_enrichment,
-                                                alpha=alpha,
-                                                annotated=ANNOTATED_BODY,
-                                                annotated_dedup=ANN_BODY_DEDUP,
-                                                ann_cluster_size=BODY_CLUSTER_SIZE), res.values()))
+        df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
+        columns = list(chain.from_iterable(zip(
+            map(lambda c: c + '_promo', res.keys()),
+            map(lambda c: c + '_body', res.keys()))))
 
-    df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
-    columns = list(chain.from_iterable(zip(
-        map(lambda c: c + '_promo', res.keys()),
-        map(lambda c: c + '_body', res.keys()))))
+        if show_reject:
+            rejects = reduce(or_, chain(promo_reject, body_reject))
+        else:
+            rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
+    else:
+        df = pd.concat(promo_enrich, axis=1)
+        columns = [c + '_promo' for c in res.keys()]
+
+        if show_reject:
+            rejects = reduce(or_, promo_reject)
+        else:
+            rejects = pd.concat(promo_reject, axis=1)
+
     df.columns = columns
 
     if show_reject:
-        rejects = reduce(or_, chain(promo_reject, body_reject))
         df = df[rejects]
     else:
-        rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
         rejects.columns = columns
         df[~rejects] = np.nan
         df.dropna(how='all', inplace=True)
 
     return df
+
+
+def merge_cluster_info(df):
+    for idx, *row in df.itertuples(name=None):
+        info = {'name': idx}
+        try:
+            info.update(CLUSTER_INFO[idx])
+        except KeyError:
+            pass
+        yield [info] + row
 
 
 class MotifEnrichmentView(View):
@@ -284,6 +316,7 @@ class MotifEnrichmentView(View):
                 return JsonResponse({}, status=404)
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
+                body = request.GET.get('body', '0')
 
                 p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
 
@@ -295,7 +328,7 @@ class MotifEnrichmentView(View):
 
                 parsed_keys = list(map(parse_key, res.keys()))
                 meta_ids, analysis_ids = zip(*parsed_keys)
-                analyses = Analysis.objects.filter(analysis_fullid__in=analysis_ids)
+                analyses = Analysis.objects.filter(analysis_id__in=analysis_ids)
                 metadata = Metadata.objects.filter(meta_fullid__in=meta_ids)
 
                 meta_dicts = []
@@ -304,8 +337,8 @@ class MotifEnrichmentView(View):
                     data = OrderedDict()
                     try:
                         data.update(OrderedDict(
-                            analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
-                                                                                                     'analysis_value')))
+                            analyses.get(analysis_id=analysis_id).analysisiddata_set.values_list('analysis_type',
+                                                                                                 'analysis_value')))
                     except Analysis.DoesNotExist:
                         pass
                     try:
@@ -318,17 +351,20 @@ class MotifEnrichmentView(View):
                 try:
                     with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
                         target_lists = pickle.load(f)
-                        meta_dicts.extend([{}] * len(target_lists))
-                        res.update(target_lists)
+                        meta_dicts.extend(
+                            [{'list_name': name, **m} for m in meta_dicts for name in target_lists.keys()])
+                        res.update(
+                            [(f"{t_name}_{r_name}", np.intersect1d(t_list, r_list)) for r_name, r_list in res.items()
+                             for t_name, t_list in target_lists.items()])
                 except FileNotFoundError:
                     pass
 
-                df = motif_enrichment(res, alpha=alpha, show_reject=False)
+                df = motif_enrichment(res, alpha=alpha, show_reject=False, body=body == '1')
                 df = df.where(pd.notnull(df), None)
 
                 return JsonResponse({
                     'columns': OrderedDict(zip(res.keys(), meta_dicts)),
-                    'result': list(df.itertuples(name=None))
+                    'result': list(merge_cluster_info(df))
                 }, encoder=PandasJSONEncoder)
             except FileNotFoundError as e:
                 return JsonResponse({}, status=404)
@@ -339,15 +375,11 @@ class MotifEnrichmentView(View):
 class MotifEnrichmentHeatmapView(View):
     def get(self, request, request_id):
         with lock:
-            import matplotlib
-            matplotlib.use('SVG')
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-
             if not request_id:
                 return HttpResponseNotFound(content_type='image/svg+xml')
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
+                body = request.GET.get('body', '0')
 
                 p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
 
@@ -364,13 +396,18 @@ class MotifEnrichmentHeatmapView(View):
                 except FileNotFoundError:
                     pass
 
-                df = motif_enrichment(res, alpha=alpha)
+                df = motif_enrichment(res, alpha=alpha, body=body == '1')
                 df = -np.log10(df)
                 df = df.loc[:, (df != 0).any(axis=0)]
                 # make max 30 for overly small p-values
-                df[df > 30] = 30
+                df[df > 10] = 10
 
-                heatmap = sns.clustermap(df, cmap="YlGnBu", metric='correlation', method='average')
+                rows, cols = df.shape
+
+                heatmap = sns.clustermap(df, cmap="YlGnBu",
+                                         metric='correlation' if rows > 1 and cols > 1 else 'euclidean',
+                                         method='average',
+                                         row_cluster=rows > 1, col_cluster=cols > 1)
                 plt.setp(heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
                 plt.setp(heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
 
