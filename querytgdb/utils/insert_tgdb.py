@@ -2,7 +2,8 @@ import sys
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Max
+from django.db.models import Max, ObjectDoesNotExist
+from django.db.transaction import atomic
 
 from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Edges, Interactions, MetaIddata, Metadata, \
     ReferenceId, Regulation, TargetDBTF
@@ -26,28 +27,29 @@ def insertdata(datafile, metafile, dapdatafile):
     # flag_dap=1 means it is a new TF and DAP-seq data for this TF does not exist in db
     # call the function insert_dapseq to insert the dap-seq data for this TF
     flag_dap = 0
-    alltfs = TargetDBTF.objects.values_list('db_tf_agi', flat=True)
-    if not metadict['Transcription_Factor_ID'.upper()] in alltfs:
-        flag_dap = 1
+    with atomic():
+        alltfs = TargetDBTF.objects.values_list('db_tf_agi', flat=True)
+        if not metadict['Transcription_Factor_ID'.upper()] in alltfs:
+            flag_dap = 1
 
-    # Function to insert metadata
-    curr_metaid, curr_analysisid, curr_refid = insert_metadata_analysis(metadict)
+        # Function to insert metadata
+        curr_metaid, curr_analysisid, curr_refid = insert_metadata_analysis(metadict)
 
-    # Functions to insert Nodes and Edges
-    if metadict['Experiment_Type'.upper()] == 'Expression'.upper():
-        if metadict['Experiment'.upper()] == 'Target'.upper():
-            insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
-        if metadict['Experiment'.upper()] == 'Inplanta'.upper():
-            if metadict['Expression_Type'.upper()] == 'MICROARRAY':
-                insert_nodes_inplanta(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
-            elif metadict['Expression_Type'.upper()] == 'RNASEQ':
+        # Functions to insert Nodes and Edges
+        if metadict['Experiment_Type'.upper()] == 'Expression'.upper():
+            if metadict['Experiment'.upper()] == 'Target'.upper():
                 insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
-    if metadict['Experiment_Type'.upper()] == 'Binding'.upper():
-        insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+            if metadict['Experiment'.upper()] == 'Inplanta'.upper():
+                if metadict['Expression_Type'.upper()] == 'MICROARRAY':
+                    insert_nodes_inplanta(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+                elif metadict['Expression_Type'.upper()] == 'RNASEQ':
+                    insert_nodes_target(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
+        if metadict['Experiment_Type'.upper()] == 'Binding'.upper():
+            insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
 
-    # If DAP-data does not exist for this TF in the database, check if the TF exist in DAP data and insert the data
-    if flag_dap == 1:
-        insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
+        # If DAP-data does not exist for this TF in the database, check if the TF exist in DAP data and insert the data
+        if flag_dap == 1:
+            insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
 
 
 # FUNC1: insert metadata
@@ -198,7 +200,7 @@ def insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_
 
     for i in datalist:
         edge_name = ':'.join([metadict['Experiment'.upper()], metadict['Binding_Type'.upper()],
-                              i.split('\t')[2].upper().strip(), i.split('\t')[3].upper().strip()])
+                              i.split('\t')[1].upper().strip()])
         edgelist.append(edge_name)
 
     edgelist = list(set(edgelist))
@@ -209,7 +211,7 @@ def insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_
     # print('TF_id= ', TF_id, ', db_tfid= ', db_tfid)
     for k in datalist:
         tf_tg_edge = ':'.join([metadict['Experiment'.upper()], metadict['Binding_Type'.upper()],
-                               k.split('\t')[2].upper().strip(), k.split('\t')[3].upper().strip()])
+                               k.split('\t')[1].upper().strip()])
         inter_obj = Interactions(db_tf_id=TargetDBTF.objects.get(db_tf_agi__exact=TF_id),
                                  target_id=Annotation.objects.get(agi_id=k.split('\t')[0]),
                                  edge_id=Edges.objects.get(edge_name=tf_tg_edge),

@@ -13,5 +13,4 @@ class Command(BaseCommand):
         parser.add_argument('-d', '--dapdatafile', help='Input file for dap-seq data')
 
     def handle(self, *args, **options):
-        print(options['datafile'])
         insertdata(options['datafile'], options['metadata'], options['dapdatafile'])
