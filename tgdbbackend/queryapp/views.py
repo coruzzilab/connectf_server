@@ -9,7 +9,7 @@ from functools import partial, reduce
 from itertools import chain, groupby
 from operator import or_
 from threading import Lock
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import environ
 import matplotlib
@@ -87,6 +87,10 @@ def parse_key(key: str) -> Tuple[str, int]:
         return keys.group(1), int(keys.group(2))
     except (AttributeError, ValueError):
         return '', -1
+
+
+def parse_heatmap_idx(idx: str) -> List[str]:
+    return re.sub(r'\s*\(\d+\)$', '', idx).split(' || ')[1:]
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -191,7 +195,8 @@ class HandleQueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
-            raise Http404('Query not available') from e
+            raise
+            # raise Http404('Query not available') from e
 
 
 class CytoscapeJSONView(View):
@@ -227,12 +232,50 @@ class HeatMapPNGView(View):
             response = HttpResponse(content_type='image/svg+xml')
             read_pickled_targetdbout(
                 str(STATIC_DIR.path("{}_pickle".format(request_id))),
+                draw=True,
                 save_file=False
             ).savefig(response)
 
             return response
         except (FileNotFoundError, ValueError) as e:
             return HttpResponseNotFound(content_type='image/svg+xml')
+
+
+class HeatMapTableView(View):
+    def get(self, request, request_id):
+        try:
+            df = read_pickled_targetdbout(
+                str(STATIC_DIR.path("{}_pickle".format(request_id))),
+                draw=False
+            )
+            meta_ids, analysis_ids = zip(*map(parse_heatmap_idx, df.index))
+            analyses = Analysis.objects.filter(analysis_fullid__in=analysis_ids)
+            metadata = Metadata.objects.filter(meta_fullid__in=meta_ids)
+
+            def get_rows():
+                for (idx, *row), analysis_id, meta_id in zip(df.itertuples(name=None), analysis_ids, meta_ids):
+                    info = {'name': idx}
+                    try:
+                        info.update(
+                            analyses.get(analysis_fullid=analysis_id).analysisiddata_set.values_list('analysis_type',
+                                                                                                     'analysis_value'))
+                    except Analysis.DoesNotExist:
+                        pass
+
+                    try:
+                        info.update(
+                            metadata.get(meta_fullid=meta_id).metaiddata_set.values_list('meta_type', 'meta_value'))
+                    except Metadata.DoesNotExist:
+                        pass
+
+                    yield [info] + row
+
+            return JsonResponse({
+                'columns': df.columns,
+                'result': list(get_rows())
+            }, encoder=PandasJSONEncoder)
+        except (FileNotFoundError, ValueError) as e:
+            raise Http404 from e
 
 
 def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject: bool = True,
@@ -392,7 +435,9 @@ class MotifEnrichmentHeatmapView(View):
                 try:
                     with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
                         target_lists = pickle.load(f)
-                        res.update(target_lists)
+                        res.update(
+                            [(f"{t_name}_{r_name}", np.intersect1d(t_list, r_list)) for r_name, r_list in res.items()
+                             for t_name, t_list in target_lists.items()])
                 except FileNotFoundError:
                     pass
 
@@ -405,7 +450,7 @@ class MotifEnrichmentHeatmapView(View):
                 rows, cols = df.shape
 
                 heatmap = sns.clustermap(df, cmap="YlGnBu",
-                                         metric='correlation' if rows > 1 and cols > 1 else 'euclidean',
+                                         metric='euclidean',
                                          method='average',
                                          row_cluster=rows > 1, col_cluster=cols > 1)
                 plt.setp(heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
@@ -417,5 +462,5 @@ class MotifEnrichmentHeatmapView(View):
                 return response
             except FileNotFoundError:
                 return HttpResponseNotFound(content_type='image/svg+xml')
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')

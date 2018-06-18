@@ -15,10 +15,33 @@ def heatmap(pickledir, cutoff, background):
     read_pickled_targetdbout(pickledir, cutoff, background)  # Func. to write
 
 
+def scale_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df[df < 1e-30] = 1e-30
+    df = -np.log10(df)
+    df.replace(np.inf, 1000, inplace=True)
+    return df
+
+
+def draw_heatmap(df: pd.DataFrame):
+    sns_heatmap = sns.clustermap(df, cmap="YlGnBu", cbar_kws={'label': 'Enrichment(-log10 p)'})
+    plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+    plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
+
+    return sns_heatmap
+
+
+def save_heatmap(graph, pickledir):
+    outdirpath = os.path.abspath(pickledir)
+    dirpath = '/'.join(outdirpath.split('/')[:-1])
+    graph.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
+    print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.svg')))
+
+
 ##################################################################
 # function to read TargetDB output dataframe from pickles and
 # convert into list of targets for each tF
-def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=True):
+def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
     pickled_pandas = pd.read_pickle(pickledir + '/' + 'tabular_output.pkl')
     anno_df = pd.read_pickle(pickledir + '/' + 'df_jsonanno.pkl')
     # type2_set is a nested dict, storing number of target genes for each exp and analysis
@@ -35,7 +58,7 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
 
     # raising exception here if target genes are not uploaded by the user
     try:
-        pickled_targetgenes = pd.read_pickle(pickledir + '/' + 'df_targetgenes.pkl')
+        pickled_targetgenes = pd.read_pickle(pickledir + '/df_targetgenes.pkl')
     except FileNotFoundError as e:
         raise FileNotFoundError('No target genes uploaded') from e
 
@@ -45,8 +68,6 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
     # step2 ignore annotation and dap columns from the df
     col_ignore = ['Full Name', 'Family', 'Type', 'Name', 'List', 'UserList', 'TF Count']
     subset = pickled_pandas.iloc[:, ~(pickled_pandas.columns.get_level_values(0).isin(col_ignore))]
-
-    expid_list = subset.columns.tolist()
 
     for val_expid in subset.columns.tolist():
         if 'Edges' in val_expid:
@@ -86,7 +107,7 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
         # If the length of a loaded user list is less than 10 (by default), do not include this on the heatmap.
         # However this will appear on the tabular output
         if len(set(eachmodule_tg)) >= int(cutoff):
-            colnamedict[val_module] = val_module + ' (' + str(len(set(eachmodule_tg))) + ')'
+            colnamedict[val_module] =  f'{val_module} ({len(set(eachmodule_tg))})'
 
             for val_tg in targets_eachtf.keys():
                 # If for an experiment, the number of target genes remaining are less than 10 (by default). By
@@ -96,14 +117,14 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
                 # the heatmap. ## this is not very correct check the bitbucket issue #30
                 type_set2_length = type2_set_dict[val_tg.split('||')[1].strip()][val_tg.split('||')[2].strip()]
                 if type_set2_length >= int(cutoff):
-                    intersect_tg_mod = len(list(set(eachmodule_tg) & set(targets_eachtf[val_tg])))
+                    intersect_tg_mod = len(set(eachmodule_tg) & set(targets_eachtf[val_tg]))
                     df_forheatmap.ix[val_tg, val_module] = intersect_tg_mod  # assigning values to the dataframe
                     # The background here is from virtualplant
                     # Set one as a default and ask user for a parameter if they want to change the background
                     pval_uppertail = hypergeom.sf(intersect_tg_mod, int(background), len(set(eachmodule_tg)),
                                                   type_set2_length)
                     dfpval_forheatmap.ix[val_tg, val_module] = pval_uppertail
-                    rownamedict[val_tg] = val_tg + ' (' + str(type_set2_length) + ')'
+                    rownamedict[val_tg] = f'{val_tg} ({type_set2_length})'
 
     # drops columns where all the values are nan. Modules with less than 10 genes
     dfpval_forheatmap.dropna(axis=1, how='all', inplace=True)
@@ -117,24 +138,18 @@ def read_pickled_targetdbout(pickledir, cutoff=10, background=28775, save_file=T
     dfpval_forheatmap.rename(columns=colnamedict, inplace=True)
     dfpval_forheatmap.rename(index=rownamedict, inplace=True)
 
-    dfpval_forheatmap[dfpval_forheatmap < 1e-30] = 1e-30
-    scaleddfpval_forhmap = -1 * np.log10(dfpval_forheatmap)
-    scaleddfpval_forhmap.replace(np.inf, 1000, inplace=True)
+    if draw:
+        scaleddfpval_forhmap = scale_df(dfpval_forheatmap)
 
-    '''
-    #hypergeom.sf(100, 12000, 3000, 400) is equal to 1-phyper(100,3000,12000-3000,400)
-    '''
+        # hypergeom.sf(100, 12000, 3000, 400) is equal to 1-phyper(100, 3000, 12000-3000, 400)
 
-    sns_heatmap = sns.clustermap(scaleddfpval_forhmap, cmap="YlGnBu", cbar_kws={'label': 'Enrichment(-log10 p)'})
-    plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-    plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
+        sns_heatmap = draw_heatmap(scaleddfpval_forhmap)
 
-    if save_file:
-        # get the absolute path of the directory
-        outdirpath = os.path.abspath(pickledir)
-        dirpath = '/'.join(outdirpath.split('/')[:-1])
-        sns_heatmap.savefig(dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', ''))
-        plt.show()
-        print('Generated= ', (dirpath + '/' + pickledir.split('/')[-1].replace('_pickle', '.svg')))
+        if save_file:
+            # get the absolute path of the directory
+            save_heatmap(sns_heatmap, pickledir)
+        else:
+            return sns_heatmap
+
     else:
-        return sns_heatmap
+        return dfpval_forheatmap
