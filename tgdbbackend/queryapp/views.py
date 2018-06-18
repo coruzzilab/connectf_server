@@ -90,7 +90,7 @@ def parse_key(key: str) -> Tuple[str, int]:
 
 
 def parse_heatmap_idx(idx: str) -> List[str]:
-    return re.sub(r'\s*\(\d+\)$', '', idx).split(' || ')[1:]
+    return re.sub(r'\s*\((\d+)\)$', r' || \g<1>', idx).split(' || ')[1:-1]
 
 
 @method_decorator(csrf_exempt, name='dispatch')
