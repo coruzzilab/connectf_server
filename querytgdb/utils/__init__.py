@@ -94,6 +94,7 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
             # @todo: bellow only works if the file starts with ">"
             # we're screwed if someone uploads a file with incorrect format
             with open(target_genes, 'r') as q_tg:
+                list_id = 'default'
                 for i_q_tg in q_tg:
                     if not i_q_tg.startswith('>'):
                         q_tg_list.append(i_q_tg.strip().upper())
