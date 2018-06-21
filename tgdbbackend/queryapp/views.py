@@ -1,4 +1,5 @@
 import os
+import pathlib
 import pickle
 import re
 import shutil
@@ -11,11 +12,11 @@ from operator import or_
 from threading import Lock
 from typing import Dict, List, Tuple
 
-import environ
 import matplotlib
 import numpy as np
 import pandas as pd
-from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -36,14 +37,12 @@ import seaborn as sns
 
 lock = Lock()
 
-storage = FileSystemStorage('commongenelists/')
+APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
+STATIC_DIR = APPS_DIR / 'static' / 'queryBuilder'
 
-ROOT_DIR = environ.Path(
-    __file__) - 3  # (tgdbbackend/config/settings/common.py - 3 = tgdbbackend/)
-APPS_DIR = ROOT_DIR.path('tgdbbackend')
-STATIC_DIR = APPS_DIR.path('static').path('queryBuilder')
+static_storage = FileSystemStorage(pathlib.Path(settings.MEDIA_ROOT) / 'queryBuilder')
 
-ANNOTATED = pd.read_pickle(str(APPS_DIR.path('static').path('annotated.pickle.gz')))
+ANNOTATED = pd.read_pickle(APPS_DIR / 'static' / 'annotated.pickle.gz')
 ANNOTATED = ANNOTATED[ANNOTATED['p-value'] < 0.0001]
 
 ANNOTATED_PROMO = ANNOTATED[(ANNOTATED['stop'] - ANNOTATED['start'] + ANNOTATED['dist']) < 0]
@@ -55,17 +54,16 @@ ANN_BODY_DEDUP = ANNOTATED_BODY.drop_duplicates('match_id')
 BODY_CLUSTER_SIZE = ANN_BODY_DEDUP.groupby('#pattern name').size()
 
 CLUSTER_INFO = pd.read_pickle(
-    str(APPS_DIR.path('static').path('cluster_info.pickle.gz')),
+    APPS_DIR / 'static' / 'cluster_info.pickle.gz',
     compression='gzip'
 ).to_dict('index')
 
 
 def save_file(dest_path, f):
-    path = os.path.join(dest_path, os.path.basename(f.name))
-    destination = open(path, 'wb')
-    for chunk in f.chunks():
-        destination.write(chunk)
-    destination.close()
+    fd, path = tempfile.mkstemp(suffix='.txt', dir=dest_path)
+    with open(fd, 'wb') as destination:
+        for chunk in f.chunks():
+            destination.write(chunk)
     return path
 
 
@@ -107,14 +105,7 @@ class HandleQueryView(View):
 
         tf_file_paths = []
 
-        if 'targetgenes' in request.POST:
-            try:
-                targetgenes_file_path = save_file(dirpath,
-                                                  storage.open("{}.txt".format(request.POST['targetgenes']), "rb"))
-            except (FileNotFoundError, SuspiciousFileOperation):
-                pass
-
-        if len(request.FILES):
+        if request.FILES:
             if "targetgenes" in request.FILES:
                 targetgenes_file_path = save_file(dirpath, request.FILES["targetgenes"])
             if "file-0" in request.FILES:
@@ -128,10 +119,11 @@ class HandleQueryView(View):
 
         set_tf_query(tf_query, tf_file_paths)
 
-        output = STATIC_DIR.path(request_id)
+        output = static_storage.path(request_id + '_pickle/')
+        print(output)
 
         try:
-            df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, str(output))
+            df, out_metadata_df = query_tgdb(tf_query, edges, metadata, targetgenes_file_path, output)
 
             num_cols = df.columns.get_level_values(2).isin(['Pvalue', 'Log2FC']) | df.columns.get_level_values(
                 0).isin(['UserList', 'Target Count'])
@@ -191,20 +183,21 @@ class HandleQueryView(View):
 
             res.append({'columns': meta_columns,
                         'data': out_metadata_df.to_json(orient='index')})
-            shutil.rmtree(dirpath)
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
             raise
             # raise Http404('Query not available') from e
+        finally:
+            shutil.rmtree(dirpath, ignore_errors=True)
 
 
 class CytoscapeJSONView(View):
     def get(self, request, request_id, name):
         try:
-            outdir = str(STATIC_DIR.path("{}_json".format(request_id)))
+            outdir = static_storage.path("{}_json".format(request_id))
             if not os.path.isdir(outdir):
-                outdir = create_cytoscape_data(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+                outdir = create_cytoscape_data(outdir)
             with open("{}/{}.json".format(outdir, name)) as f:
                 return HttpResponse(f, content_type="application/json; charset=utf-8")
         except FileNotFoundError as e:
@@ -214,9 +207,9 @@ class CytoscapeJSONView(View):
 class ExcelDownloadView(View):
     def get(self, request, request_id):
         try:
-            out_file = str(STATIC_DIR.path("{}.zip".format(request_id)))
+            out_file = static_storage.path("{}.zip".format(request_id))
             if not os.path.exists(out_file):
-                out_file = create_excel_zip(str(STATIC_DIR.path("{}_pickle".format(request_id))))
+                out_file = create_excel_zip(static_storage.path("{}_pickle".format(request_id)))
             with open(out_file, 'rb') as f:
                 response = HttpResponse(f, content_type='application/zip')
                 response['Content-Disposition'] = 'attachment; filename="query.zip"'
@@ -231,7 +224,7 @@ class HeatMapPNGView(View):
         try:
             response = HttpResponse(content_type='image/svg+xml')
             read_pickled_targetdbout(
-                str(STATIC_DIR.path("{}_pickle".format(request_id))),
+                static_storage.path("{}_pickle".format(request_id)),
                 draw=True,
                 save_file=False
             ).savefig(response)
@@ -245,7 +238,7 @@ class HeatMapTableView(View):
     def get(self, request, request_id):
         try:
             df = read_pickled_targetdbout(
-                str(STATIC_DIR.path("{}_pickle".format(request_id))),
+                static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
             meta_ids, analysis_ids = zip(*map(parse_heatmap_idx, df.index))
@@ -361,7 +354,7 @@ class MotifEnrichmentView(View):
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
 
-                p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
+                p = static_storage.path("{}_pickle/df_jsondata.pkl".format(request_id))
 
                 if not os.path.exists(p):
                     time.sleep(3)
@@ -392,7 +385,7 @@ class MotifEnrichmentView(View):
                     meta_dicts.append(data)
 
                 try:
-                    with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
+                    with open(static_storage.path("{}_pickle/target_lists.pkl".format(request_id)), 'rb') as f:
                         target_lists = pickle.load(f)
                         meta_dicts.extend(
                             [{'list_name': name, **m} for m in meta_dicts for name in target_lists.keys()])
@@ -424,7 +417,7 @@ class MotifEnrichmentHeatmapView(View):
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
 
-                p = str(STATIC_DIR.path("{}_pickle/df_jsondata.pkl".format(request_id)))
+                p = static_storage.path("{}_pickle/df_jsondata.pkl".format(request_id))
 
                 if not os.path.exists(p):
                     time.sleep(3)
@@ -433,7 +426,7 @@ class MotifEnrichmentHeatmapView(View):
                 res = OrderedDict((name, col.index[col.notnull()].unique()) for name, col in data.iteritems())
 
                 try:
-                    with open(str(STATIC_DIR.path("{}_pickle/target_lists.pkl".format(request_id))), 'rb') as f:
+                    with open(static_storage.path("{}_pickle/target_lists.pkl".format(request_id)), 'rb') as f:
                         target_lists = pickle.load(f)
                         res.update(
                             [(f"{t_name}_{r_name}", np.intersect1d(t_list, r_list)) for r_name, r_list in res.items()

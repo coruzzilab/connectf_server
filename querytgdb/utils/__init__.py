@@ -155,9 +155,8 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         # Note: I decided to save rs_final_trim in pickle object before adding pval and fold change.
         # As I am not going to use this in the pickle file
-        # Create directory to save pickle files (if the dir does not exist)
-        if not os.path.exists(output + '_pickle'):  # create output directory
-            os.makedirs(output + '_pickle')
+        # Create directory to save pickle files
+        os.makedirs(output, exist_ok=True)
 
         '''
         count_nesteddict dict will be used when creating heatmaps
@@ -167,12 +166,12 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         It should be
         instead total number of target genes for each TF- nested dict is stored as pickles
         '''
-        pickled_totaltgs = open(output + '_pickle/df_eachtf_tgcount.pkl', 'wb')
+        pickled_totaltgs = open(output + '/df_eachtf_tgcount.pkl', 'wb')
         pickle.dump(count_nesteddict, pickled_totaltgs)
         pickled_totaltgs.close()
 
         # dump rs_final_trim df. Will be used by module_createjson.
-        pickled_jsondata = output + '_pickle/df_jsondata.pkl'  # dump rs_final_trim
+        pickled_jsondata = output + '/df_jsondata.pkl'  # dump rs_final_trim
         rs_final_trim.to_pickle(pickled_jsondata)
 
         # dump target gene lists to pickle
@@ -181,7 +180,7 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
             for v in val:
                 target_lists[v].append(key)
 
-        with open(output + '_pickle/target_lists.pkl', 'wb') as f:
+        with open(output + '/target_lists.pkl', 'wb') as f:
             pickle.dump(OrderedDict(target_lists), f, protocol=pickle.HIGHEST_PROTOCOL)
 
         # code for replacing a tf name in dap_data_pivot table to experiment ids
@@ -223,29 +222,29 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
                                                                                                  targets_mullist_dict)
 
         # dump rs_final_res_t to a pickle object. This object will be used by create_sif to create a sif file
-        pickled_sif = output + '_pickle/df_sif.pkl'
+        pickled_sif = output + '/df_sif.pkl'
         # rs_final_res_t.to_pickle(pickled_sif)
         rs_reg_df_merge.to_pickle(pickled_sif)
 
         out_metadata_df = getmetadata(db_metadict, mid_tfname_dict)
 
         # dump out_metadata_df to a pickle object. This object will be used by create_sif function to create a sif file
-        pickled_metadata = output + '_pickle/df_metadata.pkl'
+        pickled_metadata = output + '/df_metadata.pkl'
         out_metadata_df.to_pickle(pickled_metadata)
         # pickled_metadata.close()
 
         # dump uploaded target gene list to a pickle object. This object will be used by do_clustering script
         if not df_genelistid.empty:
-            pickled_targetgenes = output + '_pickle/df_targetgenes.pkl'
+            pickled_targetgenes = output + '/df_targetgenes.pkl'
             df_genelistid.to_pickle(pickled_targetgenes)
 
         # dump db_tf and id_name_type dict to pickle objects. Will be used by module_createjson.
-        pickled_json_anno = open(output + '_pickle/df_jsonanno.pkl', 'wb')  # dump id_name_type dict
+        pickled_json_anno = open(output + '/df_jsonanno.pkl', 'wb')  # dump id_name_type dict
         id_name_type = {ath_x[0]: [ath_x[1], ath_x[3]] for ath_x in ath_annotation}
         pickle.dump(id_name_type, pickled_json_anno)
         pickled_json_anno.close()  # close the pickled object file
 
-        pickled_json_dbtf = open(output + '_pickle/df_jsondbtf.pkl', 'wb')  # dump db_tf
+        pickled_json_dbtf = open(output + '/df_jsondbtf.pkl', 'wb')  # dump db_tf
         rs_tf = list(TargetDBTF.objects.values_list('db_tf_agi'))  # get dbase TFs
         db_tf = [x[0] for x in rs_tf]
         pickle.dump(db_tf, pickled_json_dbtf)
@@ -514,7 +513,7 @@ def combine_annotations(data, anno):
 ##################################
 # Generate tabular output
 # @profile
-def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets_mullist_dict):
+def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_mullist_dict):
     mid_tfname_dict = {}  # dict contains metaid to genename mapping+TF target counts
     tmp_mid_counts = {}  # dict will be used as a reference for sorting final df based on targetcounts
     mid_tfname = {}  # dict contains metaid to genename mapping
@@ -588,7 +587,6 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
         df_genelistid_new['UserList___Count'] = np.nan
         df_genelistid_new['allgenes'] = rs_final_res.index
         df_genelistid_new.set_index(['allgenes'], inplace=True)  # set all the genes as index
-        df_genelistid_new.index.name = None # somehow having an index name breaks stuff
 
     # Get the Gene names of the target genes, insert it into a df and merge with the following two dfs
     ath_annotation = list(ath_annotation_query.values_list('agi_id', 'ath_name', 'ath_fullname',
@@ -676,6 +674,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     # new_res_df = pd.concat([final_df, df_target_names, df_genelistid_new], axis=1)
 
     # concat metadata for each experiment (as headers)
+    new_res_df.index.name = None  # Having index name messes with reset index
     new_res_df.reset_index(inplace=True, col_fill='GeneID')
     new_res_df.rename(columns={'index': 'ID__'}, inplace=True)
     # df_count_rows = new_res_df.shape[0]
@@ -713,7 +712,7 @@ def create_tabular(outfile, rs_final_res, targetgenes, chipdata_summary, targets
     new_res_df.sort_values([('TF Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
 
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
-        pk_output = outfile + '_pickle/tabular_output.pkl'
+        pk_output = output + '/tabular_output.pkl'
         new_res_df.to_pickle(pk_output)
     else:
         raise ValueError("Empty dataframe for your query")
