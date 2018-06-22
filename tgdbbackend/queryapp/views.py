@@ -101,7 +101,7 @@ class HandleQueryView(View):
                                      ['tfs', 'edges', 'metas'])
 
         targetgenes_file_path = None
-        dirpath = tempfile.mkdtemp()
+        dirpath = tempfile.mkdtemp(dir=static_storage.location)
 
         tf_file_paths = []
 
@@ -418,8 +418,6 @@ class MotifEnrichmentView(View):
 class MotifEnrichmentHeatmapView(View):
     def get(self, request, request_id):
         with lock:
-            if not request_id:
-                return HttpResponseNotFound(content_type='image/svg+xml')
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
@@ -464,3 +462,9 @@ class MotifEnrichmentHeatmapView(View):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')
+
+
+class MotifEnrichmentErrorView(View):
+    def get(self, request, request_id):
+        print("gotcha")
+        return HttpResponseNotFound(content_type='image/svg+xml')

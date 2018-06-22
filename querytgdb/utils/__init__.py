@@ -115,8 +115,8 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         res_refid_dict = {}  # referenceid-metaid analysis id mapping
         refid_tf_mapping = defaultdict(list)  # referenceid-tf_name mapping
         for val_r in rs_final_trim.columns.tolist():
-            res_refid_dict[int(val_r.split('_')[-1])] = val_r
-            refid_tf_mapping[(val_r.split('_')[0])].append('_'.join(val_r.split('_')[:3]) + '_OMalleyetal_2016')
+            res_refid_dict[int(val_r.rpartition('_')[2])] = val_r
+            refid_tf_mapping[(val_r.partition('_')[0])].append('_'.join(val_r.split('_', 3)[:3]) + '_OMalleyetal_2016')
 
         # query the database with RefID and Ath_ID (ensures number based search)
         regulation_data = pd.DataFrame(
@@ -159,14 +159,13 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         # Create directory to save pickle files
         os.makedirs(output, exist_ok=True)
 
-        '''
-        count_nesteddict dict will be used when creating heatmaps
-        While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of 
-        targetgenes for
-        each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test. 
-        It should be
-        instead total number of target genes for each TF- nested dict is stored as pickles
-        '''
+        # count_nesteddict dict will be used when creating heatmaps
+        # While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of
+        # targetgenes for
+        # each exp. is a subset based on loaded target genes. Which is not a correct type2 set for hypergeometric test.
+        # It should be
+        # instead total number of target genes for each TF- nested dict is stored as pickles
+
         pickled_totaltgs = open(output + '/df_eachtf_tgcount.pkl', 'wb')
         pickle.dump(count_nesteddict, pickled_totaltgs)
         pickled_totaltgs.close()
@@ -194,16 +193,7 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         # find an alternative for this
         # None are retruned by the mysql queries and nan included by pandas
-        rs_final_trim.replace('None||nan', np.nan, inplace=True)
-        rs_final_trim.replace('None||None', np.nan, inplace=True)
-        rs_final_trim.replace('nan||nan', np.nan, inplace=True)
-        rs_final_trim.replace('nan||None', np.nan, inplace=True)
-        rs_final_trim.replace('||None', np.nan, inplace=True)
-        rs_final_trim.replace('||nan', np.nan, inplace=True)
-        rs_final_trim.replace(to_replace='^nan\|\|', value=np.nan, regex=True, inplace=True)
-        # rs_final_trim.replace(r'^\s*$', np.nan, regex=True, inplace=True)
-
-        rs_final_trim.replace('', np.nan, inplace=True)
+        rs_final_trim[rs_final_trim.apply(lambda x: x.str.match(r'^(?:None|nan)?\|\|(?:None|nan)?$'))] = np.nan
         rs_final_trim.replace(0, np.nan, inplace=True)
 
         rs_final_trim.dropna(how='all', inplace=True)
