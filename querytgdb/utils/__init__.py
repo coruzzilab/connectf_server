@@ -143,14 +143,12 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         # get the dap-seq data from the database
         dap_data = pd.DataFrame(
-            list(DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).
-                 values_list('db_tfid__db_tf_agi', 'ath_id__agi_id')), columns=['DAP_tf', 'DAP_target'])
+            DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).values_list(
+                'db_tfid__db_tf_agi', 'ath_id__agi_id').iterator(),
+            columns=['DAP_tf', 'DAP_target'])
         # dap_data.DAP_tf.replace(to_replace=refid_tf_mapping, inplace=True)
         dap_data['present'] = 'Present'
         dap_data_pivot = dap_data.pivot(columns='DAP_tf', index='DAP_target', values='present')
-        # print('dap_data_pivot= ',dap_data_pivot)
-        dap_data = dap_data.set_index('DAP_target')
-        # print('xxx index= ',dap_data.index)
 
         # Note: I decided to save rs_final_trim in pickle object before adding pval and fold change.
         # As I am not going to use this in the pickle file
@@ -164,9 +162,8 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         # It should be
         # instead total number of target genes for each TF- nested dict is stored as pickles
 
-        pickled_totaltgs = open(output + '/df_eachtf_tgcount.pkl', 'wb')
-        pickle.dump(count_nesteddict, pickled_totaltgs)
-        pickled_totaltgs.close()
+        with open(output + '/df_eachtf_tgcount.pkl', 'wb') as pickled_totaltgs:
+            pickle.dump(count_nesteddict, pickled_totaltgs, protocol=pickle.HIGHEST_PROTOCOL)
 
         # dump rs_final_trim df. Will be used by module_createjson.
         pickled_jsondata = output + '/df_jsondata.pkl'  # dump rs_final_trim
@@ -210,9 +207,7 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
                                                                                                  targets_mullist_dict)
 
         # dump rs_final_res_t to a pickle object. This object will be used by create_sif to create a sif file
-        pickled_sif = output + '/df_sif.pkl'
-        # rs_final_res_t.to_pickle(pickled_sif)
-        rs_reg_df_merge.to_pickle(pickled_sif)
+        rs_reg_df_merge.to_pickle(output + '/df_sif.pkl')
 
         out_metadata_df = getmetadata(db_metadict, mid_tfname_dict)
 
@@ -226,9 +221,9 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         # dump db_tf and id_name_type dict to pickle objects. Will be used by module_createjson.
         ath_annotation.iloc[:, [1, 3]].to_pickle(output + '/df_jsonanno.pkl')
 
-        with open(output + '/df_jsondbtf.pkl', 'wb') as pickled_json_dbtf: # dump db_tf
+        with open(output + '/df_jsondbtf.pkl', 'wb') as pickled_json_dbtf:  # dump db_tf
             db_tf = list(TargetDBTF.objects.values_list('db_tf_agi', flat=True))  # get dbase TFs
-            pickle.dump(db_tf, pickled_json_dbtf)
+            pickle.dump(db_tf, pickled_json_dbtf, protocol=pickle.HIGHEST_PROTOCOL)
 
         # return new_res_df
 
@@ -661,21 +656,19 @@ def create_tabular(output, rs_final_res, chipdata_summary, targets_mullist_dict)
     new_res_df, total_no_exp = include_targetcount(new_res_df)  # include target count column
 
     # sort metaids based on number of targets hit by a TF
-    sorted_mid_counts = sorted(tmp_mid_counts.items(), key=itemgetter(1), reverse=True)
+    mid_counts = pd.DataFrame.from_dict(tmp_mid_counts, orient='index').reset_index()
+    mid_counts['index'] = mid_counts['index'].str.split('_', 3, expand=True).iloc[:, :3].apply(lambda x: '_'.join(x),
+                                                                                               axis=1)
+    sorted_mid_counts = mid_counts.groupby('index').sum().sort_values(0, ascending=False)
 
     # Change column order: Can keep the analysis of the same experiment together after sort.
     # algo is simple. sorted_mid_counts has sorted each analysis. I keep only the unique expid after sort
     # exp with max target will come first without considering the fact which analysis has more targets. It is simply
-    # comparing
-    # with other experiments not within.
+    # comparing with other experiments not within.
     multi_cols = new_res_df.columns.tolist()
-    # set destroys the order of my sorted list (sorted by targets). Using ordereddict for getting unique expids (for
-    # multiple
-    # analysis) and then fetching the dict keys.
-    list_mid_sorted = OrderedDict.fromkeys(
-        '_'.join(x.split('_', 3)[0:3]) for x in map(itemgetter(0), sorted_mid_counts)).keys()
 
-    list_mid_sorted_mcols = [x_unsort for i_sort in list_mid_sorted for x_unsort in multi_cols if i_sort in x_unsort]
+    list_mid_sorted_mcols = [x_unsort for i_sort in sorted_mid_counts.index for x_unsort in multi_cols if
+                             i_sort in x_unsort]
 
     # rearranging the columns: Columns not sorted at the moment
     multi_cols = [('Full Name', 'Gene Full Name', ' '), ('Family', 'Gene Family', ' '),
