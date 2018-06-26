@@ -91,8 +91,6 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         targets_mullist_dict = defaultdict(list)
         if target_genes:
             q_tg_list = []
-            # @todo: bellow only works if the file starts with ">"
-            # we're screwed if someone uploads a file with incorrect format
             with open(target_genes, 'r') as q_tg:
                 list_id = 'default'
                 for i_q_tg in q_tg:
@@ -208,7 +206,6 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid = create_tabular(output,
                                                                                                  rs_reg_df_merge,
-                                                                                                 target_genes,
                                                                                                  chipdata_summary,
                                                                                                  targets_mullist_dict)
 
@@ -220,26 +217,18 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         out_metadata_df = getmetadata(db_metadict, mid_tfname_dict)
 
         # dump out_metadata_df to a pickle object. This object will be used by create_sif function to create a sif file
-        pickled_metadata = output + '/df_metadata.pkl'
-        out_metadata_df.to_pickle(pickled_metadata)
-        # pickled_metadata.close()
+        out_metadata_df.to_pickle(output + '/df_metadata.pkl')
 
         # dump uploaded target gene list to a pickle object. This object will be used by do_clustering script
         if not df_genelistid.empty:
-            pickled_targetgenes = output + '/df_targetgenes.pkl'
-            df_genelistid.to_pickle(pickled_targetgenes)
+            df_genelistid.to_pickle(output + '/df_targetgenes.pkl')
 
         # dump db_tf and id_name_type dict to pickle objects. Will be used by module_createjson.
-        pickled_json_anno = open(output + '/df_jsonanno.pkl', 'wb')  # dump id_name_type dict
-        id_name_type = {ath_x[0]: [ath_x[1], ath_x[3]] for ath_x in ath_annotation}
-        pickle.dump(id_name_type, pickled_json_anno)
-        pickled_json_anno.close()  # close the pickled object file
+        ath_annotation.iloc[:, [1, 3]].to_pickle(output + '/df_jsonanno.pkl')
 
-        pickled_json_dbtf = open(output + '/df_jsondbtf.pkl', 'wb')  # dump db_tf
-        rs_tf = list(TargetDBTF.objects.values_list('db_tf_agi'))  # get dbase TFs
-        db_tf = [x[0] for x in rs_tf]
-        pickle.dump(db_tf, pickled_json_dbtf)
-        pickled_json_dbtf.close()  # close the pickled object file
+        with open(output + '/df_jsondbtf.pkl', 'wb') as pickled_json_dbtf: # dump db_tf
+            db_tf = list(TargetDBTF.objects.values_list('db_tf_agi', flat=True))  # get dbase TFs
+            pickle.dump(db_tf, pickled_json_dbtf)
 
         # return new_res_df
 
@@ -504,7 +493,7 @@ def combine_annotations(data, anno):
 ##################################
 # Generate tabular output
 # @profile
-def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_mullist_dict):
+def create_tabular(output, rs_final_res, chipdata_summary, targets_mullist_dict):
     mid_tfname_dict = {}  # dict contains metaid to genename mapping+TF target counts
     tmp_mid_counts = {}  # dict will be used as a reference for sorting final df based on targetcounts
     mid_tfname = {}  # dict contains metaid to genename mapping
@@ -580,26 +569,23 @@ def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_
         df_genelistid_new.set_index(['allgenes'], inplace=True)  # set all the genes as index
 
     # Get the Gene names of the target genes, insert it into a df and merge with the following two dfs
-    ath_annotation = list(ath_annotation_query.values_list('agi_id', 'ath_name', 'ath_fullname',
-                                                           'ath_gene_type', 'ath_gene_fam'))
+    ath_annotation = pd.DataFrame(ath_annotation_query.values_list('agi_id', 'ath_name', 'ath_fullname',
+                                                                   'ath_gene_type', 'ath_gene_fam').iterator(),
+                                  columns=['ID___Gene ID', 'Name___Gene Name',
+                                           'Full Name___Gene Full Name', 'Type___Gene Type',
+                                           'Family___Gene Family']).set_index('ID___Gene ID')
 
-    df_target = pd.DataFrame(ath_annotation, columns=['ID___Gene ID', 'Name___Gene Name',
-                                                      'Full Name___Gene Full Name', 'Type___Gene Type',
-                                                      'Family___Gene Family']).set_index('ID___Gene ID')
-
-    df_target_names = df_target.loc[df_genelistid_new.index]
+    df_target_names = ath_annotation.loc[df_genelistid_new.index]
     # Remove the referenceid and replace the last occurence of '_' with '.'
     # rs_final_res.rename(columns=lambda x: x[:-2][::-1].replace('_', '.', 1)[::-1], inplace=True)
 
     rs_final_res.rename(columns={c: col_rename(c) for c in rs_final_res.columns}, inplace=True)
-    rs_final_res.columns = pd.MultiIndex.from_tuples([split_name(c) for c in rs_final_res.columns],
-                                                     names=['experiment', 'analysis'])  # provision
+    rs_final_res.columns = pd.MultiIndex.from_tuples([split_name(c) for c in rs_final_res.columns])  # provision
     # print('Before mid_annotate_df= ',mid_annotate_df.columns.tolist())
     # Remove the referenceid and replace the last occurence of '_' with '.'
     # mid_annotate_df.rename(columns=lambda x: x[:-2][::-1].replace('_', '.', 1)[::-1], inplace=True)
     mid_annotate_df.rename(columns=col_rename, inplace=True)
-    mid_annotate_df.columns = pd.MultiIndex.from_tuples([split_name(c) for c in mid_annotate_df.columns],
-                                                        names=['experiment', 'analysis'])  # provision
+    mid_annotate_df.columns = pd.MultiIndex.from_tuples([split_name(c) for c in mid_annotate_df.columns])  # provision
     # print('\n\nAfter mid_annotate_df= ',mid_annotate_df.columns.tolist())
     # print('rs_final_res= ',rs_final_res)
 
@@ -622,8 +608,7 @@ def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_
             splitted_analysis.loc[(splitted_analysis[0] == ''), [1, 2]] = np.nan
             # Recreate MultiIndex
             splitted_analysis.columns = pd.MultiIndex.from_tuples(
-                [(*col_name, c) for c in ['Edges', 'Pvalue', 'Log2FC']],
-                names=['experiment', 'analysis', 'type'])
+                [(*col_name, c) for c in ['Edges', 'Pvalue', 'Log2FC']])
             # Concatenate the new columns to the final_df
             final_df.append(splitted_analysis)
         # If an experiment does not have fold change and p-value it does not split
@@ -633,8 +618,7 @@ def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_
             else:
                 third_level = 'Edges'
             tmp_df = column.to_frame()
-            tmp_df.columns = pd.MultiIndex.from_tuples([(*col_name, third_level)],
-                                                       names=['experiment', 'analysis', 'type'])
+            tmp_df.columns = pd.MultiIndex.from_tuples([(*col_name, third_level)])
             final_df.append(tmp_df)
 
     final_df = pd.concat(final_df, axis=1)
@@ -703,8 +687,7 @@ def create_tabular(output, rs_final_res, targetgenes, chipdata_summary, targets_
     new_res_df.sort_values([('TF Count', total_no_exp)], ascending=False, inplace=True, na_position='first')
 
     if new_res_df.shape[0] > 1:  # Writing dataframe to excel and formatting the df excel output
-        pk_output = output + '/tabular_output.pkl'
-        new_res_df.to_pickle(pk_output)
+        new_res_df.to_pickle(output + '/tabular_output.pkl')
     else:
         raise ValueError("Empty dataframe for your query")
 

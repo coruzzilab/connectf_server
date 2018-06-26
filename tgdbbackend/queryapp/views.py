@@ -92,6 +92,32 @@ def parse_heatmap_idx(idx: str) -> List[str]:
     return re.sub(r'\s*\((\d+)\)$', r' || \g<1>', idx).split(' || ')[1:-1]
 
 
+def get_merge_cells(column_labels):
+    """
+    Get merge cells for Handsontable. Highly customized don't copy paste.
+    :param column_labels:
+    :return:
+    """
+    merged_cells = []
+
+    for i, level in enumerate(column_labels):
+        if i == 2:
+            continue
+
+        # don't merge before column 9
+        index = 8
+        for label, group in groupby(level[8:]):
+            size = sum(1 for _ in group)
+            if size > 1:
+                merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
+                if i == 1:
+                    merged_cells.extend(
+                        {'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
+            index += size
+
+    return merged_cells
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class HandleQueryView(View):
     def post(self, request, *args, **kwargs):
@@ -145,22 +171,9 @@ class HandleQueryView(View):
 
             df = df.where(pd.notnull(df), None)
 
-            merged_cells = []
+            merged_cells = get_merge_cells(df.columns.labels)
 
-            for i, level in enumerate(df.columns.labels):
-                if i == 2:
-                    continue
-
-                # don't merge before column 9
-                index = 8
-                for label, group in groupby(level[8:]):
-                    size = sum(1 for _ in group)
-                    merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
-                    if i == 1:
-                        merged_cells.extend(
-                            {'row': a, 'col': index, 'colspan': size, 'rowspan': 1} for a in range(3, 6))
-                    index += size
-
+            # Column formatting for Handsontable
             columns = []
 
             for (i, num), p in zip(enumerate(num_cols), p_values):
@@ -293,7 +306,7 @@ def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject
                 alternative='greater')[1]
 
         p_values = pd.concat([list_cluster_size, ann_cluster_size],
-                             axis=1).fillna(0).apply(cluster_fisher, axis=1).sort_values()
+                             axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
         reject, adj_p = fdrcorrection(p_values, alpha=alpha, is_sorted=True)
 
         str_index = p_values.index.astype(str)
@@ -322,13 +335,13 @@ def motif_enrichment(res: Dict[str, pd.Series], alpha: float = 0.05, show_reject
         else:
             rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
     else:
-        df = pd.concat(promo_enrich, axis=1)
+        df = pd.concat(promo_enrich, axis=1, sort=True)
         columns = [c + '_promo' for c in res.keys()]
 
         if show_reject:
             rejects = reduce(or_, promo_reject)
         else:
-            rejects = pd.concat(promo_reject, axis=1)
+            rejects = pd.concat(promo_reject, axis=1, sort=True)
 
     df.columns = columns
 
