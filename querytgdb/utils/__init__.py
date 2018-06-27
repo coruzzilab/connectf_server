@@ -79,10 +79,9 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
     count_rs_finaldict = count_rs_final.to_dict()
     # convert count_rs_finaldict to a nested dict
     count_nesteddict = defaultdict(dict)
-    for val_dict in count_rs_finaldict:
-        count_nesteddict['_'.join(val_dict.split('_')[:3])][
-            ('_'.join(val_dict.split('_')[3:-1]))[::-1].replace('_', '.', 1)[::-1]] \
-            = count_rs_finaldict[val_dict]
+    for key, val in count_rs_finaldict.items():
+        val_split = key.split('_')
+        count_nesteddict['_'.join(val_split[:3])]['_'.join(val_split[3:-1])[::-1].replace('_', '.', 1)[::-1]] = val
 
     if not rs_final.empty:
         # if file with list of target genes is provided with -r option
