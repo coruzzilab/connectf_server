@@ -117,13 +117,19 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         # query the database with RefID and Ath_ID (ensures number based search)
         regulation_data = pd.DataFrame(
-            list(Regulation.objects.select_related().filter(ref_id__in=res_refid_dict.keys()).
-                 values_list('ref_id', 'ath_id__agi_id', 'foldchange', 'pvalue'))
+            Regulation.objects.select_related().filter(ref_id__in=res_refid_dict.keys()).
+                values_list('ref_id', 'ath_id__agi_id', 'foldchange', 'pvalue').iterator()
             , columns=['r_refid', 'r_agiid', 'r_fc', 'r_p'])
 
         # filter out p-values that don't make the cutoff
         if p_value:
             regulation_data = regulation_data[regulation_data.r_p.astype(float) < p_value]
+
+        # Note: I decided to save rs_final_trim in pickle object before adding pval and fold change.
+        # As I am not going to use this in the pickle file
+        # Create directory to save pickle files
+        os.makedirs(output, exist_ok=True)
+        rs_final_trim_output = output + '/df_jsondata.pkl'
 
         if not regulation_data.empty:
             regulation_data['r_p_fc'] = regulation_data['r_p'] + '||' + regulation_data['r_fc']
@@ -135,10 +141,24 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
                 except KeyError:
                     rs_final_trim.loc[:, name] = np.nan
 
+            # dump rs_final_trim df. Will be used by module_createjson.
+            rs_final_trim.to_pickle(rs_final_trim_output)  # dump rs_final_trim
+
             regulation_data_new = regulation_data.pivot(columns='r_refid', index='r_agiid', values='r_p_fc')
             # filter out rows that don't make the p-value cutoff
             # subset the df for add function. Add does not work on df with different dimensions
-            regulation_data_subset = regulation_data_new.loc[rs_final_trim.index]
+            regulation_data_new = regulation_data_new.loc[rs_final_trim.index]
+
+            # code for replacing a tf name in dap_data_pivot table to experiment ids
+            # if a TF has multiple experiments then it repeats the df column
+            for col_trim in rs_final_trim:
+                try:
+                    rs_final_trim[col_trim] = rs_final_trim[col_trim].astype(str).add('||').add(
+                        regulation_data_new[col_trim].values.astype(str), axis='index')
+                except KeyError:
+                    pass
+        else:
+            rs_final_trim.to_pickle(rs_final_trim_output)
 
         # get the dap-seq data from the database
         dap_data = pd.DataFrame(
@@ -148,11 +168,6 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         # dap_data.DAP_tf.replace(to_replace=refid_tf_mapping, inplace=True)
         dap_data['present'] = 'Present'
         dap_data_pivot = dap_data.pivot(columns='DAP_tf', index='DAP_target', values='present')
-
-        # Note: I decided to save rs_final_trim in pickle object before adding pval and fold change.
-        # As I am not going to use this in the pickle file
-        # Create directory to save pickle files
-        os.makedirs(output, exist_ok=True)
 
         # count_nesteddict dict will be used when creating heatmaps
         # While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of
@@ -164,10 +179,6 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         with open(output + '/df_eachtf_tgcount.pkl', 'wb') as pickled_totaltgs:
             pickle.dump(count_nesteddict, pickled_totaltgs, protocol=pickle.HIGHEST_PROTOCOL)
 
-        # dump rs_final_trim df. Will be used by module_createjson.
-        pickled_jsondata = output + '/df_jsondata.pkl'  # dump rs_final_trim
-        rs_final_trim.to_pickle(pickled_jsondata)
-
         # dump target gene lists to pickle
         target_lists = defaultdict(list)
         for key, val in targets_mullist_dict.items():
@@ -177,17 +188,10 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
         with open(output + '/target_lists.pkl', 'wb') as f:
             pickle.dump(OrderedDict(target_lists), f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        # code for replacing a tf name in dap_data_pivot table to experiment ids
-        # if a TF has multiple experiments then it repeats the df column
-        if not regulation_data.empty:
-            for col_trim in rs_final_trim.columns.tolist():
-                if col_trim in regulation_data_subset.columns.tolist():
-                    rs_final_trim[col_trim] = rs_final_trim[col_trim].astype(str).add('||'). \
-                        add(regulation_data_subset[col_trim].values.astype(str), axis='index')
-
         # find an alternative for this
-        # None are retruned by the mysql queries and nan included by pandas
-        rs_final_trim[rs_final_trim.apply(lambda x: x.str.match(r'^(?:None|nan)?\|\|(?:None|nan)?$'))] = np.nan
+        # None is returned by the mysql queries and nan included by pandas
+        rs_final_trim[
+            rs_final_trim.apply(lambda x: x.str.match(r'^(?:None|nan)?\|\|(?:None|nan)?$').fillna(True))] = np.nan
         rs_final_trim.replace(0, np.nan, inplace=True)
 
         rs_final_trim.dropna(how='all', inplace=True)
@@ -357,11 +361,10 @@ def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
                         cols_discard_rsgp.append(rs_gp_cols)
                 rs_gp.drop(cols_discard_rsgp, 1, inplace=True)
 
-            for x_col in rs_gp.columns:
-                if 'CHIPSEQ' in x_col:
-                    rs_gp.rename(columns={x_col: '_'.join(x_col.split('_')[:-1])}, inplace=True)
-            rs_gp_new = rs_gp.groupby(rs_gp.columns, axis=1).apply(
-                lambda x: x.apply(lambda y: ','.join([l for l in y if l is not None]), axis=1))
+            rs_gp.rename(columns={x_col: x_col.rpartition('_')[0] for x_col in rs_gp.columns if 'CHIPSEQ' in x_col},
+                         inplace=True)
+
+            rs_gp_new = rs_gp.fillna('')
 
             if 'TMP' in rs_gp_new.columns:  # discard the tmp column from the df after query
                 rs_gp_new.drop('TMP', 1, inplace=True)
