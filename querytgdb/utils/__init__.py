@@ -449,8 +449,8 @@ def create_edges_query(edges, edgelist, edge_mid_map):
 
 ##########################################################
 # Create TF query
-def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
-    tfstr = ' '.join(TFname)
+def create_tf_query(tf_name, q_tf_list, tf_mid_map, filtered_columns):
+    tfstr = ' '.join(tf_name)
     tf_in_mid = tfstr.upper().replace(' AND ', ' & ').replace(' OR ', ' | '). \
         replace(' ANDNOT ', ' &~ ').replace('[', '(').replace(']', ')')
     for val in q_tf_list:
@@ -461,7 +461,7 @@ def create_tf_query(TFname, q_tf_list, tf_mid_map, filtered_columns):
                     each_tf_mid = ' '.join([str(i) + '.notnull()'])
                 else:
                     each_tf_mid = ' '.join([each_tf_mid, '|', str(i) + '.notnull()'])
-            if not i in filtered_columns:
+            else:
                 if count == 0:
                     each_tf_mid = ' '.join(['False'])
                 else:
