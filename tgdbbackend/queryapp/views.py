@@ -206,8 +206,7 @@ class HandleQueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
-            raise
-            # raise Http404('Query not available') from e
+            raise Http404('Query not available') from e
         finally:
             shutil.rmtree(dirpath, ignore_errors=True)
 

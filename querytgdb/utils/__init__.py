@@ -10,7 +10,6 @@ from typing import Dict, Generator, Tuple
 import numpy as np
 import pandas as pd
 
-from querytgdb.management.commands.Modules import module_query
 from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, \
     Regulation, TargetDBTF
 
@@ -266,6 +265,7 @@ def get_tf_list(tf_query):
     # if query is given as an input file for transcription factors
     tmptf = ' '.join(tf_query)
     # The following code can handle the queries like: -t AT2G22200 or and[tf_test.txt]
+    tf_name = None
     if '.TXT' in tmptf.upper():  # if input query is a txt file
         file_index = [i for i, s in enumerate(tf_query) if '.txt' in s][0]  # get index of txt file in the list
         tf_input = tf_query[file_index].replace(']', '').replace('[', '')  # get the file name
@@ -287,25 +287,25 @@ def get_tf_list(tf_query):
         tf_query.insert(file_index - 1,
                         my_TFname)  # insert the file name and condition with query constructed in user provided list
 
-        TFname = ' '.join(tf_query).split()  # split by space (bcoz the newly inserted query part is still a list)
+        tf_name = ' '.join(tf_query).split()  # split by space (bcoz the newly inserted query part is still a list)
 
-        q_tf_list = getquerylist(TFname)
+        q_tf_list = getquerylist(tf_name)
 
         # print('\nFollowing is your database query:')
-        # print(' '.join(TFname))
+        # print(' '.join(tf_name))
 
     # if input query has all TFs: ALlTF should get all the TFs from the database
     if 'ALLTF' in tmptf.upper():
         # all_tfs = sess.query(TargetDBTF.db_tf_agi).all()
         q_tf_list = list(TargetDBTF.objects.values_list('db_tf_agi', flat=True))
-        TFname = (' ' + tf_query[0].strip().upper().replace('[', '') + ' ').join(q_tf_list).split()
+        tf_name = (' ' + tf_query[0].strip().upper().replace('[', '') + ' ').join(q_tf_list).split()
 
     if not ('.TXT' in tmptf.upper() or 'ALLTF' in tmptf.upper()):  # if
         # input query is an expression or selection of one TF
-        TFname = [x.upper() for x in tf_query]
-        q_tf_list = getquerylist(TFname)
+        tf_name = [x.upper() for x in tf_query]
+        q_tf_list = getquerylist(tf_name)
 
-    return q_tf_list, TFname
+    return q_tf_list, tf_name
 
 
 ############################################################
@@ -319,7 +319,7 @@ def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
         # print('q_tf= ',q_tf)
         edge_mid_map = defaultdict(list)
         # Combine all the TF dataframes after this loop
-        tf_data = module_query.queryTFDB(q_tf, rs_meta_list)
+        tf_data = query_tfdb(q_tf, rs_meta_list)
 
         # if df for a Tf is empty after querying the database, don't query the DF for edges
         # or concat with other TFs data
@@ -329,13 +329,13 @@ def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
                 edge_mid_map[k] = list(set(g['REFID']))
 
             for i, j in tf_data.groupby('TF'):
-                refidlist_eachTF = []
-                for val_test_chip in list(set(j['REFID'])):
+                refidlist_each_tf = []
+                for val_test_chip in set(j['REFID']):
                     if 'CHIPSEQ' in val_test_chip:
-                        refidlist_eachTF.append('_'.join(val_test_chip.split('_')[:-1]))
+                        refidlist_each_tf.append(val_test_chip.rpartition('_')[0])
                     else:
-                        refidlist_eachTF.append(val_test_chip)
-                tf_mid_map[i].extend(list(set(refidlist_eachTF)))
+                        refidlist_each_tf.append(val_test_chip)
+                tf_mid_map[i].extend(set(refidlist_each_tf))
 
             # apply and pivot_table are slower than pivot
             ## option 1
@@ -373,7 +373,7 @@ def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
 
     if tf_frames:
         rs_pd_all: pd.DataFrame = pd.concat(tf_frames, axis=1,
-                                            join='outer')  # join= 'outer' represents union of multiple df
+                                            join='outer', sort=True)  # join= 'outer' represents union of multiple df
         if 'AND' in ''.join(tf_name):
             filtered_columns = rs_pd_all.columns.tolist()  # after edges were removed df contains only valid edges
             tfquery = create_tf_query(tf_name, q_tf_list, tf_mid_map, filtered_columns)
@@ -388,18 +388,21 @@ def query_tf(q_tf_list, tf_name, edges, edgelist, rs_meta_list, metadata):
 ################################################
 # Query the database
 # @profile
-def queryTFDB(q_TFname):
-    rs = list(Interactions.objects.select_related().filter(db_tf_id__db_tf_agi__exact=q_TFname). \
-              values_list('db_tf_id__db_tf_agi', 'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id'))
+def query_tfdb(q_tf_name, rs_meta_list):
+    rs_pd = pd.DataFrame(
+        Interactions.objects.select_related().filter(db_tf_id__db_tf_agi__exact=q_tf_name).values_list(
+            'db_tf_id__db_tf_agi', 'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id').iterator(),
+        columns=['TF', 'EDGE', 'TARGET', 'REFID'])
+    if rs_meta_list:
+        rs_pd = rs_pd.loc[rs_pd.REFID.isin(rs_meta_list)]
 
-    rs_pd = pd.DataFrame(rs, columns=['TF', 'EDGE', 'TARGET', 'REFID'])
     list_ref_id = rs_pd.REFID.unique()
-    meta_ref = ReferenceId.objects.select_related().filter(ref_id__in=list_ref_id). \
-        values_list('ref_id', 'meta_id__meta_fullid', 'analysis_id__analysis_fullid')
+    # print('list_ref_id= ',list_ref_id)
+    meta_ref = ReferenceId.objects.select_related().filter(ref_id__in=list_ref_id).values_list('ref_id',
+                                                                                               'meta_id__meta_fullid',
+                                                                                               'analysis_id__analysis_fullid')
 
-    meta_ref_dict = {}
-    for val_m in meta_ref:
-        meta_ref_dict[val_m[0]] = '_'.join([val_m[1], val_m[2], str(val_m[0])])
+    meta_ref_dict = {val_m[0]: '{0[1]}_{0[2]}_{0[0]}'.format(val_m) for val_m in meta_ref}
 
     # Pandas query func throws an error if columns names are numbers so I had to include meta_id in RefID
     # column name '1', '1_2', '1_a' etc. will not work
@@ -407,7 +410,10 @@ def queryTFDB(q_TFname):
         rs_pd.REFID.replace(to_replace=meta_ref_dict, inplace=True)
         # pvalues '.' are replaces because pandas does not allow to use these chars with pandas.query
         rs_pd['REFID'] = rs_pd['REFID'].str.replace('.', '_')
-
+        # attach time point with each Chipseq referenceid
+        pattern = rs_pd.REFID.str.split('_').str.get(2) == 'CHIPSEQ'
+        rs_pd.loc[pattern, 'REFID'] = rs_pd.loc[pattern, 'REFID'] + '_' + rs_pd.loc[pattern, 'EDGE'].str.split(
+            ':').str.get(2)
     return rs_pd
 
 
