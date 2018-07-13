@@ -7,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Edges, MetaIddata
+from querytgdb.models import AnalysisIddata, Edges, Interactions, MetaIddata
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -51,28 +51,69 @@ class InterestingListsView(views.APIView):
 
 class KeyView(views.APIView):
     def get(self, request):
+        tf = request.GET.get('tf')
+
+        if tf in ('oralltf', 'andalltf'):
+            tf = None
+
         queryset = ['pvalue', 'edge', 'fc']
-        queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
-        queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
+
+        if tf:
+            refs = Interactions.objects.filter(
+                db_tf_id__db_tf_agi__iexact=tf).distinct().values_list('ref_id_id', flat=True)
+
+            queryset.extend(AnalysisIddata.objects.filter(
+                analysis_id__referenceid__ref_id__in=refs
+            ).distinct().values_list('analysis_type', flat=True))
+
+            queryset.extend(MetaIddata.objects.filter(
+                meta_id__referenceid__ref_id__in=refs
+            ).distinct().values_list('meta_type', flat=True))
+        else:
+            queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
+            queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
 
         return Response(queryset)
 
 
 class ValueView(views.APIView):
     def get(self, request, key: str) -> Response:
+        tf = request.GET.get('tf')
+
+        if tf in ('oralltf', 'andalltf'):
+            tf = None
+
         key = key.upper()
 
         if key in ('PVALUE', 'FC'):
             return Response([])
         elif key == 'EDGE':
+            if tf:
+                return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__iexact=tf).distinct().values_list(
+                    'edge_id__edge_name', flat=True))
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
         else:
             queryset = []
 
-            queryset.extend(
-                AnalysisIddata.objects.filter(analysis_type__iexact=key).distinct().values_list('analysis_value',
-                                                                                                flat=True))
-            queryset.extend(
-                MetaIddata.objects.filter(meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
+            if tf:
+                refs = Interactions.objects.filter(
+                    db_tf_id__db_tf_agi__iexact=tf).distinct().values_list('ref_id_id', flat=True)
+
+                queryset.extend(AnalysisIddata.objects.filter(
+                    analysis_id__referenceid__ref_id__in=refs,
+                    analysis_type__iexact=key).distinct().values_list(
+                    'analysis_value',
+                    flat=True))
+
+                queryset.extend(
+                    MetaIddata.objects.filter(
+                        meta_id__referenceid__ref_id__in=refs,
+                        meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
+            else:
+                queryset.extend(
+                    AnalysisIddata.objects.filter(analysis_type__iexact=key).distinct().values_list('analysis_value',
+                                                                                                    flat=True))
+                queryset.extend(
+                    MetaIddata.objects.filter(meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
 
             return Response(queryset)
