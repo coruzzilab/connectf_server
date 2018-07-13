@@ -1,19 +1,14 @@
 import os
 from collections import OrderedDict
-from itertools import chain
 from typing import Generator, Iterable
 
-import pandas as pd
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
-from django.http import Http404
-from rest_framework import views, viewsets
-from rest_framework.decorators import detail_route, list_route
+from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import Analysis, AnalysisIddata, Annotation, Edges, MetaIddata, Metadata
-from .serializers import AnnotationSerializer, EdgesValueSerializer, ExperimentIdSerializer, MetaValueSerializer, \
-    TFValueSerializer
+from querytgdb.models import AnalysisIddata, Edges, MetaIddata
+from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
 
@@ -25,70 +20,25 @@ def get_lists(files: Iterable) -> Generator[str, None, None]:
             yield name
 
 
-class MetaValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = ExperimentIdSerializer
-    queryset = Metadata.objects.values("meta_fullid").distinct()
-
-    @detail_route()
-    def search_type(self, request, pk=None):
-        """"""
-        # uinput = request.query_params.get("uinput", '')
-        pk = pk.upper()
-        queryset = chain(
-            MetaIddata.objects.filter(meta_type=pk).values("meta_value").distinct(),
-            AnalysisIddata.objects.filter(analysis_type=pk).extra(
-                select={'meta_value': 'analysis_value'}).values('meta_value').distinct()
-        )
-        serializer = MetaValueSerializer(queryset, many=True)
-        return Response(serializer.data)
-
-
-class TFValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = AnnotationSerializer
-    queryset = Annotation.objects.filter(ath_gene_type='TXNFACTOR')
-
-    @list_route()
-    def search_name(self, request, *args, **kwargs):
-        all_opt = request.GET.get('all')
-
-        queryset = []
+class TFView(views.APIView):
+    def get(self, request, *args, **kwargs):
+        queryset = [OrderedDict([('db_tf_agi', 'oralltf')]),
+                    OrderedDict([('db_tf_agi', 'andalltf')])]
 
         with connection.cursor() as cursor:
-            cursor.execute("SELECT DISTINCT db_tf_id, db_tf_agi, ath_name, meta_fullid FROM querytgdb_targetdbtf "
+            cursor.execute("SELECT DISTINCT db_tf_id, db_tf_agi, ath_name FROM querytgdb_targetdbtf "
                            "LEFT JOIN querytgdb_annotation ON agi_id = db_tf_agi "
-                           "INNER JOIN querytgdb_interactions ON db_tf_id = db_tf_id_id "
-                           "INNER JOIN querytgdb_referenceid ON ref_id_id = ref_id "
-                           "INNER JOIN querytgdb_metadata ON meta_id_id = meta_id "
-                           "ORDER BY db_tf_agi, ath_name, meta_fullid")
-            data = pd.DataFrame.from_records(
-                list(cursor),
-                columns=("db_tf_id", "db_tf_agi", "ath_name", "meta_fullid"))
+                           "ORDER BY db_tf_agi, ath_name")
 
-            for (db_tf_id, db_tf_agi, ath_name), group in data.groupby(["db_tf_id", "db_tf_agi", "ath_name"]):
+            for db_tf_id, db_tf_agi, ath_name in cursor:
                 queryset.append(OrderedDict([
                     ("db_tf_id", db_tf_id),
                     ("db_tf_agi", db_tf_agi),
-                    ("ath_name", ath_name),
-                    ("meta_fullid", group.meta_fullid.tolist())
+                    ("ath_name", ath_name)
                 ]))
-
-        if all_opt:
-            queryset = [OrderedDict([('db_tf_agi', 'OR [ALLTF]')]),
-                        OrderedDict([('db_tf_agi', 'AND [ALLTF]')])] + queryset
 
         serializer = TFValueSerializer(queryset, many=True)
 
-        return Response(serializer.data)
-
-
-class EdgesValueDistinctViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = EdgesValueSerializer
-    queryset = Edges.objects.values("edge_name").distinct()
-
-    @detail_route()
-    def search_name(self, request, *args, **kwargs):
-        queryset = Edges.objects.values("edge_name").distinct()
-        serializer = EdgesValueSerializer(queryset, many=True)
         return Response(serializer.data)
 
 
@@ -99,12 +49,30 @@ class InterestingListsView(views.APIView):
         return Response(get_lists(files))
 
 
-class AnalysisMetadataView(views.APIView):
-    def get(self, request, analysis_id, *args, **kwargs):
-        try:
-            return Response(OrderedDict(
-                Analysis.objects.get(
-                    analysis_fullid=analysis_id
-                ).analysisiddata_set.values_list('analysis_type', 'analysis_value')))
-        except (Analysis.MultipleObjectsReturned, Analysis.DoesNotExist):
-            raise Http404
+class KeyView(views.APIView):
+    def get(self, request):
+        queryset = ['pvalue', 'edge', 'fc']
+        queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
+        queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
+
+        return Response(queryset)
+
+
+class ValueView(views.APIView):
+    def get(self, request, key: str) -> Response:
+        key = key.upper()
+
+        if key in ('PVALUE', 'FC'):
+            return Response([])
+        elif key == 'EDGE':
+            return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
+        else:
+            queryset = []
+
+            queryset.extend(
+                AnalysisIddata.objects.filter(analysis_type__iexact=key).distinct().values_list('analysis_value',
+                                                                                                flat=True))
+            queryset.extend(
+                MetaIddata.objects.filter(meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
+
+            return Response(queryset)

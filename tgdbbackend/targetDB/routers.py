@@ -13,18 +13,20 @@ class CustomReadOnlyRouter(SimpleRouter):
                 'post': 'create'
             },
             name='{basename}-list',
-            initkwargs={'suffix': 'List'}
+            initkwargs={'suffix': 'List'},
+            detail=False
         ),
         DynamicListRoute(
             url=r'^{prefix}/{methodname}{trailing_slash}$',
             name='{basename}-{methodnamehyphen}',
-            initkwargs={}
+            initkwargs={},
         ),
         Route(
             url=r'^{prefix}{trailing_slash}$',
             mapping={'get': 'list'},
             name='{basename}-list',
-            initkwargs={'suffix': 'List'}
+            initkwargs={'suffix': 'List'},
+            detail=False
         ),
         DynamicDetailRoute(
             url=r'^{prefix}/{methodname}/{lookup}{trailing_slash}$',

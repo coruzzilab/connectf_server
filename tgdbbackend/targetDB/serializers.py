@@ -31,15 +31,10 @@ class AnnotationSerializer(serializers.ModelSerializer):
 class TFValueSerializer(serializers.ModelSerializer):
     value = serializers.CharField(source='db_tf_agi')
     name = serializers.CharField(required=False, source='ath_name')
-    experiments = serializers.ListField(
-        serializers.CharField(),
-        source="meta_fullid",
-        required=False
-    )
 
     class Meta:
         model = TargetDBTF
-        fields = ("value", "name", "experiments")
+        fields = ("value", "name")
 
 
 class EdgesValueSerializer(serializers.ModelSerializer):

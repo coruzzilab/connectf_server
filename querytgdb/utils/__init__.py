@@ -1,6 +1,7 @@
 import os
 import pickle
 import re
+import warnings
 from collections import OrderedDict, defaultdict
 from itertools import groupby, tee
 from operator import itemgetter, methodcaller
@@ -9,11 +10,15 @@ from typing import Dict, Generator, Tuple
 
 import numpy as np
 import pandas as pd
+from pandas.errors import PerformanceWarning
+from pandas.core.common import SettingWithCopyWarning
 
 from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, \
     Regulation, TargetDBTF
 
 __all__ = ('query_tgdb',)
+
+warnings.simplefilter(action='ignore', category=(FutureWarning, PerformanceWarning, SettingWithCopyWarning))
 
 
 def get_p_values(orig_meta: str) -> Generator[float, None, None]:

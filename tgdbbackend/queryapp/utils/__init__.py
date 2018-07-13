@@ -1,8 +1,12 @@
-import numpy as np
-from django.core.serializers.json import DjangoJSONEncoder
-import pandas as pd
+import pickle
+from pathlib import Path
+from typing import Union
+import mimetypes
+import gzip
 
-__all__ = ('PandasJSONEncoder',)
+import numpy as np
+import pandas as pd
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 class PandasJSONEncoder(DjangoJSONEncoder):
@@ -18,3 +22,14 @@ class PandasJSONEncoder(DjangoJSONEncoder):
             return o.tolist()
 
         return super().default(o)
+
+
+def cache_result(obj, cache_name: Union[str, Path]):
+    encoding = mimetypes.guess_type(cache_name)[1]
+    if encoding == 'gzip':
+        cache = gzip.open(cache_name, 'wb')
+    else:
+        cache = open(cache_name, 'wb')
+
+    pickle.dump(obj, cache, protocol=pickle.HIGHEST_PROTOCOL)
+    cache.close()

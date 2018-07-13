@@ -28,7 +28,7 @@ urlpatterns = [
                   #     name='about'),
 
                   # Django Admin, use {% url 'admin:index' %}
-                  url(r'^admin/', include(admin.site.urls)),
+                  url(r'^admin/', admin.site.urls),
 
                   # User management
                   # url(r'^users/',
@@ -36,13 +36,13 @@ urlpatterns = [
                   # url(r'^accounts/', include('allauth.urls')),
 
                   # restful API
-                  url(r"^api/", include('tgdbbackend.targetDB.urls',
+                  url(r"^api/", include(('tgdbbackend.targetDB.urls', 'targetDB'),
                                         namespace='targetDB')),
                   url(r'^api-auth/', include('rest_framework.urls',
                                              namespace='rest_framework')),
 
                   # Your stuff: custom urls includes go here
-                  url(r'^queryapp/', include('tgdbbackend.queryapp.urls',
+                  url(r'^queryapp/', include(('tgdbbackend.queryapp.urls', 'queryapp'),
                                              namespace='queryapp')),
                   url(r'^upload/', include('upload.urls'))
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

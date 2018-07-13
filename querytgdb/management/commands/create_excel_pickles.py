@@ -6,7 +6,7 @@ Also format the excel sheet, column sizes, colors etc.
 
 from django.core.management.base import BaseCommand
 
-from ...utils.excel import create_excel_zip
+from ...utils.excel import create_export_zip
 
 
 class Command(BaseCommand):
@@ -14,4 +14,4 @@ class Command(BaseCommand):
         parser.add_argument('-p', '--pickledir', help='Pickle Directory', required=False)
 
     def handle(self, *args, **options):
-        create_excel_zip(options['pickledir'])
+        create_export_zip(options['pickledir'])

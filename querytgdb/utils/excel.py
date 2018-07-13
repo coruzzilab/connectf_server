@@ -1,140 +1,79 @@
-import os
 import re
-import shutil
 from collections import defaultdict
+from itertools import groupby
+from operator import itemgetter
+from typing import List, Sized
 
+import numpy as np
 import pandas as pd
 
-__all__ = ('create_excel_zip',)
+from tgdbbackend.queryapp.utils.parser import expand_ref_ids
+
+__all__ = ('create_export_zip',)
 
 
-def create_excel_zip(pickledir):
-    writer, outdirpath = read_pickled_targetdbout(pickledir)  # Func. to write
-    read_pickled_metadata(pickledir, writer)  # writer allows it to write to the same excel different sheet
-    return create_sif(pickledir, outdirpath)
+def column_string(n):
+    s = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        s = chr(65 + remainder) + s
+    return s
 
 
-########################################################################################
-# function to read TargetDB output dataframe from pickles and writes to an excel sheet
-def read_pickled_targetdbout(pickledir):
-    pickled_pandas = pd.read_pickle(pickledir + '/tabular_output.pkl')
-
-    # create an output directory for downloadable zip file
-    outdir = re.sub(r'_pickle$', '', pickledir)
-    if not os.path.exists(outdir):  # create output directory
-        os.makedirs(outdir)
-    else:
-        shutil.rmtree(outdir)
-        os.makedirs(outdir)
-
-    writer = pd.ExcelWriter(outdir + '/tabular_output.xlsx',
-                            engine='xlsxwriter')  # output in excel format
-    pickled_pandas.to_excel(writer, sheet_name='TargetDB Output')  # FINAL OUTPUT DATAFRAME
-
-    # FOR TABULAR FORMAT**
-    writer = write_to_excel(writer, pickled_pandas)
-
-    return writer, outdir
+def create_export_zip(cache_dir, out_dir):
+    df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
+    create_sifs(df, out_dir)
+    create_all_tf_genelists(df, out_dir)
+    write_excel(cache_dir, out_dir)
 
 
-################################################################
-# function to write to excel and set the conditional formatting
-def write_to_excel(writer, new_res_df):
-    # get the shape of the output dataframe
-    df_count_rows = new_res_df.shape[0]
-    df_count_cols = new_res_df.shape[1]
+def write_excel(cache_dir, out_dir):
+    with pd.ExcelWriter(out_dir + '/tabular_output.xlsx', engine='xlsxwriter') as writer:
+        df = pd.read_pickle(cache_dir + '/formatted_tabular_output.pickle.gz')
+        metadata = pd.read_pickle(cache_dir + '/metadata.pickle.gz')
+        metadata.index.name = None
 
-    header_dict = defaultdict(list)
-    # id_headerdict = defaultdict(list)
-    id_headerdict = dict()
-    header_df = new_res_df.iloc[0:3]
-    header_df.drop(['Full Name', 'Name', 'ID', 'Type', 'Family', 'List', 'UserList', 'TF Count'],
-                   axis=1, inplace=True)  # drop unecsseary columns
+        write_data(df, writer)
+        write_metadata(metadata, writer)
 
-    #####################################################################################
-    # code to get which columns needs to be merged for the header annotation
-    ## Can be moved to a different function
-    listlen = 0
-    header_list = header_df.columns.tolist()
-    count = 10  # start merging with column 10/J. Columns before J are annotation columns
-    for val_hls_tmp in header_list:
-        id_headerdict[val_hls_tmp[0]] = defaultdict(list)
-    for val_hls in header_list:
-        listlen = listlen + 1
-        lines = None
-        if count == 10:
-            prev_count = 10
-            prev_header_level0 = val_hls[0]
-            prev_header_level1 = val_hls[1]
-        if val_hls[2] == 'Edges':
-            id_headerdict[val_hls[0]][val_hls[1]].append(
-                header_df.xs(0, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-            id_headerdict[val_hls[0]][val_hls[1]].append(
-                header_df.xs(1, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-            id_headerdict[val_hls[0]][val_hls[1]].append(
-                header_df.xs(2, drop_level=True)[(val_hls[0], val_hls[1], 'Edges')])
-        if val_hls[0] == prev_header_level0 and val_hls[1] == prev_header_level1:
-            count += 1
-            if listlen == len(header_list):
-                lines = str(prev_count) + ':' + str(count - 1)
-                header_dict[lines].append(
-                    id_headerdict[prev_header_level0][prev_header_level1][0])  # get annotation at index 0
-                header_dict[lines].append(
-                    id_headerdict[prev_header_level0][prev_header_level1][1])  # get annotation at index 1
-                header_dict[lines].append(
-                    id_headerdict[prev_header_level0][prev_header_level1][2])  # get annotation at index 2
-        else:
-            if not prev_header_level1 == 'OMalleyetal_2016':
-                lines = str(prev_count) + ':' + str(count - 1)
-                if val_hls[1] == 'OMalleyetal_2016':
-                    count = count + 1
-                    prev_count = count
-                else:
-                    prev_count = count
-                    count = count + 1
-                if lines:
-                    header_dict[lines].append(
-                        id_headerdict[prev_header_level0][prev_header_level1][0])  # get annotation at index 0
-                    header_dict[lines].append(
-                        id_headerdict[prev_header_level0][prev_header_level1][1])  # get annotation at index 1
-                    header_dict[lines].append(
-                        id_headerdict[prev_header_level0][prev_header_level1][2])  # get annotation at index 2
-                prev_header_level0 = val_hls[0]
-                prev_header_level1 = val_hls[1]
-            else:
-                prev_header_level0 = val_hls[0]
-                prev_header_level1 = val_hls[1]
-                prev_count = count
-                count = count + 1
-    #####################################################################################
 
-    excel_count_cols = colToExcel(df_count_cols + 1)
+def write_metadata(df: pd.DataFrame, writer: pd.ExcelWriter):
+    df = expand_ref_ids(df)
+    df.to_excel(writer, 'metadata', header=True)
+
+    word_lens = df.astype(str).applymap(len)
+    max_len = np.nanmax(word_lens[(word_lens - word_lens.values.mean()).abs() < 2 * word_lens.values.std()].values)
 
     workbook = writer.book
-    worksheet = writer.sheets['TargetDB Output']
+    worksheet = writer.sheets['metadata']
+
+    header_fmt = workbook.add_format(
+        {'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border': 1})
+
+    worksheet.set_row(1, None, header_fmt)
+    worksheet.set_column(0, df.shape[1], max_len)
+
+
+def write_data(data: List[Sized], writer: pd.ExcelWriter):
+    workbook = writer.book
+    worksheet = workbook.add_worksheet('table')
+
+    row_num, col_num = len(data), len(data[0])
+
     bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border': 1, 'align': 'center'})
-    align_font = workbook.add_format({'font_size': 13, 'align': 'center'})
-    worksheet.set_column('B:F', 15)
-    worksheet.set_column('G:G', 10, align_font)
-    worksheet.set_column('H:I', 15, bold_font)
-    worksheet.set_column('J:' + excel_count_cols, 15)
-    worksheet.set_column('A:A', None, None, {'hidden': True})  # hiding meaningless column created by multiindexing
 
-    header_fmt = workbook.add_format({'font_name': 'Calibri', 'font_size': 14,
-                                      'bold': True, 'align': 'center', 'border': 1})
-    header_fmt_1 = workbook.add_format({'font_name': 'Calibri', 'font_size': 11,
-                                        'bold': True, 'align': 'center', 'border': 1})
-    # worksheet.set_row(2, None, None, {'hidden': True})  # hiding unnecessary row created by multiindexing
-    worksheet.set_row(3, None, header_fmt)
-    worksheet.set_row(4, None, header_fmt)
-    worksheet.set_row(5, None, header_fmt)
-    worksheet.set_row(6, None, header_fmt)
-    format1 = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
-    format2 = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
-    format3 = workbook.add_format({'bg_color': '#FFFF99', 'font_color': '#000000'})
-    format4 = workbook.add_format({'bg_color': '#F7DC6F', 'font_color': '#000000'})
+    for i, row in enumerate(data[6:]):
+        worksheet.write_row(i + 6, 0, row)
 
-    # Merge format
+    worksheet.set_column(0, col_num - 1, 15)
+    worksheet.set_column(6, 7, None, bold_font)
+    worksheet.set_column(6, 6, 10)
+
+    last_col = column_string(col_num)
+
+    format_repressed = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
+    format_induced = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
+    format_present = workbook.add_format({'bg_color': '#F7DC6F', 'font_color': '#000000'})
     merge_format = workbook.add_format({
         'bold': 1,
         'font_size': 14,
@@ -143,249 +82,94 @@ def write_to_excel(writer, new_res_df):
         'valign': 'vcenter',
         'fg_color': 'white'})
 
-    # Merging columns
-    for val_merge in header_dict:
-        merge_start = colToExcel(int(val_merge.split(':')[0]))
-        merge_end = colToExcel(int(val_merge.split(':')[1]))
-        # print('merge_start= ',(merge_start+'5:'+merge_end+'5'))
-        worksheet.merge_range(merge_start + '4:' + merge_end + '4', '', merge_format)
-        worksheet.merge_range(merge_start + '5:' + merge_end + '5', header_dict[val_merge][0], merge_format)
-        worksheet.merge_range(merge_start + '6:' + merge_end + '6', header_dict[val_merge][1], merge_format)
-        worksheet.merge_range(merge_start + '7:' + merge_end + '7', header_dict[val_merge][2], merge_format)
+    worksheet.conditional_format('I7:{}{}'.format(last_col, row_num),
+                                 {'type': 'text', 'criteria': 'containing', 'value': 'INDUCED',
+                                  'format': format_induced})
+    worksheet.conditional_format('I7:{}{}'.format(last_col, row_num),
+                                 {'type': 'text', 'criteria': 'containing', 'value': 'REPRESSED',
+                                  'format': format_repressed})
+    worksheet.conditional_format('I7:{}{}'.format(last_col, row_num),
+                                 {'type': 'text', 'criteria': 'containing', 'value': 'Present',
+                                  'format': format_present})
 
-    # Conditonal formatting of excel sheet: Green- Induced, Red- Repressed, Yellow- CHIPSEQ
-    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
-                                 {'type': 'text', 'criteria': 'containing', 'value': 'INDUCED', 'format': format2})
-    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
-                                 {'type': 'text', 'criteria': 'containing', 'value': 'REPRESSED', 'format': format1})
-    # worksheet.conditional_format(
-    #    ('K7:' + excel_count_cols + str(df_count_rows + 3)),
-    #    {'type': 'text', 'criteria': 'containing',
-    #     'value': 1, 'format': format3})
-    worksheet.conditional_format('J8:' + excel_count_cols + str(df_count_rows + 3),
-                                 {'type': 'text', 'criteria': 'containing', 'value': 'Present', 'format': format4})
+    columns = list(zip(*data[:6]))
+    for i in range(6):
+        index = 0
+        for label, group in groupby(columns, key=itemgetter(*range(0, i + 1))):
+            size = sum(1 for _ in group)
 
-    return writer
+            if isinstance(label, str):
+                s = label
+            else:
+                s = label[-1]
 
+            if size > 1:
+                worksheet.merge_range(i, index, i, index + size - 1, s, merge_format)
+            else:
+                worksheet.write(i, index, s, merge_format)
 
-#################################
-# get excel style column name
-def colToExcel(col):  # col is 1 based
-    excelCol = str()
-    div = col
-    while div:
-        (div, mod) = divmod(div - 1, 26)  # will return (x, 0 .. 25)
-        excelCol = chr(mod + 65) + excelCol
-
-    return excelCol
+            index += size
 
 
-################################
-# Write metadata to excel
-def read_pickled_metadata(pickledir, writer):
-    # Read Metadata pickle
-    pickled_metadf = pd.read_pickle(pickledir + '/df_metadata.pkl')
-
-    # Write to excel
-    pickled_metadf.to_excel(writer, sheet_name='MetaData')
-    workbook1 = writer.book
-    worksheet1 = writer.sheets['MetaData']
-    bold_font1 = workbook1.add_format({'bold': True, 'font_size': 13, 'border': 1, 'align': 'left'})
-    worksheet1.set_column('A:A', 27, bold_font1)
-    excel_count_cols = colToExcel((pickled_metadf.shape[1]) + 1)
-    worksheet1.set_column('B:' + excel_count_cols, 40)
-    header_fmt = workbook1.add_format(
-        {'font_name': 'Calibri', 'font_size': 15, 'bold': True, 'align': 'center', 'border': 1})
-    worksheet1.set_row(1, None, header_fmt)
-    writer.close()
+group_opt = {
+    'axis': 1,
+    'level': 0,
+    'by': lambda x: re.sub(r'_\w+$', '', x)
+}
 
 
 #################################
 # Generate sif output
-# @profile
-def create_sif(pickledir, output):
-    # read the pickled dataframe
-    pickled_sifdf_tmp = pd.read_pickle(pickledir + '/df_sif.pkl')
+def create_sifs(result, output):
+    res_group = result.groupby(**group_opt)
 
-    # Before creating the sif file exclude the dap-seq column. If required later, find a way to add the dap-seq
-    # validation column to the .tbl files
-    keep_cols = []
-    dap_cols = []
-    for val_col in pickled_sifdf_tmp.columns:
-        if val_col[1] == 'OMalleyetal_2016':
-            dap_cols.append(val_col)
-        else:
-            keep_cols.append(val_col)
+    with open(output + '/all_tfs.sif', 'w') as all_sif, open(output + '/all_tfs.tbl', 'w') as all_tbl:
+        all_tbl.write('shared name\tFOLDCHANGE\tPVALUE\n')
 
-    pickled_sifdf = pickled_sifdf_tmp[keep_cols]
+        for name, group in res_group:
+            g = group.stack(level=[0, 1, 2]).reset_index(level=[1, 2, 3], drop=True).reset_index().drop_duplicates()
 
-    # creating df for DAP edges and this will be concatenated to reordered_tmp_df for additional an column for DAP edges
-    # presence in Edge table
-    dap_df = pickled_sifdf_tmp[dap_cols]
-    stacked_dap_df = pd.DataFrame(dap_df.stack().reset_index())  # stack converts df columns into stacked rows
-    stacked_dap_df.columns = ['TARGET', 'TF', 'DAPEDGE']  # assign new columns
-    stacked_dap_df['TF'] = stacked_dap_df['TF'].apply(lambda x: x.partition('_')[0])
+            with open(output + '/{}.sif'.format(name), 'w') as f:
+                temp_sif = g.groupby('EDGE').apply(
+                    lambda x: '{}\t{}\t{}'.format(name, x.name, '\t'.join(x['TARGET']))
+                )
+                temp_sif.to_csv(f, index=False)
+                temp_sif.to_csv(all_sif, index=False)
+            with open(output + '/{}.tbl'.format(name), 'w') as f:
+                f.write('shared name\tFOLDCHANGE\tPVALUE\n')
+                temp_tbl = g.apply(lambda x: '{0} ({1[EDGE]}) {1[TARGET]}\t{1[Log2FC]}\t{1[Pvalue]}'.format(name, x),
+                                   axis=1)
+                temp_tbl.to_csv(f, index=False)
+                temp_tbl.to_csv(all_tbl, index=False)
 
-    # ** Very Slow (10 sec) Not sure if I need this anymore
-    # sif_rs_tabular = pickled_sifdf.groupby(pickled_sifdf.columns, axis=1). \
-    #    apply(lambda x: x.apply(lambda y: ','.join([l for l in y if pd.notnull(l)]), axis=1))
+    crit_tfs = res_group.apply(lambda x: x.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].notna().any(axis=1))
+    common_tfs = crit_tfs.all(axis=1)
+    shared_tfs = crit_tfs.sum(axis=1) > 1
 
-    pickled_sifdf.replace('', pd.np.nan, inplace=True)  # purpose of replacing spaces with nan??
+    def create_filtered_sifs(index, sif_file, tbl_file):
+        with open(sif_file, 'w') as sif, open(tbl_file, 'w') as tbl:
+            tbl.write('shared name\tFOLDCHANGE\tPVALUE\n')
+            for name, group in result.loc[index, :].groupby(**group_opt):
+                g = group.stack(level=[0, 1, 2]).reset_index(level=[1, 2, 3], drop=True).reset_index().drop_duplicates()
+                # with pd.option_context('display.width', 200, 'display.max_columns', 20, 'display.max_rows', 20000):
 
-    stacked_tmp_df = pd.DataFrame(pickled_sifdf.stack().reset_index())  # stack converts df columns into stacked rows
+                temp_sif = g.groupby('EDGE').apply(
+                    lambda x: '{}\t{}\t{}'.format(name, x.name, '\t'.join(x['TARGET']))
+                )
+                temp_sif.to_csv(sif, index=False)
+                temp_tbl = g.apply(lambda x: '{0} ({1[EDGE]}) {1[TARGET]}\t{1[Log2FC]}\t{1[Pvalue]}'.format(name, x),
+                                   axis=1)
+                temp_tbl.to_csv(tbl, index=False)
 
-    stacked_tmp_df.columns = ['TARGET', 'TF', 'EDGE']  # assign new columns
-
-    # extract experimentID from experimentID_analysisID
-    stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: '_'.join(x.split('_', 3)[:3]))
-    stacked_tmp_df = stacked_tmp_df.drop_duplicates()  # dropping duplicates to solve the problem of multiple
-    # representation of same experiment (with multiple analysis ID) and chipseq multiple time-points
-    stacked_tmp_df['TF'] = stacked_tmp_df['TF'].apply(lambda x: x.partition('_')[0])  # extract TFname from expID
-
-    tf_list = list(set(stacked_tmp_df['TF'].tolist()))
-    reordered_tmp_df = pd.DataFrame(stacked_tmp_df, columns=['TF', 'EDGE', 'TARGET'])  # reorder the df
-
-    # following is separating pvalue and fold-change from EDGE column.
-    # Regular expression parses the code and assigns the column names at the same time
-    # For example '(?P<Col2>.*)\|{2,}' will grab everything up to the first double | and call it Col2
-    # regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\((?P<FOLDCHANGE>.*)\)'
-
-    # First for chipseq or any other data where edge does not have a pval and fc. Simply add the pattern '||-||-'
-    # this will reflect pval and fc with -
-    reordered_tmp_df.EDGE = reordered_tmp_df.EDGE.apply(lambda x: x + '||-||-' if not '||' in x else x)
-    regex = '(?P<EDGE>.*)\|{2,}(?P<PVALUE>.*)\|{2,}(?P<FOLDCHANGE>.*)'
-    reordered_tmp_df = reordered_tmp_df.assign(**reordered_tmp_df.EDGE.str.
-                                               extract(regex, expand=True).to_dict('list'))
-
-    # regular expression '^[01]+$' denotes that the string should only contain binary number
-    # ^ means start with 0 or 1, [01]+ contains only 0 and 1, $ means ends with 0 or 1
-    reordered_tmp_df['EDGE'].replace(to_replace='^[01]+$', value='CHIPSEQ', regex=True, inplace=True)
-
-    # reordered_tmp_df.set_index('TF',inplace=True)
-    # stacked_dap_df.set_index('TF',inplace=True)
-
-    # print('reordered_tmp_df.index= ',reordered_tmp_df.index)
-    # print('stacked_dap_df.index= ',stacked_dap_df.index)
-
-    # Merge is super slow
-    # reordered_df_concatdap= reordered_tmp_df.merge(stacked_dap_df,on='TF')
-    # reordered_df_concatdap = reordered_tmp_df.merge(stacked_dap_df, on='TF', how='left')
-
-    # reordered_df_concatdap = reordered_tmp_df.join(stacked_dap_df)
-    # wr= pd.ExcelWriter('reordered_df_concatdap.xlsx')
-    # reordered_df_concatdap.to_excel(wr)
-    # wr.close()
-
-    # reordered_tmp_df = reordered_tmp_df.loc[reordered_tmp_df.EDGE != '']  # remove the edges that are not linked
-    # ALTERNATIVE
-    # reordered_tmp_df.EDGE.str.extract(regex, expand=True).combine_first(reordered_tmp_df)
-
-    outfile_all = open(output + '/' + output.rpartition('/')[2] + '_allTFs.sif',
-                       'w')  # Generates sif output file for all TF
-    outfile_all_tbl = open(output + '/' + output.rpartition('/')[2] + '_allTFs.tbl',
-                           'w')  # Generates sif output file for all TF
-    reordered_tmp_df[['TF', 'EDGE', 'TARGET']].to_csv(outfile_all, sep='\t', index=False, header=False)
-    reordered_tmp_df['shared name'] = reordered_tmp_df['TF'] + ' (' + reordered_tmp_df['EDGE'] + ') ' + \
-                                      reordered_tmp_df['TARGET']
-    reordered_tmp_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_all_tbl, sep='\t', index=False)
-
-    create_genelists_allTFs(reordered_tmp_df, output)
-
-    # SIF output in tab-delimited format
-    for tf_val in tf_list:
-        sub_df = reordered_tmp_df[reordered_tmp_df['TF'] == tf_val]
-        outfile = open(output + '/' + output.rpartition('/')[2] + '_' + tf_val + '.sif',
-                       'w')  # Generates sif output file for each TF
-        outfile_tbl = open(output + '/' + output.rpartition('/')[2] + '_' + tf_val + '.tbl',
-                           'w')  # Generates sif output file for
-        # each TF
-        sub_df[['TF', 'EDGE', 'TARGET']].to_csv(outfile, sep='\t', index=False, header=False)
-        sub_df[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_tbl, sep='\t', index=False)
-        outfile.close()  # close the file resources
-        outfile_tbl.close()
-
-    total_exp = len(pickled_sifdf.columns.tolist())  # count the total number of experiments
-
-    pickled_sifdf['target_count'] = (pickled_sifdf.notnull() * 1).sum(axis=1)
-    # df subset of common targets (i.e. targets repersented across all the exps)
-    sub_common_targets = pickled_sifdf[pickled_sifdf['target_count'] == total_exp]
-    # df subset of shared targets (i.e. target genes present in >1 exp)
-    sub_shared_targets = pickled_sifdf[pickled_sifdf['target_count'] > 1]
-
-    # I get warnings from pandas for using inplace with drop
-    # sub_common_targets.drop('target_count', 1, inplace=True) # drop the target_count column
-    # sub_shared_targets.drop('target_count', 1, inplace=True) # drop the target_count column
-    # Alternative
-    sub_common_targets = sub_common_targets.ix[:, 0:-1]  # removing the last columns target_count column
-    sub_shared_targets = sub_shared_targets.ix[:, 0:-1]  # removing the last columns target_count column
-
-    # Generates sif output file for all TF
-    outfile_common = open(output + '/' + output.rpartition('/')[2] + '_commonTargets.sif', 'w')
-    outfile_common_tbl = open(output + '/' + output.rpartition('/')[2] + '_commonTargets.tbl', 'w')
-    stacked_common_targets = pd.DataFrame(sub_common_targets.stack().reset_index())
-    stacked_common_targets.columns = ['TARGET', 'TF', 'EDGE']
-    stacked_common_targets['TF'] = stacked_common_targets['TF'].apply(
-        lambda x: x.partition('_')[0])  # extract TFname from expID
-    stacked_common_targets.drop_duplicates(
-        inplace=True)  # dropping duplicates to solve the problem of multiple representation of
-    # same experiment (with multiple analysis ID) and chipseq multiple time-points
-    reordered_common_targets = stacked_common_targets.assign(
-        **stacked_common_targets.EDGE.str.extract(regex, expand=True).to_dict('list'))
-    reordered_common_targets[['TF', 'EDGE', 'TARGET']].to_csv(outfile_common, sep='\t', index=False, header=False)
-
-    if not reordered_common_targets.empty:
-        reordered_common_targets['shared name'] = reordered_common_targets['TARGET'] + ' (' + \
-                                                  reordered_common_targets['EDGE'] + ') ' + \
-                                                  reordered_common_targets['TF']
-        reordered_common_targets[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_common_tbl, sep='\t',
-                                                                                 index=False)
-
-    # Generates sif output file for shared targets
-    outfile_shared = open(output + '/' + output.rpartition('/')[2] + '_sharedTargets.sif', 'w')
-    outfile_shared_tbl = open(output + '/' + output.rpartition('/')[2] + '_sharedTargets.tbl', 'w')
-    stacked_shared_targets = pd.DataFrame(sub_shared_targets.stack().reset_index())
-    stacked_shared_targets.columns = ['TARGET', 'TF', 'EDGE']
-    stacked_shared_targets['TF'] = stacked_shared_targets['TF'].apply(
-        lambda x: x.partition('_')[0])  # extract TFname from expID
-    stacked_shared_targets.drop_duplicates(
-        inplace=True)  # dropping duplicates to solve the problem of multiple representation of
-    # same experiment (with multiple analysis ID) and chipseq multiple time-points
-    reordered_shared_targets = stacked_shared_targets.assign(
-        **stacked_shared_targets.EDGE.str.extract(regex, expand=True).to_dict('list'))
-    print(reordered_shared_targets)
-    reordered_shared_targets[['TF', 'EDGE', 'TARGET']].to_csv(outfile_shared, sep='\t', index=False)
-    reordered_shared_targets['shared name'] = str(reordered_shared_targets['TARGET']) + ' (' + \
-                                              str(reordered_shared_targets['EDGE']) + ') ' + \
-                                              str(reordered_shared_targets['TF'])
-    reordered_shared_targets[['shared name', 'FOLDCHANGE', 'PVALUE']].to_csv(outfile_shared_tbl, sep='\t',
-                                                                             index=False)
-
-    outfile_all.close()  # close the file resources
-    outfile_all_tbl.close()
-    outfile_common.close()  # close the file resources
-    outfile_common_tbl.close()
-    outfile_shared.close()  # close the file resources
-    outfile_shared_tbl.close()
-
-    zip_name = shutil.make_archive(output, 'zip', output)  # create a zip file for output directory
-    shutil.rmtree(output)  # delete the output directory after creating zip file
-
-    return zip_name
+    create_filtered_sifs(common_tfs, output + '/common_tfs.sif', output + '/common_tfs.tbl')
+    create_filtered_sifs(shared_tfs, output + '/shared_tfs.sif', output + '/shared_tfs.tbl')
 
 
 #################################
 # Generate genelists
-def create_genelists_allTFs(reordered_tmp_df, output):
-    # read the pickled dataframe
-    reordered_subdf = reordered_tmp_df[['TF', 'TARGET']]
+def create_all_tf_genelists(result: pd.DataFrame, output):
+    group_res = result.groupby(**group_opt)
 
-    # x.loc[:, 'TARGET'].unique() '.unique()' here enforces retaining only the unique values in case a TF has
-    # multiple exp and
-    # multiple analysis
-    reordered_subdf_concat = (reordered_subdf.groupby('TF', as_index=False).apply(lambda x: pd.concat(
-        [pd.Series('>' + x.iloc[0]['TF']), pd.Series(x.loc[:, 'TARGET'].unique())])).reset_index(drop=True))
-    # print('reordered_subdf_concat= ',reordered_subdf_concat)
-    outfile_genelist = open(output + '/' + output.rpartition('/')[2] + '_genelist_allTFs.fa',
-                            'w')  # Generates genelists for all TF
-    reordered_subdf_concat.to_csv(outfile_genelist, sep='\t', index=False, header=False)
-    outfile_genelist.close()
+    with open(output + '/genelists_all_tf.fa', 'w') as f:
+        for name, group in group_res:
+            f.write('>{}\n{}\n'.format(name, '\n'.join(group.index)))
