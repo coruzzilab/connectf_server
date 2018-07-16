@@ -136,7 +136,10 @@ def apply_comp_mod(df: pd.DataFrame, key: str, oper: str, value: Union[float, st
 def apply_search_column(df: pd.DataFrame, key, value) -> pd.DataFrame:
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
-    return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
+    try:
+        return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
+    except KeyError:
+        return mask
 
 
 def get_mod(df: pd.DataFrame, query: pp.ParseResults):
