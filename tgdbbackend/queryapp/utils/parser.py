@@ -14,8 +14,6 @@ from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, 
 
 __all__ = ['get_query_result', 'expand_ref_ids']
 
-ALL_IDS = pd.Series(Annotation.objects.values_list('agi_id', flat=True).iterator())
-
 
 @register_dataframe_accessor('target')
 class TargetAccessor:
@@ -282,11 +280,11 @@ def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
                         if prec.target.include and succ.target.include:
                             df = prec.merge(succ, how='inner', left_index=True, right_index=True)
                         elif not prec.target.include and succ.target.include:
-                            df = succ.loc[succ.index.isin(prec.index), :]
+                            df = succ.loc[~succ.index.isin(prec.index), :]
                         elif prec.target.include and not succ.target.include:
-                            df = prec.loc[prec.index.isin(succ.index), :]
+                            df = prec.loc[~prec.index.isin(succ.index), :]
                         else:  # not prec.target.include and not succ.target.include
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
                             df.target.include = False
                     else:
                         # doesn't make much sense using not with or, but oh well
@@ -297,13 +295,14 @@ def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
                         elif prec.target.include and not succ.target.include:
                             df = prec
                         else:
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
                             df.target.include = False
-
+                    inc = df.target.include
+                    df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+                    df.target.include = inc
                     stack.append(df)
                 elif curr == 'not':
                     succ = get_tf(next(it))
-                    succ = pd.DataFrame(columns=succ.columns, index=np.setdiff1d(ALL_IDS, succ.index))
                     succ.target.include = not succ.target.include
                     stack.append(succ)
                 elif is_modifier(curr):
@@ -409,7 +408,7 @@ def parse_query(query: str) -> pd.DataFrame:
 
     result = get_tf(parse.get('query'))
 
-    if result.empty:
+    if result.empty or not result.target.include:
         raise ValueError('empty query')
 
     return result

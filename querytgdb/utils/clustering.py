@@ -4,7 +4,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from scipy.stats import fisher_exact
-import os
 
 matplotlib.use('SVG')
 import matplotlib.pyplot as plt
@@ -23,7 +22,12 @@ def scale_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def draw_heatmap(df: pd.DataFrame):
-    sns_heatmap = sns.clustermap(df, cmap="YlGnBu", cbar_kws={'label': 'Enrichment(-log10 p)'})
+    row_num, col_num = df.shape
+    sns_heatmap = sns.clustermap(df,
+                                 cmap="YlGnBu",
+                                 cbar_kws={'label': 'Enrichment(-log10 p)'},
+                                 col_cluster=col_num > 1,
+                                 row_cluster=row_num > 1)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
 
@@ -40,7 +44,7 @@ def save_heatmap(graph, pickledir):
 def heatmap(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
     # raising exception here if target genes are not uploaded by the user
     try:
-        name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle')
+        name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle.gz')
     except FileNotFoundError as e:
         raise FileNotFoundError('No target genes uploaded') from e
 

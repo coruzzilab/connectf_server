@@ -108,7 +108,7 @@ class FileExportView(View):
     def get(self, request, request_id):
         try:
             out_file = static_storage.path("{}.zip".format(request_id))
-            if True or not os.path.exists(out_file):
+            if not os.path.exists(out_file):
                 cache_folder = static_storage.path("{}_pickle".format(request_id))
                 out_folder = static_storage.path(request_id)
 

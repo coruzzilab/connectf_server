@@ -1,3 +1,4 @@
+import gzip
 import pathlib
 import pickle
 from collections import OrderedDict
@@ -13,7 +14,6 @@ import pandas as pd
 from django.conf import settings
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
-import gzip
 
 from querytgdb.models import ReferenceId
 
@@ -119,7 +119,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     # remove unneeded info from dataframe
     df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
     df.columns = df.columns.droplevel(3)
-    res = OrderedDict((name, col.index[col.notnull()].unique()) for name, col in df.iteritems())
+    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     tfs, meta_ids, analysis_ids = zip(*res.keys())
     references = ReferenceId.objects.filter(analysis_id__analysis_fullid__in=analysis_ids,
@@ -147,8 +147,10 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
                 _, target_lists = pickle.load(f)
                 meta_dicts.extend(
                     [{'list_name': name, **m} for m in meta_dicts for name in target_lists.keys()])
-                res.update([(f"{t_name}_{'_'.join(r_name)}", np.intersect1d(t_list, r_list))
-                            for r_name, r_list in res.items() for t_name, t_list in target_lists.items()])
+                # Use list comprehension instead of generator expression to avoid mutating dict as we update it
+                res.update([((t_name, *r_name), t_list & r_list)
+                            for r_name, r_list in res.items()
+                            for t_name, t_list in target_lists.items()])
     except FileNotFoundError:
         pass
 
@@ -166,16 +168,15 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     df = pd.read_pickle(cache_path)
     df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
     df.columns = df.columns.droplevel(3)
-    res = OrderedDict((name, col.index[col.notnull()].unique()) for name, col in df.iteritems())
+    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     try:
         if target_genes_path:
             with gzip.open(target_genes_path, 'rb') as f:
-                target_lists = pickle.load(f)
-                res.update(
-                    [(f"{t_name}_{'_'.join(r_name)}", np.intersect1d(t_list, r_list))
-                     for r_name, r_list in res.items()
-                     for t_name, t_list in target_lists.items()])
+                _, target_lists = pickle.load(f)
+                res.update([((t_name, *r_name), t_list & r_list)
+                            for r_name, r_list in res.items()
+                            for t_name, t_list in target_lists.items()])
     except FileNotFoundError:
         pass
 
