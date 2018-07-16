@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import seaborn as sns
 
-from tgdbbackend.queryapp.utils.parser import ANNOTATIONS
+from queryapp.utils.parser import ANNOTATIONS
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:

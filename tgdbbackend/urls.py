@@ -36,13 +36,13 @@ urlpatterns = [
                   # url(r'^accounts/', include('allauth.urls')),
 
                   # restful API
-                  url(r"^api/", include(('tgdbbackend.targetDB.urls', 'targetDB'),
+                  url(r"^api/", include(('targetDB.urls', 'targetDB'),
                                         namespace='targetDB')),
                   url(r'^api-auth/', include('rest_framework.urls',
                                              namespace='rest_framework')),
 
                   # Your stuff: custom urls includes go here
-                  url(r'^queryapp/', include(('tgdbbackend.queryapp.urls', 'queryapp'),
+                  url(r'^queryapp/', include(('queryapp.urls', 'queryapp'),
                                              namespace='queryapp')),
                   url(r'^upload/', include('upload.urls'))
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

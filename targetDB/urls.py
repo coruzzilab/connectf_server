@@ -1,6 +1,6 @@
 from django.urls import include, re_path
 
-from tgdbbackend.targetDB import views
+from targetDB import views
 
 # from .routers import CustomReadOnlyRouter
 #
