@@ -51,16 +51,16 @@ class InterestingListsView(views.APIView):
 
 class KeyView(views.APIView):
     def get(self, request):
-        tf = request.GET.get('tf')
+        tfs = set(request.GET.getlist('tf'))
 
-        if tf in ('oralltf', 'andalltf'):
-            tf = None
+        if tfs & {'oralltf', 'andalltf'}:
+            tfs = set()
 
         queryset = ['pvalue', 'edge', 'fc']
 
-        if tf:
+        if tfs:
             refs = Interactions.objects.filter(
-                db_tf_id__db_tf_agi__iexact=tf).distinct().values_list('ref_id_id', flat=True)
+                db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
 
             queryset.extend(AnalysisIddata.objects.filter(
                 analysis_id__referenceid__ref_id__in=refs
@@ -78,26 +78,26 @@ class KeyView(views.APIView):
 
 class ValueView(views.APIView):
     def get(self, request, key: str) -> Response:
-        tf = request.GET.get('tf')
+        tfs = set(request.GET.getlist('tf'))
 
-        if tf in ('oralltf', 'andalltf'):
-            tf = None
+        if tfs & {'oralltf', 'andalltf'}:
+            tfs = set()
 
         key = key.upper()
 
         if key in ('PVALUE', 'FC'):
             return Response([])
         elif key == 'EDGE':
-            if tf:
-                return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__iexact=tf).distinct().values_list(
+            if tfs:
+                return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__in=tfs).distinct().values_list(
                     'edge_id__edge_name', flat=True))
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
         else:
             queryset = []
 
-            if tf:
+            if tfs:
                 refs = Interactions.objects.filter(
-                    db_tf_id__db_tf_agi__iexact=tf).distinct().values_list('ref_id_id', flat=True)
+                    db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
 
                 queryset.extend(AnalysisIddata.objects.filter(
                     analysis_id__referenceid__ref_id__in=refs,
