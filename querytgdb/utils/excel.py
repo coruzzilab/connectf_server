@@ -1,5 +1,4 @@
 import re
-from collections import defaultdict
 from itertools import groupby
 from operator import itemgetter
 from typing import List, Sized
