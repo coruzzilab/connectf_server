@@ -3,35 +3,46 @@ from collections import deque
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pyparsing as pp
 from django.db.models import Q
-from pandas.api.extensions import register_dataframe_accessor
 
 from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, ReferenceId, Regulation
 
 __all__ = ['get_query_result', 'expand_ref_ids']
 
 
-@register_dataframe_accessor('target')
-class TargetAccessor:
-    def __init__(self, pandas_obj):
-        self._obj = pandas_obj
-        self._include = True
+class TargetFrame(pd.DataFrame):
+    _metadata = ['include', 'filter_string']
 
     @property
-    def include(self):
-        return self._include
+    def _constructor(self):
+        return TargetFrame
 
-    @include.setter
-    def include(self, value):
-        self._include = value
+    @property
+    def _constructor_sliced(self):
+        return TargetSeries
+
+    def __init__(self, *args, include=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.include = include
 
 
-def get_annotations() -> pd.DataFrame:
-    anno = pd.DataFrame(
+class TargetSeries(pd.Series):
+    @property
+    def _constructor(self):
+        return TargetSeries
+
+    @property
+    def _constructor_expanddim(self):
+        return TargetFrame
+
+
+def get_annotations() -> TargetFrame:
+    anno = TargetFrame(
         Annotation.objects.values_list(
             'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name').iterator(),
         columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name'])
@@ -90,7 +101,7 @@ is_mod = partial(is_name, 'mod')
 interactions = Interactions.objects.all()
 
 
-def query_metadata(df: pd.DataFrame, key: str, value: str):
+def query_metadata(df: TargetFrame, key: str, value: str):
     ref_ids = ReferenceId.objects.filter(
         Q(analysis_id_id__in=AnalysisIddata.objects.filter(
             analysis_type__iexact=key,
@@ -99,19 +110,19 @@ def query_metadata(df: pd.DataFrame, key: str, value: str):
             meta_type__iexact=key,
             meta_value__iexact=value).values_list('meta_id_id', flat=True))).values_list('ref_id', flat=True)
 
-    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
+    mask = TargetFrame(True, columns=df.columns, index=df.index)
 
     mask.loc[:, ~df.columns.get_level_values(1).isin(ref_ids)] = False
 
     return mask
 
 
-def apply_comp_mod(df: pd.DataFrame, key: str, oper: str, value: Union[float, str]) -> pd.DataFrame:
+def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str]) -> TargetFrame:
     """
     apply Pvalue and Log2FC (fold change)
     """
     value = float(value)
-    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
+    mask = TargetFrame(True, columns=df.columns, index=df.index)
 
     try:
         if oper == '=':
@@ -133,8 +144,8 @@ def apply_comp_mod(df: pd.DataFrame, key: str, oper: str, value: Union[float, st
         return mask
 
 
-def apply_search_column(df: pd.DataFrame, key, value) -> pd.DataFrame:
-    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
+def apply_search_column(df: TargetFrame, key, value) -> TargetFrame:
+    mask = TargetFrame(True, columns=df.columns, index=df.index)
 
     try:
         return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
@@ -149,19 +160,19 @@ COL_TRANSLATE = {
 }
 
 
-def apply_has_column(df: pd.DataFrame, value) -> pd.DataFrame:
+def apply_has_column(df: TargetFrame, value) -> TargetFrame:
     try:
         value = COL_TRANSLATE[value]
     except KeyError:
         pass
 
     if (*df.name, value) in df:
-        return pd.DataFrame(True, columns=df.columns, index=df.index)
+        return TargetFrame(True, columns=df.columns, index=df.index)
     else:
-        return pd.DataFrame(False, columns=df.columns, index=df.index)
+        return TargetFrame(False, columns=df.columns, index=df.index)
 
 
-def get_mod(df: pd.DataFrame, query: pp.ParseResults):
+def get_mod(df: TargetFrame, query: pp.ParseResults):
     """
     Get ref_id from modifier to filter TF dataframe
 
@@ -209,56 +220,53 @@ def get_mod(df: pd.DataFrame, query: pp.ParseResults):
         return query
 
 
-def get_tf_data(query: str) -> pd.DataFrame:
+def get_tf_data(query: str) -> TargetFrame:
     """
     Get data for single TF
     :param query:
     :return:
     """
-    df = pd.DataFrame(
+    df = TargetFrame(
         interactions.filter(db_tf_id__db_tf_agi__exact=query).values_list(
             'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id').iterator(),
         columns=['EDGE', 'TARGET', 'REF'])
-    if df.empty:
-        raise ValueError('No Data. (invalid query tf)')
+    if not df.empty:
+        reg = TargetFrame(
+            Regulation.objects.filter(ref_id__in=df['REF'].unique()).values_list(
+                'ref_id', 'ath_id__agi_id', 'pvalue', 'foldchange').iterator(),
+            columns=['REF', 'TARGET', 'Pvalue', 'Log2FC'])
 
-    reg = pd.DataFrame(
-        Regulation.objects.filter(ref_id__in=df['REF'].unique()).values_list(
-            'ref_id', 'ath_id__agi_id', 'pvalue', 'foldchange').iterator(),
-        columns=['REF', 'TARGET', 'Pvalue', 'Log2FC'])
+        # somehow this is stored as strings for some reason
+        reg['Pvalue'] = reg['Pvalue'].astype(float)
+        reg['Log2FC'] = reg['Log2FC'].astype(float)
 
-    # somehow this is stored as strings for some reason
-    reg['Pvalue'] = reg['Pvalue'].astype(float)
-    reg['Log2FC'] = reg['Log2FC'].astype(float)
-
-    dap = pd.Series(
-        DAPdata.objects.filter(db_tfid__db_tf_agi__exact=query).values_list('ath_id__agi_id', flat=True).iterator())
-    df = df.merge(reg, on=['REF', 'TARGET'], how='left')
-    if not dap.empty:
-        df.loc[df['TARGET'].isin(dap), 'DAP'] = 'Present'
-    df = df.pivot(index='TARGET', columns='REF')
-    df = df.swaplevel(0, 1, axis=1)
-    df = df.sort_index(axis=1, level=0, sort_remaining=False)
-
-    df = df.dropna(axis=1, how='all')
+        dap = TargetSeries(
+            DAPdata.objects.filter(db_tfid__db_tf_agi__exact=query).values_list('ath_id__agi_id', flat=True).iterator())
+        df = df.merge(reg, on=['REF', 'TARGET'], how='left')
+        if not dap.empty:
+            df.loc[df['TARGET'].isin(dap), 'DAP'] = 'Present'
+        df = (df.pivot(index='TARGET', columns='REF')
+              .swaplevel(0, 1, axis=1)
+              .sort_index(axis=1, level=0, sort_remaining=False)
+              .dropna(axis=1, how='all'))
 
     df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
 
     return df
 
 
-def get_all_tf(query: str) -> pd.DataFrame:
+def get_all_tf(query: str) -> TargetFrame:
     """
     Get data for all TFs at once
     :param query:
     :return:
     """
-    df = pd.DataFrame(
+    df = TargetFrame(
         interactions.values_list(
             'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id', 'db_tf_id__db_tf_agi').iterator(),
         columns=['EDGE', 'TARGET', 'REF', 'TF'])
 
-    reg = pd.DataFrame(
+    reg = TargetFrame(
         Regulation.objects.values_list(
             'ref_id', 'ath_id__agi_id', 'pvalue', 'foldchange').iterator(),
         columns=['REF', 'TARGET', 'Pvalue', 'Log2FC'])
@@ -266,16 +274,17 @@ def get_all_tf(query: str) -> pd.DataFrame:
     reg['Pvalue'] = reg['Pvalue'].astype(float)
     reg['Log2FC'] = reg['Log2FC'].astype(float)
 
-    dap = pd.DataFrame(
+    dap = TargetFrame(
         DAPdata.objects.values_list('db_tfid__db_tf_agi', 'ath_id__agi_id').iterator(),
         columns=['TF', 'TARGET'])
     dap['DAP'] = 'Present'
-    df = df.merge(reg, on=['REF', 'TARGET'], how='left')
-    df = df.merge(dap, on=['TF', 'TARGET'], how='left')
-    df = df.set_index(['TF', 'REF', 'TARGET']).unstack(level=[0, 1])
-    df = df.reorder_levels([1, 2, 0], axis=1)
-    df = df.sort_index(axis=1, level=[0, 1], sort_remaining=False)
-    df = df.dropna(how='all', axis=1)
+    df = (df.merge(reg, on=['REF', 'TARGET'], how='left')
+          .merge(dap, on=['TF', 'TARGET'], how='left')
+          .set_index(['TF', 'REF', 'TARGET'])
+          .unstack(level=[0, 1])
+          .reorder_levels([1, 2, 0], axis=1)
+          .sort_index(axis=1, level=[0, 1], sort_remaining=False)
+          .dropna(how='all', axis=1))
 
     if query == 'oralltf':
         pass
@@ -287,7 +296,11 @@ def get_all_tf(query: str) -> pd.DataFrame:
     return df
 
 
-def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
+def get_suffix() -> Tuple[str, str]:
+    return '__{}'.format(uuid4()), '__{}'.format(uuid4())
+
+
+def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
     """
     Query TF DataFrame according to query
     :param query:
@@ -304,33 +317,31 @@ def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
                     prec, succ = get_tf(stack.pop()), get_tf(next(it))
 
                     if curr == 'and':
-                        if prec.target.include and succ.target.include:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
-                        elif not prec.target.include and succ.target.include:
+                        if prec.include and succ.include:
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True, suffixes=get_suffix())
+                        elif not prec.include and succ.include:
                             df = succ.loc[~succ.index.isin(prec.index), :]
-                        elif prec.target.include and not succ.target.include:
+                        elif prec.include and not succ.include:
                             df = prec.loc[~prec.index.isin(succ.index), :]
-                        else:  # not prec.target.include and not succ.target.include
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
-                            df.target.include = False
+                        else:  # not prec.include and not succ.include
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True, suffixes=get_suffix())
+                            df.include = False
                     else:
                         # doesn't make much sense using not with or, but oh well
-                        if prec.target.include and succ.target.include:
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
-                        elif not prec.target.include and succ.target.include:
+                        if prec.include and succ.include:
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True, suffixes=get_suffix())
+                        elif not prec.include and succ.include:
                             df = succ
-                        elif prec.target.include and not succ.target.include:
+                        elif prec.include and not succ.include:
                             df = prec
                         else:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
-                            df.target.include = False
-                    inc = df.target.include
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True, suffixes=get_suffix())
+                            df.include = False
                     df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
-                    df.target.include = inc
                     stack.append(df)
                 elif curr == 'not':
                     succ = get_tf(next(it))
-                    succ.target.include = not succ.target.include
+                    succ.include = not succ.include
                     stack.append(succ)
                 elif is_modifier(curr):
                     prec = get_tf(stack.pop())
@@ -345,7 +356,7 @@ def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
                     stack.append(curr)
         except StopIteration:
             return get_tf(stack.pop())
-    elif isinstance(query, (pd.DataFrame, pd.Series)):
+    elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
         if query in ('andalltf', 'oralltf'):
@@ -354,13 +365,12 @@ def get_tf(query: Union[pp.ParseResults, str, pd.DataFrame]) -> pd.DataFrame:
         return get_tf_data(query)
 
 
-def reorder_data(df: pd.DataFrame) -> pd.DataFrame:
+def reorder_data(df: TargetFrame) -> TargetFrame:
     """
     Order by TF with most edges, then analysis with most edges within tf
     :param df:
     :return:
     """
-    # expand the reference section into analysis and meta names here
     analysis_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(
         axis=1, level=2).sum().sort_values(ascending=False)
     meta_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1, level=1).sum().sort_values(
@@ -368,23 +378,23 @@ def reorder_data(df: pd.DataFrame) -> pd.DataFrame:
     tf_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1, level=0).sum().sort_values(
         ascending=False)
 
-    df = df.reindex(labels=analysis_order.index, axis=1, level=2)
-    df = df.reindex(labels=meta_order.index, axis=1, level=1)
-    df = df.reindex(labels=tf_order.index, axis=1, level=0)
+    df = (df.reindex(labels=analysis_order.index, axis=1, level=2)
+          .reindex(labels=meta_order.index, axis=1, level=1)
+          .reindex(labels=tf_order.index, axis=1, level=0))
     return df
 
 
-def get_metadata(ids: Sequence) -> pd.DataFrame:
+def get_metadata(ids: Sequence) -> TargetFrame:
     refs = ReferenceId.objects.filter(ref_id__in=ids)
-    df = pd.DataFrame(refs.values_list(
+    df = TargetFrame(refs.values_list(
         'ref_id',
         'analysis_id__analysisiddata__analysis_type',
         'analysis_id__analysisiddata__analysis_value').iterator(),
-                      columns=['REF', 'KEY', 'VALUE'])
+                     columns=['REF', 'KEY', 'VALUE'])
 
     df = pd.concat([
         df,
-        pd.DataFrame(
+        TargetFrame(
             refs.values_list(
                 'ref_id',
                 'meta_id__metaiddata__meta_type',
@@ -399,14 +409,14 @@ def get_metadata(ids: Sequence) -> pd.DataFrame:
     return df
 
 
-def get_tf_count(df: pd.DataFrame) -> pd.Series:
+def get_tf_count(df: TargetFrame) -> TargetSeries:
     counts = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1)
     counts.name = 'TF Count'
 
     return counts
 
 
-def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) -> pd.DataFrame:
+def expand_ref_ids(df: TargetFrame, level: Optional[Union[str, int]] = None) -> TargetFrame:
     df = df.copy()
 
     if level is None:
@@ -430,18 +440,18 @@ def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) ->
     return df
 
 
-def parse_query(query: str) -> pd.DataFrame:
+def parse_query(query: str) -> TargetFrame:
     parse = expr.parseString(query, parseAll=True)
 
     result = get_tf(parse.get('query'))
 
-    if result.empty or not result.target.include:
+    if result.empty or not result.include:
         raise ValueError('empty query')
 
     return result
 
 
-def trim_edges(df: pd.DataFrame) -> pd.DataFrame:
+def trim_edges(df: TargetFrame) -> TargetFrame:
     df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')] = \
         df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].apply(
             lambda x: x.str.replace('.+(?=INDUCED|REPRESSED|REGULATED|BOUND)', '',
@@ -450,14 +460,14 @@ def trim_edges(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def induce_repress_count(df: pd.DataFrame):
-    return pd.Series((df[(*df.name, 'EDGE')].str.contains('induced', case=False).sum(),
-                      df[(*df.name, 'EDGE')].str.contains('repressed', case=False).sum()),
-                     index=['induced', 'repressed'])
+def induce_repress_count(df: TargetFrame):
+    return TargetSeries((df[(*df.name, 'EDGE')].str.contains('induced', case=False).sum(),
+                         df[(*df.name, 'EDGE')].str.contains('repressed', case=False).sum()),
+                        index=['induced', 'repressed'])
 
 
-def get_query_result(query: str, user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
-                     cache_path: Optional[Union[str, Path]] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+def get_query_result(query: str, user_lists: Optional[Tuple[TargetFrame, Dict]] = None,
+                     cache_path: Optional[Union[str, Path]] = None) -> Tuple[TargetFrame, TargetFrame, Dict]:
     stats = {}
     result = parse_query(query)
     metadata = get_metadata(result.columns.levels[1])
@@ -485,7 +495,7 @@ def get_query_result(query: str, user_lists: Optional[Tuple[pd.DataFrame, Dict]]
         result = result.sort_values(['User List Count', 'User List'])
     else:
         result = pd.concat([
-            pd.DataFrame(np.nan, columns=['User List', 'User List Count'], index=result.index),
+            TargetFrame(np.nan, columns=['User List', 'User List Count'], index=result.index),
             result
         ], axis=1)
 
