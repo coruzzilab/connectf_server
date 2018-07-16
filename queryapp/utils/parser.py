@@ -139,7 +139,26 @@ def apply_search_column(df: pd.DataFrame, key, value) -> pd.DataFrame:
     try:
         return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
     except KeyError:
+        mask.loc[:, :] = False
         return mask
+
+
+COL_TRANSLATE = {
+    'PVALUE': 'Pvalue',
+    'FC': 'Log2FC'
+}
+
+
+def apply_has_column(df: pd.DataFrame, value) -> pd.DataFrame:
+    try:
+        value = COL_TRANSLATE[value]
+    except KeyError:
+        pass
+
+    if (*df.name, value) in df:
+        return pd.DataFrame(True, columns=df.columns, index=df.index)
+    else:
+        return pd.DataFrame(False, columns=df.columns, index=df.index)
 
 
 def get_mod(df: pd.DataFrame, query: pp.ParseResults):
@@ -181,6 +200,9 @@ def get_mod(df: pd.DataFrame, query: pp.ParseResults):
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
         elif re.match(r'^dap$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='DAP')
+        elif re.match(r'^has$', key, flags=re.I):
+            value = value.upper()
+            return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
         else:
             return query_metadata(df, key, value)
     else:

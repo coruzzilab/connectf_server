@@ -7,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, DAPdata, Edges, Interactions, MetaIddata
+from querytgdb.models import AnalysisIddata, DAPdata, Edges, Interactions, MetaIddata, ReferenceId
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -18,6 +18,10 @@ def get_lists(files: Iterable) -> Generator[str, None, None]:
         name, ext = os.path.splitext(f)
         if ext == '.txt':
             yield name
+
+
+def check_regulation(instance: ReferenceId):
+    return instance.regulation_set.exists()
 
 
 class TFView(views.APIView):
@@ -56,7 +60,7 @@ class KeyView(views.APIView):
         if tfs & {'oralltf', 'andalltf'}:
             tfs = set()
 
-        queryset = ['pvalue', 'edge', 'fc']
+        queryset = ['pvalue', 'edge', 'fc', 'has']
 
         if tfs:
             refs = Interactions.objects.filter(
@@ -98,6 +102,19 @@ class ValueView(views.APIView):
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
         elif key == 'DAP':
             return Response(['Present'])
+        elif key == 'HAS':
+            queryset = ['EDGE']
+
+            if tfs:
+                if any(map(check_regulation,
+                           ReferenceId.objects.filter(interactions__db_tf_id__db_tf_agi__in=tfs).distinct())):
+                    queryset.extend(('Pvalue', 'FC'))
+                if DAPdata.objects.filter(db_tfid__db_tf_agi__in=tfs).exists():
+                    queryset.append('DAP')
+            else:
+                queryset.extend(('Pvalue', 'FC', 'DAP'))
+
+            return Response(queryset)
         else:
             queryset = []
 
