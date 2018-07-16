@@ -3,7 +3,7 @@ import pathlib
 import re
 import shutil
 import time
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 from threading import Lock
 from typing import List
 
@@ -58,7 +58,7 @@ class HandleQueryView(View):
 
             if request.FILES:
                 if "targetgenes" in request.FILES:
-                    targetgenes_file = request.FILES["targetgenes"].open('r')
+                    targetgenes_file = TextIOWrapper(request.FILES["targetgenes"])
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
