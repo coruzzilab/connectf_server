@@ -7,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, Edges, Interactions, MetaIddata
+from querytgdb.models import AnalysisIddata, DAPdata, Edges, Interactions, MetaIddata
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -62,6 +62,9 @@ class KeyView(views.APIView):
             refs = Interactions.objects.filter(
                 db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
 
+            if DAPdata.objects.filter(db_tfid__db_tf_agi__in=tfs).exists():
+                queryset.append('DAP')
+
             queryset.extend(AnalysisIddata.objects.filter(
                 analysis_id__referenceid__ref_id__in=refs
             ).distinct().values_list('analysis_type', flat=True))
@@ -70,6 +73,7 @@ class KeyView(views.APIView):
                 meta_id__referenceid__ref_id__in=refs
             ).distinct().values_list('meta_type', flat=True))
         else:
+            queryset.append('DAP')
             queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
             queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
 
@@ -92,6 +96,8 @@ class ValueView(views.APIView):
                 return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__in=tfs).distinct().values_list(
                     'edge_id__edge_name', flat=True))
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
+        elif key == 'DAP':
+            return Response(['Present'])
         else:
             queryset = []
 

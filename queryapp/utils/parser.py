@@ -133,10 +133,10 @@ def apply_comp_mod(df: pd.DataFrame, key: str, oper: str, value: Union[float, st
         return mask
 
 
-def apply_search_edge(df: pd.DataFrame, value) -> pd.DataFrame:
+def apply_search_column(df: pd.DataFrame, key, value) -> pd.DataFrame:
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
-    return mask.where(df[(*df.name, 'EDGE')].str.contains(value, case=False, regex=False), False)
+    return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
 
 
 def get_mod(df: pd.DataFrame, query: pp.ParseResults):
@@ -170,12 +170,14 @@ def get_mod(df: pd.DataFrame, query: pp.ParseResults):
         oper = query['oper']
         value = query['value']
 
-        if re.match(r'(?:pvalue)', key, flags=re.I):
+        if re.match(r'^pvalue$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
-        elif re.match(r'(?:fc)', key, flags=re.I):
+        elif re.match(r'^fc$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
         elif re.match(r'^edge$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_search_edge, value=value)
+            return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
+        elif re.match(r'^dap$', key, flags=re.I):
+            return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='DAP')
         else:
             return query_metadata(df, key, value)
     else:
