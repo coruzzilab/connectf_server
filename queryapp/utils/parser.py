@@ -12,7 +12,7 @@ from django.db.models import Q
 
 from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, ReferenceId, Regulation
 
-__all__ = ['get_query_result', 'expand_ref_ids']
+__all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
 
 
 class TargetFrame(pd.DataFrame):
@@ -29,6 +29,7 @@ class TargetFrame(pd.DataFrame):
     def __init__(self, *args, include=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.include = include
+        self.filter_string = ''
 
 
 class TargetSeries(pd.Series):
@@ -41,8 +42,8 @@ class TargetSeries(pd.Series):
         return TargetFrame
 
 
-def get_annotations() -> TargetFrame:
-    anno = TargetFrame(
+def get_annotations() -> pd.DataFrame:
+    anno = pd.DataFrame(
         Annotation.objects.values_list(
             'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name').iterator(),
         columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name'])
@@ -101,7 +102,14 @@ is_mod = partial(is_name, 'mod')
 interactions = Interactions.objects.all()
 
 
-def query_metadata(df: TargetFrame, key: str, value: str):
+def mod_to_str(curr: pp.ParseResults) -> str:
+    if isinstance(curr, str):
+        return curr
+    else:
+        return ' '.join(map(mod_to_str, curr))
+
+
+def query_metadata(df: TargetFrame, key: str, value: str) -> pd.DataFrame:
     ref_ids = ReferenceId.objects.filter(
         Q(analysis_id_id__in=AnalysisIddata.objects.filter(
             analysis_type__iexact=key,
@@ -110,19 +118,19 @@ def query_metadata(df: TargetFrame, key: str, value: str):
             meta_type__iexact=key,
             meta_value__iexact=value).values_list('meta_id_id', flat=True))).values_list('ref_id', flat=True)
 
-    mask = TargetFrame(True, columns=df.columns, index=df.index)
+    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
     mask.loc[:, ~df.columns.get_level_values(1).isin(ref_ids)] = False
 
     return mask
 
 
-def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str]) -> TargetFrame:
+def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str]) -> pd.DataFrame:
     """
     apply Pvalue and Log2FC (fold change)
     """
     value = float(value)
-    mask = TargetFrame(True, columns=df.columns, index=df.index)
+    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
     try:
         if oper == '=':
@@ -144,8 +152,8 @@ def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str
         return mask
 
 
-def apply_search_column(df: TargetFrame, key, value) -> TargetFrame:
-    mask = TargetFrame(True, columns=df.columns, index=df.index)
+def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
+    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
     try:
         return mask.where(df[(*df.name, key)].str.contains(value, case=False, regex=False), False)
@@ -160,19 +168,19 @@ COL_TRANSLATE = {
 }
 
 
-def apply_has_column(df: TargetFrame, value) -> TargetFrame:
+def apply_has_column(df: TargetFrame, value) -> pd.DataFrame:
     try:
         value = COL_TRANSLATE[value]
     except KeyError:
         pass
 
     if (*df.name, value) in df:
-        return TargetFrame(True, columns=df.columns, index=df.index)
+        return pd.DataFrame(True, columns=df.columns, index=df.index)
     else:
-        return TargetFrame(False, columns=df.columns, index=df.index)
+        return pd.DataFrame(False, columns=df.columns, index=df.index)
 
 
-def get_mod(df: TargetFrame, query: pp.ParseResults):
+def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.DataFrame:
     """
     Get ref_id from modifier to filter TF dataframe
 
@@ -251,6 +259,7 @@ def get_tf_data(query: str) -> TargetFrame:
               .dropna(axis=1, how='all'))
 
     df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
+    df.filter_string += query
 
     return df
 
@@ -287,17 +296,21 @@ def get_all_tf(query: str) -> TargetFrame:
           .dropna(how='all', axis=1))
 
     if query == 'oralltf':
-        pass
+        df.filter_string += 'oralltf'
     elif query == 'andalltf':
         df = df[df.loc[:, (slice(None), slice(None), 'EDGE')].notna().all(axis=1)]
+        df.filter_string += 'andalltf'
     else:
         raise ValueError('invalid query')
 
     return df
 
 
-def get_suffix() -> Tuple[str, str]:
-    return '__{}'.format(uuid4()), '__{}'.format(uuid4())
+def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
+    if prec.filter_string == succ.filter_string:
+        return '_' + str(uuid4()), '_' + str(uuid4())
+
+    return ' "' + prec.filter_string + '"', ' "' + succ.filter_string + '"'
 
 
 def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
@@ -316,32 +329,44 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
                 if curr in ('and', 'or'):
                     prec, succ = get_tf(stack.pop()), get_tf(next(it))
 
+                    filter_string = prec.filter_string
                     if curr == 'and':
+                        filter_string += ' and '
+
                         if prec.include and succ.include:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True, suffixes=get_suffix())
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True,
+                                            suffixes=get_suffix(prec, succ))
                         elif not prec.include and succ.include:
                             df = succ.loc[~succ.index.isin(prec.index), :]
                         elif prec.include and not succ.include:
                             df = prec.loc[~prec.index.isin(succ.index), :]
                         else:  # not prec.include and not succ.include
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True, suffixes=get_suffix())
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True,
+                                            suffixes=get_suffix(prec, succ))
                             df.include = False
                     else:
+                        filter_string += ' or '
+
                         # doesn't make much sense using not with or, but oh well
                         if prec.include and succ.include:
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True, suffixes=get_suffix())
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True,
+                                            suffixes=get_suffix(prec, succ))
                         elif not prec.include and succ.include:
                             df = succ
                         elif prec.include and not succ.include:
                             df = prec
                         else:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True, suffixes=get_suffix())
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True,
+                                            suffixes=get_suffix(prec, succ))
                             df.include = False
+                    filter_string += succ.filter_string
                     df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+                    df.filter_string = filter_string
                     stack.append(df)
                 elif curr == 'not':
                     succ = get_tf(next(it))
                     succ.include = not succ.include
+                    succ.filter_string = 'not ' + succ.filter_string
                     stack.append(succ)
                 elif is_modifier(curr):
                     prec = get_tf(stack.pop())
@@ -350,6 +375,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
 
                     # filter out empty tfs
                     prec = prec.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+                    prec.filter_string += '[' + mod_to_str(curr) + ']'
 
                     stack.append(prec)
                 else:
@@ -472,10 +498,12 @@ def get_query_result(query: str, user_lists: Optional[Tuple[TargetFrame, Dict]] 
     result = parse_query(query)
     metadata = get_metadata(result.columns.levels[1])
     result = expand_ref_ids(result, 1)
-    result = reorder_data(result)
 
     stats['total'] = result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(
         level=[0, 1, 2], axis=1).count().sum()
+
+    if cache_path:
+        result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
 
     if user_lists:
         result = result[result.index.isin(user_lists[0].index)]
@@ -483,6 +511,8 @@ def get_query_result(query: str, user_lists: Optional[Tuple[TargetFrame, Dict]] 
     if cache_path:  # cache edges here
         result.to_pickle(cache_path + '/tabular_output.pickle.gz')
         metadata.to_pickle(cache_path + '/metadata.pickle.gz')
+
+    result = reorder_data(result)
 
     result = trim_edges(result)
 

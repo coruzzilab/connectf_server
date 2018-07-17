@@ -138,7 +138,7 @@ class HeatMapPNGView(View):
             heatmap(
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=True,
-                save_file=False
+                save_file=True
             ).savefig(buff)
 
             buff.seek(0)
@@ -194,15 +194,15 @@ class MotifEnrichmentView(View):
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
 
-                p = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+                cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
 
-                if not os.path.exists(p):
+                if not os.path.exists(cache_path):
                     time.sleep(3)
 
                 return JsonResponse(
                     get_motif_enrichment_json(
-                        p,
-                        static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
+                        cache_path,
+                        # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
                         alpha=alpha,
                         body=body == '1'),
                     encoder=PandasJSONEncoder)
@@ -219,14 +219,14 @@ class MotifEnrichmentHeatmapView(View):
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
 
-                p = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+                cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
 
-                if not os.path.exists(p):
+                if not os.path.exists(cache_path):
                     time.sleep(3)
 
                 buff = get_motif_enrichment_heatmap(
-                    p,
-                    static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
+                    cache_path,
+                    # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
                     alpha=alpha,
                     body=body == '1'
                 )

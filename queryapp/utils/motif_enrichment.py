@@ -11,6 +11,7 @@ from typing import Dict, Tuple
 import matplotlib
 import numpy as np
 import pandas as pd
+import scipy.cluster.hierarchy as hierarchy
 from django.conf import settings
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
@@ -192,11 +193,16 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
     rows, cols = df.shape
 
-    heatmap_graph = sns.clustermap(df, cmap="YlGnBu",
-                                   metric='euclidean',
-                                   method='average',
+    opts = {}
+    if rows > 1:
+        opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
+    if cols > 1:
+        opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
+
+    heatmap_graph = sns.clustermap(df,
+                                   cmap="YlGnBu",
                                    xticklabels=1,
-                                   row_cluster=rows > 1, col_cluster=cols > 1)
+                                   **opts)
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
 

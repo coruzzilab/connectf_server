@@ -1,16 +1,18 @@
 from itertools import product
+from typing import Optional
 
 import matplotlib
 import numpy as np
 import pandas as pd
+import scipy.cluster.hierarchy as hierarchy
 from scipy.stats import fisher_exact
+
+from queryapp.utils.parser import ANNOTATIONS
 
 matplotlib.use('SVG')
 import matplotlib.pyplot as plt
 
 import seaborn as sns
-
-from queryapp.utils.parser import ANNOTATIONS
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -23,34 +25,36 @@ def scale_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def draw_heatmap(df: pd.DataFrame):
     row_num, col_num = df.shape
+    opts = {}
+    if row_num > 1:
+        opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
+    if col_num > 1:
+        opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
     sns_heatmap = sns.clustermap(df,
                                  cmap="YlGnBu",
                                  cbar_kws={'label': 'Enrichment(-log10 p)'},
-                                 col_cluster=col_num > 1,
-                                 row_cluster=row_num > 1)
+                                 xticklabels=1,
+                                 **opts)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-    plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=90)
+    plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
 
     return sns_heatmap
-
-
-def save_heatmap(graph, pickledir):
-    graph.savefig(pickledir + '/heatmap.svg')
 
 
 ##################################################################
 # function to read TargetDB output dataframe from pickles and
 # convert into list of targets for each tF
-def heatmap(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
+def heatmap(pickledir, cutoff=10, background: Optional[int] = None, draw=True, save_file=True):
     # raising exception here if target genes are not uploaded by the user
     try:
         name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle.gz')
     except FileNotFoundError as e:
         raise FileNotFoundError('No target genes uploaded') from e
 
-    query_result = pd.read_pickle(pickledir + '/tabular_output.pickle.gz')
-    # type2_set is a nested dict, storing number of target genes for each exp and analysis
-    # I had to store this data before filtering dataframe for target genes
+    if background is None:
+        background = ANNOTATIONS.shape[0]
+
+    query_result = pd.read_pickle(pickledir + '/tabular_output_unfiltered.pickle.gz')
 
     # default cutoff is 10
     # default background:
@@ -64,13 +68,16 @@ def heatmap(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
     for val_expid, column in query_result.iteritems():
         target_eachanalysis = set(column.dropna().index)
         gene_id = val_expid[0]
-        genename = ANNOTATIONS.at[gene_id, 'Name'] or gene_id
+        try:
+            # temporary fix for wonky names
+            genename = ANNOTATIONS.at[gene_id, 'Name'] or gene_id
+        except KeyError:
+            genename = gene_id
+
         targets['{0} || {1[1]} || {1[2]} ({2})'.format(
             genename, val_expid, len(target_eachanalysis))] = target_eachanalysis
 
-    # @todo: wtf, clean this up
-    # empty pandas dataframe for overlaps and pvalues. Dataframes rows= analysis and columns= modules
-    dfpval_forheatmap = pd.DataFrame(np.nan, index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
+    dfpval_forheatmap = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
     colnames = {}
 
@@ -81,7 +88,7 @@ def heatmap(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
         odds, pvalue = fisher_exact([
             [intersect_len, len(user_list - analysis_list)],
             [len(analysis_list - user_list), background - len(user_list | analysis_list)]
-        ])
+        ], alternative='greater')
         dfpval_forheatmap.at[analysis_name, name] = pvalue
 
     dfpval_forheatmap.rename(columns=colnames, inplace=True)
@@ -91,9 +98,18 @@ def heatmap(pickledir, cutoff=10, background=28775, draw=True, save_file=True):
         sns_heatmap = draw_heatmap(scaleddfpval_forhmap)
 
         if save_file:
-            save_heatmap(sns_heatmap, pickledir)
-        else:
-            return sns_heatmap
+            sns_heatmap.savefig(pickledir + '/heatmap.svg')
+
+        return sns_heatmap
 
     else:
+        row_num, col_num = dfpval_forheatmap.shape
+        if row_num > 1:
+            z = hierarchy.linkage(dfpval_forheatmap.values, method='average', optimal_ordering=True)
+            dfpval_forheatmap = dfpval_forheatmap.iloc[hierarchy.leaves_list(z), :]
+
+        if col_num > 1:
+            z = hierarchy.linkage(dfpval_forheatmap.values.T, method='average', optimal_ordering=True)
+            dfpval_forheatmap = dfpval_forheatmap.iloc[:, hierarchy.leaves_list(z)]
+
         return dfpval_forheatmap
