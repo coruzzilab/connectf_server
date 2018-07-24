@@ -1,4 +1,5 @@
 import re
+import warnings
 from collections import deque
 from functools import partial
 from pathlib import Path
@@ -9,10 +10,15 @@ import numpy as np
 import pandas as pd
 import pyparsing as pp
 from django.db.models import Q
+from django.db.utils import DatabaseError
 
 from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, ReferenceId, Regulation
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
+
+
+class DatabaseWarning(UserWarning):
+    pass
 
 
 class TargetFrame(pd.DataFrame):
@@ -43,11 +49,17 @@ class TargetSeries(pd.Series):
 
 
 def get_annotations() -> pd.DataFrame:
-    anno = pd.DataFrame(
-        Annotation.objects.values_list(
-            'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name').iterator(),
-        columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name'])
-    anno = anno.set_index('TARGET')
+    try:
+        anno = pd.DataFrame(
+            Annotation.objects.values_list(
+                'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name').iterator(),
+            columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name'])
+        anno = anno.set_index('TARGET')
+    except DatabaseError:
+        warnings.warn(DatabaseWarning("No annotation data."))
+
+        anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name'])
+        anno.index.name = 'TARGET'
 
     return anno
 
@@ -412,22 +424,21 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
 
 def get_metadata(ids: Sequence) -> TargetFrame:
     refs = ReferenceId.objects.filter(ref_id__in=ids)
-    df = TargetFrame(refs.values_list(
-        'ref_id',
-        'analysis_id__analysisiddata__analysis_type',
-        'analysis_id__analysisiddata__analysis_value').iterator(),
-                     columns=['REF', 'KEY', 'VALUE'])
-
     df = pd.concat([
-        df,
+        TargetFrame(refs.values_list(
+            'ref_id',
+            'analysis_id__analysisiddata__analysis_type',
+            'analysis_id__analysisiddata__analysis_value').iterator(),
+                    columns=['REF', 'KEY', 'VALUE']),
         TargetFrame(
             refs.values_list(
                 'ref_id',
                 'meta_id__metaiddata__meta_type',
                 'meta_id__metaiddata__meta_value').iterator(),
             columns=['REF', 'KEY', 'VALUE'])
-    ])
+    ], ignore_index=True)
 
+    df = df.dropna(how='all', subset=['KEY', 'VALUE'])
     df = df.set_index(['REF', 'KEY'])
     df = df.unstack(level=0)
     df.columns = df.columns.droplevel(level=0)

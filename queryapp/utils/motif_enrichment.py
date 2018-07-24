@@ -134,10 +134,10 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
 
     for meta_id, analysis_id in zip(meta_ids, analysis_ids):
         data = OrderedDict()
-        ref = references.get(
-            analysis_id__analysis_fullid=analysis_id,
-            meta_id__meta_fullid=meta_id)
         try:
+            ref = references.get(
+                analysis_id__analysis_fullid=analysis_id,
+                meta_id__meta_fullid=meta_id)
             data.update(OrderedDict(
                 ref.analysis_id.analysisiddata_set.values_list('analysis_type', 'analysis_value')))
             data.update(
