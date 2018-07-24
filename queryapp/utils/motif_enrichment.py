@@ -5,8 +5,9 @@ from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
 from itertools import chain
+from multiprocessing.pool import ThreadPool
 from operator import or_
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import matplotlib
 import numpy as np
@@ -22,18 +23,84 @@ matplotlib.use('SVG')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
+class MotifData:
+    def __init__(self, data_dir: Union[str, pathlib.Path]):
+        self.pool = ThreadPool()
+        self._annotated_async = self.pool.apply_async(pd.read_pickle,
+                                                      args=(data_dir / 'static' / 'annotated.pickle.gz',))
+        self._annotated = None
+        self._annotated_promo = None
+        self._ann_promo_dedup = None
+        self._promo_cluster_size = None
+
+        self._annotated_body = None
+        self._ann_body_dedup = None
+        self._body_cluster_size = None
+
+    @property
+    def annotated(self):
+        if self._annotated is None:
+            annotated = self._annotated_async.get()
+            annotated = annotated[annotated['p-value'] < 0.0001]
+
+            self._annotated = annotated
+
+        return self._annotated
+
+    @property
+    def annotated_promo(self):
+        if self._annotated_promo is None:
+            self._annotated_promo = self.annotated[
+                (self.annotated['stop'] - self.annotated['start'] + self.annotated['dist']) < 0]
+
+        return self._annotated_promo
+
+    @property
+    def ann_promo_dedup(self):
+        if self._ann_promo_dedup is None:
+            self._ann_promo_dedup = self.annotated_promo.drop_duplicates('match_id')
+
+        return self._ann_promo_dedup
+
+    @property
+    def promo_cluster_size(self):
+        if self._promo_cluster_size is None:
+            self._promo_cluster_size = self.ann_promo_dedup.groupby('#pattern name').size()
+
+        return self._promo_cluster_size
+
+    @property
+    def annotated_body(self):
+        if self._annotated_body is None:
+            self._annotated_body = self.annotated[self.annotated['dist'] > 0]
+
+        return self._annotated_body
+
+    @property
+    def ann_body_dedup(self):
+        if self._ann_body_dedup is None:
+            self._ann_body_dedup = self.annotated_body.drop_duplicates('match_id')
+
+        return self._ann_body_dedup
+
+    @property
+    def body_cluster_size(self):
+        if self._body_cluster_size is None:
+            self._body_cluster_size = self.ann_body_dedup.groupby('#pattern name').size()
+
+        return self._body_cluster_size
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.pool.terminate()
+
+
 APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
 
-ANNOTATED = pd.read_pickle(APPS_DIR / 'static' / 'annotated.pickle.gz')
-ANNOTATED = ANNOTATED[ANNOTATED['p-value'] < 0.0001]
-
-ANNOTATED_PROMO = ANNOTATED[(ANNOTATED['stop'] - ANNOTATED['start'] + ANNOTATED['dist']) < 0]
-ANN_PROMO_DEDUP = ANNOTATED_PROMO.drop_duplicates('match_id')
-PROMO_CLUSTER_SIZE = ANN_PROMO_DEDUP.groupby('#pattern name').size()
-
-ANNOTATED_BODY = ANNOTATED[ANNOTATED['dist'] > 0]
-ANN_BODY_DEDUP = ANNOTATED_BODY.drop_duplicates('match_id')
-BODY_CLUSTER_SIZE = ANN_BODY_DEDUP.groupby('#pattern name').size()
+MOTIF = MotifData(APPS_DIR)
 
 CLUSTER_INFO = pd.read_pickle(
     APPS_DIR / 'static' / 'cluster_info.pickle.gz',
@@ -69,15 +136,15 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
 
     promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
                                                   alpha=alpha,
-                                                  annotated=ANNOTATED_PROMO,
-                                                  annotated_dedup=ANN_PROMO_DEDUP,
-                                                  ann_cluster_size=PROMO_CLUSTER_SIZE), res.values()))
+                                                  annotated=MOTIF.annotated_promo,
+                                                  annotated_dedup=MOTIF.ann_promo_dedup,
+                                                  ann_cluster_size=MOTIF.promo_cluster_size), res.values()))
     if body:
         body_enrich, body_reject = zip(*map(partial(get_list_enrichment,
                                                     alpha=alpha,
-                                                    annotated=ANNOTATED_BODY,
-                                                    annotated_dedup=ANN_BODY_DEDUP,
-                                                    ann_cluster_size=BODY_CLUSTER_SIZE), res.values()))
+                                                    annotated=MOTIF.annotated_body,
+                                                    annotated_dedup=MOTIF.ann_body_dedup,
+                                                    ann_cluster_size=MOTIF.body_cluster_size), res.values()))
 
         df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
         columns = list(chain.from_iterable(zip(
