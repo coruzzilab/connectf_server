@@ -1,8 +1,9 @@
+import gzip
+import mimetypes
 import pickle
 from pathlib import Path
 from typing import Union
-import mimetypes
-import gzip
+from uuid import UUID
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,13 @@ class PandasJSONEncoder(DjangoJSONEncoder):
         if isinstance(o, pd.Index):
             return o.tolist()
 
+        return super().default(o)
+
+
+class CytoscapeJSONEncoder(DjangoJSONEncoder):
+    def default(self, o):
+        if isinstance(o, UUID):
+            return str(o)
         return super().default(o)
 
 

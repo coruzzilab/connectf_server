@@ -41,6 +41,10 @@ CLUSTER_INFO = pd.read_pickle(
 ).to_dict('index')
 
 
+class NoEnrichedMotif(ValueError):
+    pass
+
+
 def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
     def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
@@ -156,6 +160,10 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
         pass
 
     df = motif_enrichment(res, alpha=alpha, show_reject=False, body=body)
+
+    if df.empty:
+        raise NoEnrichedMotif
+
     df = df.where(pd.notnull(df), None)
 
     return {
@@ -182,6 +190,8 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
         pass
 
     df = motif_enrichment(res, alpha=alpha, body=body)
+    if df.empty:
+        raise NoEnrichedMotif
     df = -np.log10(df)
 
     if lower_bound:
@@ -202,6 +212,8 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     heatmap_graph = sns.clustermap(df,
                                    cmap="YlGnBu",
                                    xticklabels=1,
+                                   row_cluster=rows > 1,
+                                   col_cluster=cols > 1,
                                    **opts)
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)

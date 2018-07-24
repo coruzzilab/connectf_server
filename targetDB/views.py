@@ -60,7 +60,7 @@ class KeyView(views.APIView):
         if tfs & {'oralltf', 'andalltf'}:
             tfs = set()
 
-        queryset = ['pvalue', 'edge', 'fc', 'has']
+        queryset = ['pvalue', 'edge', 'fc', 'has_column']
 
         if tfs:
             refs = Interactions.objects.filter(
@@ -102,7 +102,7 @@ class ValueView(views.APIView):
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
         elif key == 'DAP':
             return Response(['Present'])
-        elif key == 'HAS':
+        elif key == 'HAS_COLUMN':
             queryset = ['EDGE']
 
             if tfs:

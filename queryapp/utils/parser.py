@@ -219,7 +219,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
         elif re.match(r'^dap$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='DAP')
-        elif re.match(r'^has$', key, flags=re.I):
+        elif re.match(r'^has_column$', key, flags=re.I):
             value = value.upper()
             return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
         else:
@@ -496,7 +496,7 @@ def get_query_result(query: str, user_lists: Optional[Tuple[TargetFrame, Dict]] 
                      cache_path: Optional[Union[str, Path]] = None) -> Tuple[TargetFrame, TargetFrame, Dict]:
     stats = {}
     result = parse_query(query)
-    metadata = get_metadata(result.columns.levels[1])
+    metadata = get_metadata(result.columns.get_level_values(1))
     result = expand_ref_ids(result, 1)
 
     stats['total'] = result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(

@@ -7,6 +7,7 @@ from io import BytesIO, TextIOWrapper
 from threading import Lock
 from typing import List
 
+import pandas as pd
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
@@ -18,12 +19,12 @@ from pyparsing import ParseException
 
 from querytgdb.models import ReferenceId
 from querytgdb.utils.clustering import heatmap
-from querytgdb.utils.cytoscape import create_cytoscape_data
 from querytgdb.utils.excel import create_export_zip
-from .utils import PandasJSONEncoder, cache_result
+from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result
+from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
-from .utils.motif_enrichment import get_motif_enrichment_heatmap, get_motif_enrichment_json
+from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json
 from .utils.parser import get_query_result
 
 lock = Lock()
@@ -93,13 +94,22 @@ class HandleQueryView(View):
 
 
 class CytoscapeJSONView(View):
-    def get(self, request, request_id, name):
+    def get(self, request, request_id):
+        # try:
+        #     outdir = static_storage.path("{}_json".format(request_id))
+        #     if not os.path.isdir(outdir):
+        #         outdir = create_cytoscape_data(outdir)
+        #     with open("{}/{}.json".format(outdir, name)) as f:
+        #         return HttpResponse(f, content_type="application/json; charset=utf-8")
+        # except FileNotFoundError as e:
+        #     raise Http404 from e
+
         try:
-            outdir = static_storage.path("{}_json".format(request_id))
-            if not os.path.isdir(outdir):
-                outdir = create_cytoscape_data(outdir)
-            with open("{}/{}.json".format(outdir, name)) as f:
-                return HttpResponse(f, content_type="application/json; charset=utf-8")
+            cache_dir = static_storage.path(request_id + '_pickle')
+            df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
+            return JsonResponse(get_cytoscape_json(df), safe=False, encoder=CytoscapeJSONEncoder)
+        except ValueError as e:
+            return HttpResponseBadRequest("Network too large")
         except FileNotFoundError as e:
             raise Http404 from e
 
@@ -206,7 +216,7 @@ class MotifEnrichmentView(View):
                         alpha=alpha,
                         body=body == '1'),
                     encoder=PandasJSONEncoder)
-            except FileNotFoundError as e:
+            except (FileNotFoundError, NoEnrichedMotif) as e:
                 return JsonResponse({}, status=404)
             except (ValueError, TypeError) as e:
                 return JsonResponse({}, status=400)
@@ -235,7 +245,7 @@ class MotifEnrichmentHeatmapView(View):
                 shutil.copyfileobj(buff, response)
 
                 return response
-            except FileNotFoundError:
+            except (FileNotFoundError, NoEnrichedMotif):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')
