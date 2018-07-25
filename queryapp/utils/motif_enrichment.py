@@ -38,10 +38,14 @@ class MotifData:
         self._ann_body_dedup = None
         self._body_cluster_size = None
 
+    def close(self):
+        self.pool.terminate()
+
     @property
     def annotated(self):
         if self._annotated is None:
             annotated = self._annotated_async.get()
+            self.close()
             annotated = annotated[annotated['p-value'] < 0.0001]
 
             self._annotated = annotated
@@ -95,7 +99,7 @@ class MotifData:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.pool.terminate()
+        self.close()
 
 
 APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
@@ -148,8 +152,8 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
 
         df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
         columns = list(chain.from_iterable(zip(
-            map(lambda c: '_'.join(c) + '_promo', res.keys()),
-            map(lambda c: '_'.join(c) + '_body', res.keys()))))
+            map(lambda c: c + ('promo',), res.keys()),
+            map(lambda c: c + ('body',), res.keys()))))
 
         if show_reject:
             rejects = reduce(or_, chain(promo_reject, body_reject))
@@ -157,7 +161,7 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
             rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
     else:
         df = pd.concat(promo_enrich, axis=1, sort=True)
-        columns = ['_'.join(c) + '_promo' for c in res.keys()]
+        columns = [c + ('promo',) for c in res.keys()]
 
         if show_reject:
             rejects = reduce(or_, promo_reject)
@@ -170,8 +174,7 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
         df = df[rejects]
     else:
         rejects.columns = columns
-        df[~rejects] = np.nan
-        df.dropna(how='all', inplace=True)
+        df = df.where(rejects).dropna(how='all')
 
     return df
 
@@ -197,9 +200,9 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     references = ReferenceId.objects.filter(analysis_id__analysis_fullid__in=analysis_ids,
                                             meta_id__meta_fullid__in=meta_ids)
 
-    meta_dicts = []
+    meta_dicts: OrderedDict[Tuple[str, ...], OrderedDict] = OrderedDict()
 
-    for meta_id, analysis_id in zip(meta_ids, analysis_ids):
+    for tf, meta_id, analysis_id in res.keys():
         data = OrderedDict()
         try:
             ref = references.get(
@@ -211,14 +214,15 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
                 ref.meta_id.metaiddata_set.values_list('meta_type', 'meta_value'))
         except ReferenceId.DoesNotExist:
             pass
-        meta_dicts.append(data)
+        meta_dicts[(tf, meta_id, analysis_id)] = data
 
     try:
         if target_genes_path:
             with gzip.open(target_genes_path, 'rb') as f:
                 _, target_lists = pickle.load(f)
-                meta_dicts.extend(
-                    [{'list_name': name, **m} for m in meta_dicts for name in target_lists.keys()])
+                meta_dicts.update(
+                    [((name, *m_name), OrderedDict({'list_name': name, **m})) for m_name, m in meta_dicts.items() for
+                     name in target_lists.keys()])
                 # Use list comprehension instead of generator expression to avoid mutating dict as we update it
                 res.update([((t_name, *r_name), t_list & r_list)
                             for r_name, r_list in res.items()
@@ -231,15 +235,24 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     if df.empty:
         raise NoEnrichedMotif
 
+    # rows, cols = df.shape
+    # if rows > 1:
+    #     z = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
+    #     df = df.iloc[hierarchy.leaves_list(z), :]
+    #
+    # if cols > 1:
+    #     z = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
+    #     df = df.iloc[:, hierarchy.leaves_list(z)]
+
     df = df.where(pd.notnull(df), None)
 
     return {
-        'columns': OrderedDict(zip(('_'.join(r) for r in res.keys()), meta_dicts)),
+        'columns': OrderedDict(('_'.join(c), meta_dicts[c]) for c in res.keys()),
         'result': list(merge_cluster_info(df))
     }
 
 
-def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=0, upper_bound=10,
+def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=None, upper_bound=10,
                                  body=False) -> BytesIO:
     df = pd.read_pickle(cache_path)
     df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
@@ -257,16 +270,16 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
         pass
 
     df = motif_enrichment(res, alpha=alpha, body=body)
+
     if df.empty:
         raise NoEnrichedMotif
+
     df = -np.log10(df)
 
-    if lower_bound:
-        df[df < lower_bound] = lower_bound
-    # make max 10 for overly small p-values
-    df[df > upper_bound] = upper_bound
+    df = df.clip(upper=upper_bound, lower=lower_bound)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
+    df = df.rename(columns='_'.join)
 
     rows, cols = df.shape
 
@@ -276,6 +289,7 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     if cols > 1:
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
 
+    plt.figure()
     heatmap_graph = sns.clustermap(df,
                                    cmap="YlGnBu",
                                    xticklabels=1,

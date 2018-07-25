@@ -95,15 +95,6 @@ class HandleQueryView(View):
 
 class CytoscapeJSONView(View):
     def get(self, request, request_id):
-        # try:
-        #     outdir = static_storage.path("{}_json".format(request_id))
-        #     if not os.path.isdir(outdir):
-        #         outdir = create_cytoscape_data(outdir)
-        #     with open("{}/{}.json".format(outdir, name)) as f:
-        #         return HttpResponse(f, content_type="application/json; charset=utf-8")
-        # except FileNotFoundError as e:
-        #     raise Http404 from e
-
         try:
             cache_dir = static_storage.path(request_id + '_pickle')
             df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
@@ -142,13 +133,19 @@ class FileExportView(View):
 class HeatMapPNGView(View):
     def get(self, request, request_id):
         try:
+            upper = float(request.GET.get('upper', 30))
+            lower = float(request.GET.get('lower', 0))
+
+            cache_path = static_storage.path("{}_pickle".format(request_id))
+
             buff = BytesIO()
             response = HttpResponse(content_type='image/svg+xml')
 
             heatmap(
-                static_storage.path("{}_pickle".format(request_id)),
+                cache_path,
                 draw=True,
-                save_file=True
+                lower=lower,
+                upper=upper
             ).savefig(buff)
 
             buff.seek(0)
@@ -197,9 +194,9 @@ class HeatMapTableView(View):
 
 class MotifEnrichmentView(View):
     def get(self, request, request_id):
+        if not request_id:
+            return JsonResponse({}, status=404)
         with lock:
-            if not request_id:
-                return JsonResponse({}, status=404)
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
@@ -219,11 +216,13 @@ class MotifEnrichmentView(View):
             except (FileNotFoundError, NoEnrichedMotif) as e:
                 return JsonResponse({}, status=404)
             except (ValueError, TypeError) as e:
-                return JsonResponse({}, status=400)
+                return JsonResponse({'error': str(e)}, status=400)
 
 
 class MotifEnrichmentHeatmapView(View):
     def get(self, request, request_id):
+        if not request_id:
+            return HttpResponseNotFound(content_type='image/svg+xml')
         with lock:
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
@@ -249,8 +248,3 @@ class MotifEnrichmentHeatmapView(View):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')
-
-
-class MotifEnrichmentErrorView(View):
-    def get(self, request, request_id):
-        return HttpResponseNotFound(content_type='image/svg+xml')

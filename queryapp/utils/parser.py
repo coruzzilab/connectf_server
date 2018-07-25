@@ -269,6 +269,8 @@ def get_tf_data(query: str) -> TargetFrame:
               .swaplevel(0, 1, axis=1)
               .sort_index(axis=1, level=0, sort_remaining=False)
               .dropna(axis=1, how='all'))
+    else:
+        df = TargetFrame(columns=[(np.nan, 'EDGE')])
 
     df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
     df.filter_string += query

@@ -15,12 +15,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def scale_df(df: pd.DataFrame) -> pd.DataFrame:
+def scale_df(df: pd.DataFrame, upper=30, lower=None) -> pd.DataFrame:
     df = df.copy()
-    df[df < 1e-30] = 1e-30
     df = -np.log10(df)
-    df.replace(np.inf, 1000, inplace=True)
-    return df
+
+    return df.clip(lower=lower, upper=upper)
 
 
 def draw_heatmap(df: pd.DataFrame):
@@ -32,8 +31,10 @@ def draw_heatmap(df: pd.DataFrame):
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
     sns_heatmap = sns.clustermap(df,
                                  cmap="YlGnBu",
-                                 cbar_kws={'label': 'Enrichment(-log10 p)'},
+                                 cbar_kws={'label': 'Enrichment (-log10 p)'},
                                  xticklabels=1,
+                                 row_cluster=row_num > 1,
+                                 col_cluster=col_num > 1,
                                  **opts)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
@@ -44,7 +45,7 @@ def draw_heatmap(df: pd.DataFrame):
 ##################################################################
 # function to read TargetDB output dataframe from pickles and
 # convert into list of targets for each tF
-def heatmap(pickledir, cutoff=10, background: Optional[int] = None, draw=True, save_file=True):
+def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=False, upper=30, lower=None):
     # raising exception here if target genes are not uploaded by the user
     try:
         name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle.gz')
@@ -94,7 +95,7 @@ def heatmap(pickledir, cutoff=10, background: Optional[int] = None, draw=True, s
     dfpval_forheatmap.rename(columns=colnames, inplace=True)
 
     if draw:
-        scaleddfpval_forhmap = scale_df(dfpval_forheatmap)
+        scaleddfpval_forhmap = scale_df(dfpval_forheatmap, upper=upper, lower=lower)
         sns_heatmap = draw_heatmap(scaleddfpval_forhmap)
 
         if save_file:
