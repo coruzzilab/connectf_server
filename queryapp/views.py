@@ -108,6 +108,9 @@ class CytoscapeJSONView(View):
 class FileExportView(View):
     def get(self, request, request_id):
         try:
+            if not request_id:
+                raise FileNotFoundError
+
             out_file = static_storage.path("{}.zip".format(request_id))
             if not os.path.exists(out_file):
                 cache_folder = static_storage.path("{}_pickle".format(request_id))
@@ -126,8 +129,9 @@ class FileExportView(View):
                 response['Content-Disposition'] = 'attachment; filename="query.zip"'
 
                 return response
+
         except FileNotFoundError as e:
-            raise Http404 from e
+            return HttpResponseNotFound(content_type='application/zip')
 
 
 class HeatMapPNGView(View):
