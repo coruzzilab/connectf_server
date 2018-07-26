@@ -41,7 +41,7 @@ def parse_heatmap_idx(idx: str) -> List[str]:
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class HandleQueryView(View):
+class QueryView(View):
     def post(self, request, *args, **kwargs):
         try:
             request_id = request.POST['requestId']
@@ -63,7 +63,6 @@ class HandleQueryView(View):
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
-                cache_result(user_lists, output + '/target_genes.pickle.gz')
                 result, metadata, stats = get_query_result(request.POST['query'],
                                                            user_lists=user_lists,
                                                            cache_path=output)
@@ -91,6 +90,32 @@ class HandleQueryView(View):
             raise Http404('Query not available') from e
         except (MultiValueDictKeyError, ParseException):
             return HttpResponseBadRequest("Propblem with query.")
+
+
+class QueryIdView(View):
+    def get(self, request, request_id):
+        try:
+            output = static_storage.path(request_id + '_pickle')
+
+            result, metadata, stats = get_query_result(cache_path=output)
+
+            columns, merged_cells, result_list = format_data(result, stats)
+
+            res = [{
+                'data': result_list,
+                'mergeCells': merged_cells,
+                'columns': columns
+            }]
+
+            metadata.reset_index(inplace=True)
+            meta_columns = [{"id": column, "name": column, "field": column} for column in metadata.columns]
+
+            res.append({'columns': meta_columns,
+                        'data': metadata.to_json(orient='index')})
+
+            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+        except FileNotFoundError as e:
+            raise Http404('Query not available') from e
 
 
 class CytoscapeJSONView(View):

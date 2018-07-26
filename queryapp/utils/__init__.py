@@ -1,6 +1,7 @@
 import gzip
 import mimetypes
 import pickle
+from contextlib import closing
 from pathlib import Path
 from typing import Union
 from uuid import UUID
@@ -39,5 +40,16 @@ def cache_result(obj, cache_name: Union[str, Path]):
     else:
         cache = open(cache_name, 'wb')
 
-    pickle.dump(obj, cache, protocol=pickle.HIGHEST_PROTOCOL)
-    cache.close()
+    with closing(cache) as c:
+        pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def read_cached_result(cache_name: Union[str, Path]):
+    encoding = mimetypes.guess_type(cache_name)[1]
+    if encoding == 'gzip':
+        cache = gzip.open(cache_name, 'rb')
+    else:
+        cache = open(cache_name, 'rb')
+
+    with closing(cache) as c:
+        return pickle.load(c)

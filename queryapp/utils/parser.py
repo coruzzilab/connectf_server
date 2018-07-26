@@ -11,6 +11,7 @@ import pandas as pd
 import pyparsing as pp
 from django.db.models import Q
 from django.db.utils import DatabaseError
+from ..utils import cache_result, read_cached_result
 
 from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, ReferenceId, Regulation
 
@@ -505,25 +506,46 @@ def induce_repress_count(df: TargetFrame):
                         index=['induced', 'repressed'])
 
 
-def get_query_result(query: str, user_lists: Optional[Tuple[TargetFrame, Dict]] = None,
-                     cache_path: Optional[Union[str, Path]] = None) -> Tuple[TargetFrame, TargetFrame, Dict]:
-    stats = {}
-    result = parse_query(query)
-    metadata = get_metadata(result.columns.get_level_values(1))
-    result = expand_ref_ids(result, 1)
+def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
+    return {
+        'total': result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(
+            level=[0, 1, 2], axis=1).count().sum()
+    }
 
-    stats['total'] = result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(
-        level=[0, 1, 2], axis=1).count().sum()
 
-    if cache_path:
-        result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
+def get_query_result(query: Optional[str] = None, user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
+                     cache_path: Optional[Union[str, Path]] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+    if query is None and cache_path is None:
+        raise ValueError("Need query or cache_path")
 
-    if user_lists:
-        result = result[result.index.isin(user_lists[0].index)]
+    if query is not None:
+        result = parse_query(query)
+        metadata = get_metadata(result.columns.get_level_values(1))
+        result = expand_ref_ids(result, 1)
 
-    if cache_path:  # cache edges here
-        result.to_pickle(cache_path + '/tabular_output.pickle.gz')
-        metadata.to_pickle(cache_path + '/metadata.pickle.gz')
+        stats = get_stats(result)
+
+        if cache_path:
+            result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
+
+        if user_lists:
+            result = result[result.index.isin(user_lists[0].index)]
+
+        if cache_path:  # cache here
+            result.to_pickle(cache_path + '/tabular_output.pickle.gz')
+            metadata.to_pickle(cache_path + '/metadata.pickle.gz')
+
+            if user_lists:
+                cache_result(user_lists, cache_path + '/target_genes.pickle.gz')
+    else:
+        result = pd.read_pickle(cache_path + '/tabular_output.pickle.gz')
+        metadata = pd.read_pickle(cache_path + '/metadata.pickle.gz')
+        stats = get_stats(pd.read_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz'))
+
+        try:
+            user_lists = read_cached_result(cache_path + '/target_genes.pickle.gz')
+        except FileNotFoundError:
+            pass
 
     result = reorder_data(result)
 
