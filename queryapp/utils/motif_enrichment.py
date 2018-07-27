@@ -1,6 +1,7 @@
 import gzip
 import pathlib
 import pickle
+import sys
 from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
@@ -252,7 +253,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     }
 
 
-def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=None, upper_bound=10,
+def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=None, upper_bound=None,
                                  body=False) -> BytesIO:
     df = pd.read_pickle(cache_path)
     df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
@@ -275,11 +276,12 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
         raise NoEnrichedMotif
 
     df = -np.log10(df)
-
-    df = df.clip(upper=upper_bound, lower=lower_bound)
+    df = df.clip_upper(sys.maxsize)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
     df = df.rename(columns='_'.join)
+
+    df = df.T
 
     rows, cols = df.shape
 
@@ -295,6 +297,8 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
                                    xticklabels=1,
                                    row_cluster=rows > 1,
                                    col_cluster=cols > 1,
+                                   vmin=lower_bound,
+                                   vmax=upper_bound,
                                    **opts)
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)

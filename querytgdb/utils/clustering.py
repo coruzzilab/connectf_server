@@ -1,5 +1,6 @@
 from itertools import product
 from typing import Optional
+import sys
 
 import matplotlib
 import numpy as np
@@ -15,26 +16,26 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def scale_df(df: pd.DataFrame, upper=30, lower=None) -> pd.DataFrame:
-    df = df.copy()
+def scale_df(df: pd.DataFrame) -> pd.DataFrame:
     df = -np.log10(df)
+    return df.clip_upper(sys.maxsize)
 
-    return df.clip(lower=lower, upper=upper)
 
-
-def draw_heatmap(df: pd.DataFrame):
+def draw_heatmap(df: pd.DataFrame, **kwargs):
     row_num, col_num = df.shape
     opts = {}
     if row_num > 1:
         opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
     if col_num > 1:
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
+
     sns_heatmap = sns.clustermap(df,
                                  cmap="YlGnBu",
                                  cbar_kws={'label': 'Enrichment (-log10 p)'},
                                  xticklabels=1,
                                  row_cluster=row_num > 1,
                                  col_cluster=col_num > 1,
+                                 **kwargs,
                                  **opts)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
@@ -42,10 +43,18 @@ def draw_heatmap(df: pd.DataFrame):
     return sns_heatmap
 
 
-##################################################################
-# function to read TargetDB output dataframe from pickles and
-# convert into list of targets for each tF
-def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=False, upper=30, lower=None):
+def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=False, upper=None, lower=None):
+    """
+    Draws gene list enrichment heatmap from cached query
+
+    :param pickledir:
+    :param background:
+    :param draw:
+    :param save_file:
+    :param upper:
+    :param lower:
+    :return:
+    """
     # raising exception here if target genes are not uploaded by the user
     try:
         name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle.gz')
@@ -57,7 +66,6 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=Fa
 
     query_result = pd.read_pickle(pickledir + '/tabular_output_unfiltered.pickle.gz')
 
-    # default cutoff is 10
     # default background:
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
 
@@ -95,8 +103,8 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=Fa
     dfpval_forheatmap.rename(columns=colnames, inplace=True)
 
     if draw:
-        scaleddfpval_forhmap = scale_df(dfpval_forheatmap, upper=upper, lower=lower)
-        sns_heatmap = draw_heatmap(scaleddfpval_forhmap)
+        scaleddfpval_forhmap = scale_df(dfpval_forheatmap)
+        sns_heatmap = draw_heatmap(scaleddfpval_forhmap, vmin=lower, vmax=upper)
 
         if save_file:
             sns_heatmap.savefig(pickledir + '/heatmap.svg')

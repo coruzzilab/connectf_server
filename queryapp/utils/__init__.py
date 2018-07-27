@@ -3,7 +3,7 @@ import mimetypes
 import pickle
 from contextlib import closing
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 from uuid import UUID
 
 import numpy as np
@@ -53,3 +53,10 @@ def read_cached_result(cache_name: Union[str, Path]):
 
     with closing(cache) as c:
         return pickle.load(c)
+
+
+def convert_float(s) -> Optional[float]:
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None

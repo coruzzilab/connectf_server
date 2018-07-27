@@ -20,7 +20,7 @@ from pyparsing import ParseException
 from querytgdb.models import ReferenceId
 from querytgdb.utils.clustering import heatmap
 from querytgdb.utils.excel import create_export_zip
-from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result
+from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
@@ -162,8 +162,8 @@ class FileExportView(View):
 class HeatMapPNGView(View):
     def get(self, request, request_id):
         try:
-            upper = float(request.GET.get('upper', 30))
-            lower = float(request.GET.get('lower', 0))
+            upper = convert_float(request.GET.get('upper'))
+            lower = convert_float(request.GET.get('lower'))
 
             cache_path = static_storage.path("{}_pickle".format(request_id))
 

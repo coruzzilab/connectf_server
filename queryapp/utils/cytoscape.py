@@ -99,7 +99,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     e_tfs = group_edge_len(s_tfs)
 
     tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
-        (2, -1), order='F').T * (SIZE + GAP) + SIZE / 2
+        (2, -1), order='F').T * (SIZE + 50) + SIZE / 2
 
     edge_colors = get_edge_colors(network_table)
 
