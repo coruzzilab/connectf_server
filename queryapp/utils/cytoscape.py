@@ -2,11 +2,11 @@ import math
 import re
 from collections import UserDict
 from typing import Any, Dict, Generator, List
+from uuid import uuid4
 
 import hsluv
 import numpy as np
 import pandas as pd
-from uuid import uuid4
 
 from ..utils.parser import ANNOTATIONS
 
@@ -79,7 +79,6 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
 
 
 def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    print(df.size)
     # if df.size > 20000:
     #     raise ValueError("Network too large.")
 
@@ -120,39 +119,37 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
     data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, 'show'))
 
-    for row in tf_nodes.itertuples(name=None):
-        data.extend({
-                        'data': {
-                            'id': uuid4(),
-                            'source': t,
-                            'target': row[0],
-                            'name': e,
-                            'color': edge_colors[e]
-                        }
-                    } for t, e in set(filter(lambda r: pd.notna(r[1]), zip(tf_nodes.columns, row[1:]))))
+    data.extend({'data': {
+        'id': uuid4(),
+        'source': s,
+        'target': t,
+        'name': e,
+        'color': edge_colors[e]
+    }} for (t, s), e in tf_nodes.stack().iteritems())
 
     group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
         (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, groups_edge_len / 4)
 
     for (num, e_group), g_ij in zip(edge_group, group_grid):
+        stack_group = e_group.stack().sort_values()
+
         s_group = math.ceil(math.sqrt(e_group.shape[0]))
 
         e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'), dtype=np.float64).reshape(
             (2, -1), order='C').T * (SIZE + GAP)
         e_grid += g_ij - np.mean(e_grid, axis=0)  # add offset
-        data.extend(make_nodes(GENE_TYPE.loc[e_group.index, :].sort_values('Type'), e_grid))
 
-        for row in e_group.itertuples(name=None):
-            # print(np.unique(row[1:], return_index=True)[1])
-            # fiddle with the numpy unique
-            data.extend({
-                'data': {
-                    'id': uuid4(),
-                    'source': t,
-                    'target': row[0],
-                    'name': e,
-                    'color': edge_colors[e]
-                }
-            } for t, e in set(filter(lambda r: pd.notna(r[1]), zip(e_group.columns, row[1:]))))
+        data.extend(
+            make_nodes(
+                GENE_TYPE.loc[stack_group.index.unique(level=0), :].sort_values('Type', kind='mergesort'),
+                e_grid))
+
+        data.extend({'data': {
+            'id': uuid4(),
+            'source': s,
+            'target': t,
+            'name': e,
+            'color': edge_colors[e]
+        }} for (t, s), e in stack_group.iteritems())
 
     return data
