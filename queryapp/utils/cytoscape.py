@@ -52,6 +52,7 @@ G_GAP = 40
 def make_nodes(df: pd.DataFrame, pos, show_label: str = 'hide') -> Generator[Dict[str, Any], None, None]:
     for (idx, name, t), (y, x) in zip(df.itertuples(name=None), pos):
         yield {
+            'group': 'nodes',
             'data': {
                 'id': idx,
                 'name': name,
@@ -119,7 +120,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
     data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, 'show'))
 
-    data.extend({'data': {
+    data.extend({'group': 'edges', 'data': {
         'id': uuid4(),
         'source': s,
         'target': t,
@@ -144,7 +145,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
                 GENE_TYPE.loc[stack_group.index.unique(level=0), :].sort_values('Type', kind='mergesort'),
                 e_grid))
 
-        data.extend({'data': {
+        data.extend({'group': 'edges', 'data': {
             'id': uuid4(),
             'source': s,
             'target': t,
