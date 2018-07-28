@@ -20,7 +20,7 @@ from pyparsing import ParseException
 from querytgdb.models import ReferenceId
 from querytgdb.utils.clustering import heatmap
 from querytgdb.utils.excel import create_export_zip
-from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float
+from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
@@ -73,17 +73,14 @@ class QueryView(View):
 
             cache_result(result_list, output + '/formatted_tabular_output.pickle.gz')
 
-            res = [{
-                'data': result_list,
-                'mergeCells': merged_cells,
-                'columns': columns
-            }]
-
-            metadata.reset_index(inplace=True)
-            meta_columns = [{"id": column, "name": column, "field": column} for column in metadata.columns]
-
-            res.append({'columns': meta_columns,
-                        'data': metadata.to_json(orient='index')})
+            res = [
+                {
+                    'data': result_list,
+                    'mergeCells': merged_cells,
+                    'columns': columns
+                },
+                metadata_to_dict(metadata)
+            ]
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
@@ -101,21 +98,32 @@ class QueryIdView(View):
 
             columns, merged_cells, result_list = format_data(result, stats)
 
-            res = [{
-                'data': result_list,
-                'mergeCells': merged_cells,
-                'columns': columns
-            }]
-
-            metadata.reset_index(inplace=True)
-            meta_columns = [{"id": column, "name": column, "field": column} for column in metadata.columns]
-
-            res.append({'columns': meta_columns,
-                        'data': metadata.to_json(orient='index')})
+            res = [
+                {
+                    'data': result_list,
+                    'mergeCells': merged_cells,
+                    'columns': columns
+                },
+                metadata_to_dict(metadata)
+            ]
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except FileNotFoundError as e:
             raise Http404('Query not available') from e
+
+
+class StatsView(View):
+    def get(self, request, request_id):
+        try:
+            cache_dir = static_storage.path(request_id + '_pickle')
+            df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
+
+            return JsonResponse({
+                'num_edges': df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count().sum(),
+                'num_targets': df.shape[0]
+            }, encoder=PandasJSONEncoder)
+        except FileNotFoundError:
+            raise Http404
 
 
 class CytoscapeJSONView(View):

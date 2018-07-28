@@ -3,7 +3,7 @@ import mimetypes
 import pickle
 from contextlib import closing
 from pathlib import Path
-from typing import Union, Optional
+from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
 import numpy as np
@@ -15,7 +15,7 @@ class PandasJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
         if isinstance(o, np.number):
             if np.isinf(o) or np.isnan(o):
-                return None
+                return float('inf')
             if isinstance(o, np.integer):
                 return int(o)
             if isinstance(o, np.floating):
@@ -60,3 +60,11 @@ def convert_float(s) -> Optional[float]:
         return float(s)
     except (ValueError, TypeError):
         return None
+
+
+def metadata_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
+    df.reset_index(inplace=True)
+    meta_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
+
+    return {'columns': meta_columns,
+            'data': df.to_dict(orient='index')}
