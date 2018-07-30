@@ -264,6 +264,8 @@ class MotifEnrichmentHeatmapView(View):
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
                 body = request.GET.get('body', '0')
+                upper = convert_float(request.GET.get('upper'))
+                lower = convert_float(request.GET.get('lower'))
 
                 cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
 
@@ -273,6 +275,8 @@ class MotifEnrichmentHeatmapView(View):
                 buff = get_motif_enrichment_heatmap(
                     cache_path,
                     # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
+                    upper_bound=upper,
+                    lower_bound=lower,
                     alpha=alpha,
                     body=body == '1'
                 )

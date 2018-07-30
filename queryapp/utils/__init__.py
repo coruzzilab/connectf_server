@@ -66,5 +66,7 @@ def metadata_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
     df.reset_index(inplace=True)
     meta_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
 
+    df = df.where(df.notna(), None)
+
     return {'columns': meta_columns,
             'data': df.to_dict(orient='index')}

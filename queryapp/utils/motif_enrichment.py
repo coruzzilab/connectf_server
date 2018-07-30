@@ -112,6 +112,8 @@ CLUSTER_INFO = pd.read_pickle(
     compression='gzip'
 ).to_dict('index')
 
+COLORS = sns.color_palette("husl", 2)
+
 
 class NoEnrichedMotif(ValueError):
     pass
@@ -288,6 +290,9 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     opts = {}
     if rows > 1:
         opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
+        if body:
+            opts['row_colors'] = [COLORS[s.endswith('promo')] for s in df.index]
+
     if cols > 1:
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
 
