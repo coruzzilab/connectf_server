@@ -84,6 +84,7 @@ class QueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
+            raise
             raise Http404('Query not available') from e
         except (MultiValueDictKeyError, ParseException):
             return HttpResponseBadRequest("Propblem with query.")

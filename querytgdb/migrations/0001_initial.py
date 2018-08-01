@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
             name='AnalysisIddata',
             fields=[
                 ('analysisid_id', models.AutoField(primary_key=True, serialize=False)),
-                ('analysis_value', models.CharField(db_index=True, max_length=255)),
+                ('analysis_value', models.CharField(db_index=True, max_length=100)),
                 ('analysis_type', models.CharField(db_index=True, max_length=100)),
                 ('analysis_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='querytgdb.Analysis', to_field='analysis_id')),
             ],
@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('ath_id', models.AutoField(db_index=True, primary_key=True, serialize=False)),
                 ('agi_id', models.CharField(db_index=True, max_length=100)),
-                ('ath_name', models.CharField(max_length=200)),
+                ('ath_name', models.CharField(max_length=100)),
                 ('ath_fullname', models.TextField(max_length=2000)),
                 ('ath_gene_type', models.CharField(max_length=100)),
                 ('ath_gene_fam', models.TextField(max_length=2000)),
@@ -74,7 +74,7 @@ class Migration(migrations.Migration):
             name='MetaIddata',
             fields=[
                 ('metaid_id', models.AutoField(primary_key=True, serialize=False)),
-                ('meta_value', models.CharField(db_index=True, max_length=255)),
+                ('meta_value', models.CharField(db_index=True, max_length=100)),
                 ('meta_type', models.CharField(db_index=True, max_length=100)),
                 ('meta_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='querytgdb.Metadata', to_field='meta_id')),
             ],

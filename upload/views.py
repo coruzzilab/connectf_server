@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.serializers import ValidationError
 
 from querytgdb.utils import validate_autosubmit as validate
-from querytgdb.utils.insert_tgdb import insertdata
+from querytgdb.utils.insert_tgdb import insert_data
 from . import forms, models, serializers
 
 storage = FileSystemStorage()
@@ -148,7 +148,7 @@ class UploadExperimentView(CreateAPIView):
                 validate.validate_readcount_expdesign(exp_value_path, design_path)
 
                 # insert if checks pass
-                insertdata(gene_list_path, meta_path,
+                insert_data(gene_list_path, meta_path,
                            '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
                            '.all.txt')
 

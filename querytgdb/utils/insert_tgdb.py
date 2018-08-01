@@ -2,23 +2,22 @@ import sys
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Max, ObjectDoesNotExist
+from django.db.models import Max
 from django.db.transaction import atomic
 
 from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Edges, Interactions, MetaIddata, Metadata, \
     ReferenceId, Regulation, TargetDBTF
 
 
-def insertdata(datafile, metafile, dapdatafile):
-    # read target gene input file- store data in a list
+def insert_data(data_file, meta_file):
     datalist = list()
-    data = open(datafile, 'r', encoding='utf-8')
+    data = open(data_file, 'r', encoding='utf-8')
     for vald in data:
         datalist.append(vald)
 
     # read meta data input file- store data in a dictionary
     metadict = dict()
-    metadata = open(metafile, 'r', encoding='utf-8')
+    metadata = open(meta_file, 'r', encoding='utf-8')
     for valm in metadata:
         if not valm.split(':')[1].strip().upper() == 'NA':
             metadict[valm.split(':')[0].strip().upper()] = valm.split(':')[1].upper().strip()

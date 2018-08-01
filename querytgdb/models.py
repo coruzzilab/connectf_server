@@ -14,22 +14,29 @@ class TargetDBTF(models.Model):
     db_tf_id = models.AutoField(primary_key=True, db_index=True)
     db_tf_agi = models.CharField(max_length=100, db_index=True, unique=True)
 
+    def __str__(self):
+        return "{} ({})".format(self.db_tf_agi, self.db_tf_id)
+
 
 class Edges(models.Model):
     edge_id = models.AutoField(primary_key=True, db_index=True)
     edge_name = models.CharField(max_length=100, db_index=True, unique=True)
 
+    def __str__(self):
+        return "{} ({})".format(self.edge_name, self.edge_id)
+
 
 class Metadata(models.Model):
     meta_p = models.AutoField(primary_key=True, db_index=True)
-    # one-to-many relationship: one metaid can have multiple referenceids
     meta_id = models.IntegerField(db_index=True, unique=True)
     meta_fullid = models.CharField(max_length=100, db_index=True)
+
+    def __str__(self):
+        return "{} ({})".format(self.meta_fullid, self.meta_id)
 
 
 class Analysis(models.Model):
     analysis_p = models.AutoField(primary_key=True, db_index=True)
-    # one-to-one relationship: one analysisid will have one referenceid
     analysis_id = models.IntegerField(db_index=True, unique=True)
     analysis_fullid = models.CharField(max_length=100, db_index=True)
 
@@ -42,14 +49,14 @@ class ReferenceId(models.Model):
 
 class MetaIddata(models.Model):
     metaid_id = models.AutoField(primary_key=True)
-    meta_value = models.CharField(max_length=255, db_index=True)
+    meta_value = models.CharField(max_length=100, db_index=True)
     meta_type = models.CharField(max_length=100, db_index=True)
     meta_id = models.ForeignKey(Metadata, on_delete=models.CASCADE, to_field='meta_id')
 
 
 class AnalysisIddata(models.Model):
     analysisid_id = models.AutoField(primary_key=True)
-    analysis_value = models.CharField(max_length=255, db_index=True)
+    analysis_value = models.CharField(max_length=100, db_index=True)
     analysis_type = models.CharField(max_length=100, db_index=True)
     analysis_id = models.ForeignKey(Analysis, on_delete=models.CASCADE, to_field='analysis_id')
 
@@ -57,7 +64,7 @@ class AnalysisIddata(models.Model):
 class Annotation(models.Model):
     ath_id = models.AutoField(primary_key=True, db_index=True)
     agi_id = models.CharField(max_length=100, db_index=True)
-    ath_name = models.CharField(max_length=200)
+    ath_name = models.CharField(max_length=100)
     ath_fullname = models.TextField(max_length=2000)
     ath_gene_type = models.CharField(max_length=100)
     ath_gene_fam = models.TextField(max_length=2000)

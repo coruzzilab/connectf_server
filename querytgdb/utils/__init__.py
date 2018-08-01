@@ -1,6 +1,8 @@
 import os
 import pickle
+import random
 import re
+import string
 import warnings
 from collections import OrderedDict, defaultdict
 from itertools import groupby, tee
@@ -10,15 +12,19 @@ from typing import Dict, Generator, Tuple
 
 import numpy as np
 import pandas as pd
-from pandas.errors import PerformanceWarning
 from pandas.core.common import SettingWithCopyWarning
+from pandas.errors import PerformanceWarning
 
 from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, \
     Regulation, TargetDBTF
 
-__all__ = ('query_tgdb',)
+__all__ = ('query_tgdb', 'rand_string')
 
 warnings.simplefilter(action='ignore', category=(FutureWarning, PerformanceWarning, SettingWithCopyWarning))
+
+
+def rand_string(length):
+    return ''.join(random.choices(string.ascii_letters + string.digits + '_', k=length))
 
 
 def get_p_values(orig_meta: str) -> Generator[float, None, None]:
