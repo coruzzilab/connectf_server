@@ -46,6 +46,7 @@ GENE_TYPE = ANNOTATIONS[['Name', 'Type']]
 COLOR_SHAPE = Shape()
 SIZE = 20
 GAP = 10
+TF_GAP = 50
 G_GAP = 40
 
 
@@ -94,10 +95,10 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     tf_nodes = tf_nodes.loc[tf_nodes.count(axis=1).sort_values(ascending=False).index, :]
 
     s_tfs = math.ceil(math.sqrt(tf_nodes.shape[0]))
-    e_tfs = group_edge_len(s_tfs)
+    e_tfs = group_edge_len(s_tfs, gap=TF_GAP)
 
     tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
-        (2, -1), order='F').T * (SIZE + 50) + SIZE / 2
+        (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
 
     edge_colors = get_edge_colors(network_table)
 
@@ -126,7 +127,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     }} for (t, s), e in tf_nodes.stack().iteritems())
 
     group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
-        (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, groups_edge_len / 4)
+        (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
 
     for (num, e_group), g_ij in zip(edge_group, group_grid):
         stack_group = e_group.stack().sort_values()
