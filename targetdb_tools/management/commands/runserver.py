@@ -1,4 +1,5 @@
 import atexit
+import datetime
 import os
 import shutil
 from itertools import filterfalse
@@ -13,12 +14,15 @@ storage = FileSystemStorage(settings.QUERY_CACHE)
 
 def clear_query_cache():
     dirs, files = storage.listdir('.')
+    now = datetime.datetime.now()
 
     for d in filterfalse(methodcaller('startswith', '.'), dirs):
-        shutil.rmtree(storage.path(d))
+        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(d))) > datetime.timedelta(minutes=60):
+            shutil.rmtree(storage.path(d))
 
     for f in filterfalse(methodcaller('startswith', '.'), files):
-        os.remove(storage.path(f))
+        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(f))) > datetime.timedelta(minutes=60):
+            os.remove(storage.path(f))
 
 
 class Command(RunServerCommand):
