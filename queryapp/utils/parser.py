@@ -310,11 +310,11 @@ def get_all_tf(query: str) -> TargetFrame:
           .sort_index(axis=1, level=[0, 1], sort_remaining=False)
           .dropna(how='all', axis=1))
 
-    if query == 'oralltf':
-        df.filter_string += 'oralltf'
-    elif query == 'andalltf':
+    if query == 'oralltfs':
+        df.filter_string += 'oralltfs'
+    elif query == 'andalltfs':
         df = df[df.loc[:, (slice(None), slice(None), 'EDGE')].notna().all(axis=1)]
-        df.filter_string += 'andalltf'
+        df.filter_string += 'andalltfs'
     else:
         raise ValueError('invalid query')
 
@@ -400,7 +400,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
-        if query in ('andalltf', 'oralltf'):
+        if query in {'andalltfs', 'oralltfs'}:
             return get_all_tf(query)
 
         return get_tf_data(query)

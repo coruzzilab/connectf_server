@@ -26,8 +26,8 @@ def check_regulation(instance: ReferenceId):
 
 class TFView(views.APIView):
     def get(self, request, *args, **kwargs):
-        queryset = [OrderedDict([('db_tf_agi', 'oralltf')]),
-                    OrderedDict([('db_tf_agi', 'andalltf')])]
+        queryset = [OrderedDict([('db_tf_agi', 'oralltfs')]),
+                    OrderedDict([('db_tf_agi', 'andalltfs')])]
 
         with connection.cursor() as cursor:
             cursor.execute("SELECT DISTINCT db_tf_id, db_tf_agi, ath_name FROM querytgdb_targetdbtf "
@@ -88,7 +88,7 @@ class ValueView(views.APIView):
     def get(self, request, key: str) -> Response:
         tfs = set(request.GET.getlist('tf'))
 
-        if tfs & {'oralltf', 'andalltf'}:
+        if tfs & {'oralltfs', 'andalltfs'}:
             tfs = set()
 
         key = key.upper()
