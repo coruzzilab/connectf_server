@@ -37,7 +37,13 @@ common_genes_storage = FileSystemStorage('commongenelists')
 
 
 def parse_heatmap_idx(idx: str) -> List[str]:
-    return re.split(r'[\s|]+', idx)[1:-1]
+    """
+    Parsing heatmap names to analysis and meta id
+    :param idx:
+    :return:
+    """
+    # pretty error prone, maybe redo this some other way
+    return re.split(r'\s+\|\|\s+|\s+\(', idx)[1:-1]
 
 
 @method_decorator(csrf_exempt, name='dispatch')

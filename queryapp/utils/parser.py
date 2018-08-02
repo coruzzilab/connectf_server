@@ -441,8 +441,6 @@ def get_metadata(ids: Sequence) -> TargetFrame:
             columns=['REF', 'KEY', 'VALUE'])
     ], ignore_index=True)
 
-    print(df)
-
     df = df.dropna(how='all', subset=['KEY', 'VALUE'])
     df = df.set_index(['REF', 'KEY'])
     df = df.unstack(level=0)
