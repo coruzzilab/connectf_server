@@ -1,9 +1,10 @@
 import re
 import warnings
 from collections import deque
-from functools import partial
+from functools import partial, reduce
+from operator import itemgetter
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -11,9 +12,10 @@ import pandas as pd
 import pyparsing as pp
 from django.db.models import Q
 from django.db.utils import DatabaseError
-from ..utils import cache_result, read_cached_result
 
-from querytgdb.models import AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, ReferenceId, Regulation
+from querytgdb.models import AnalysisIddata, Annotation, EdgeData, EdgeType, Interactions, MetaIddata, \
+    ReferenceId, Regulation
+from ..utils import cache_result, read_cached_result
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
 
@@ -53,13 +55,13 @@ def get_annotations() -> pd.DataFrame:
     try:
         anno = pd.DataFrame(
             Annotation.objects.values_list(
-                'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name').iterator(),
-            columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name'])
+                'agi_id', 'ath_fullname', 'ath_gene_fam', 'ath_gene_type', 'ath_name', 'ath_id').iterator(),
+            columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'ath_id'])
         anno = anno.set_index('TARGET')
     except DatabaseError:
         warnings.warn(DatabaseWarning("No annotation data."))
 
-        anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name'])
+        anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'ath_id'])
         anno.index.name = 'TARGET'
 
     return anno
@@ -189,8 +191,16 @@ def apply_has_column(df: TargetFrame, value) -> pd.DataFrame:
 
     if (*df.name, value) in df:
         return pd.DataFrame(True, columns=df.columns, index=df.index)
-    else:
-        return pd.DataFrame(False, columns=df.columns, index=df.index)
+
+    return pd.DataFrame(False, columns=df.columns, index=df.index)
+
+
+def apply_has_edge_props(df: TargetFrame, value) -> pd.DataFrame:
+    mask = pd.DataFrame(True, columns=df.columns, index=df.index)
+    print(ReferenceId.objects.get(ref_id=df.name[1]))
+    print(ANNOTATIONS.loc[df.index[df.notna().any(axis=1)], 'ath_id'])
+
+    return mask
 
 
 def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.DataFrame:
@@ -230,8 +240,8 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
         elif re.match(r'^edge$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
-        elif re.match(r'^dap$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='DAP')
+        # elif re.match(r'^edge_properties$', key, flags=re.I):
+        #     return df.groupby(level=[0, 1], axis=1).apply(apply_has_edge_props, value=value)
         elif re.match(r'^has_column$', key, flags=re.I):
             value = value.upper()
             return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
@@ -241,14 +251,15 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
         return query
 
 
-def get_tf_data(query: str) -> TargetFrame:
+def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     """
     Get data for single TF
     :param query:
+    :param edges:
     :return:
     """
     df = TargetFrame(
-        interactions.filter(db_tf_id__db_tf_agi__exact=query).values_list(
+        interactions.filter(db_tf_id__db_tf_agi__iexact=query).values_list(
             'edge_id__edge_name', 'target_id__agi_id', 'ref_id__ref_id').iterator(),
         columns=['EDGE', 'TARGET', 'REF'])
     if not df.empty:
@@ -261,11 +272,41 @@ def get_tf_data(query: str) -> TargetFrame:
         reg['Pvalue'] = reg['Pvalue'].astype(float)
         reg['Log2FC'] = reg['Log2FC'].astype(float)
 
-        dap = TargetSeries(
-            DAPdata.objects.filter(db_tfid__db_tf_agi__exact=query).values_list('ath_id__agi_id', flat=True).iterator())
         df = df.merge(reg, on=['REF', 'TARGET'], how='left')
-        if not dap.empty:
-            df.loc[df['TARGET'].isin(dap), 'DAP'] = 'Present'
+
+        if edges:
+            anno = ANNOTATIONS['ath_id'].reset_index()
+
+            edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
+                                      columns=['edge_id', 'edge'])
+            tf_ids = anno.loc[anno['TARGET'].str.contains(query, case=False, regex=False), 'ath_id']
+            target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'ath_id']
+
+            edge_data = pd.DataFrame(
+                EdgeData.objects.filter(
+                    tf_id__in=tf_ids,
+                    target_id__in=target_ids
+                ).values_list('tf_id', 'target_id', 'type_id').iterator(),
+                columns=['source', 'target', 'edge_id']
+            )
+
+            edge_data = reduce(lambda x, y: x.str.cat(y, sep=',', na_rep='', join='outer'),
+                               map(lambda x: x['edge'],
+                                   map(itemgetter(1),
+                                       (edge_data
+                                        .merge(edge_types, on='edge_id')
+                                        .drop('edge_id', axis=1)
+                                        .set_index(['source', 'target'])
+                                        .groupby('edge', squeeze=True))))
+                               ).str.strip(',').reset_index()
+
+            edge_data = edge_data.merge(anno, left_on='source', right_on='ath_id').merge(anno, left_on='target',
+                                                                                         right_on='ath_id')
+            edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
+            edge_data.columns = ['TF', 'TARGET', 'EDGE_PROPS']
+
+            df = df.merge(edge_data.drop('TF', axis=1), on='TARGET')
+
         df = (df.pivot(index='TARGET', columns='REF')
               .swaplevel(0, 1, axis=1)
               .sort_index(axis=1, level=0, sort_remaining=False)
@@ -279,10 +320,11 @@ def get_tf_data(query: str) -> TargetFrame:
     return df
 
 
-def get_all_tf(query: str) -> TargetFrame:
+def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     """
     Get data for all TFs at once
     :param query:
+    :param edges:
     :return:
     """
     df = TargetFrame(
@@ -298,13 +340,41 @@ def get_all_tf(query: str) -> TargetFrame:
     reg['Pvalue'] = reg['Pvalue'].astype(float)
     reg['Log2FC'] = reg['Log2FC'].astype(float)
 
-    dap = TargetFrame(
-        DAPdata.objects.values_list('db_tfid__db_tf_agi', 'ath_id__agi_id').iterator(),
-        columns=['TF', 'TARGET'])
-    dap['DAP'] = 'Present'
-    df = (df.merge(reg, on=['REF', 'TARGET'], how='left')
-          .merge(dap, on=['TF', 'TARGET'], how='left')
-          .set_index(['TF', 'REF', 'TARGET'])
+    df = df.merge(reg, on=['REF', 'TARGET'], how='left')
+
+    if edges:
+        anno = ANNOTATIONS['ath_id'].reset_index()
+        edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
+                                  columns=['edge_id', 'edge'])
+        tf_ids = anno.loc[anno['TARGET'].isin(df['TF'].unique()), 'ath_id']
+        target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'ath_id']
+
+        edge_data = pd.DataFrame(
+            EdgeData.objects.filter(
+                tf_id__in=tf_ids,
+                target_id__in=target_ids
+            ).values_list('tf_id', 'target_id', 'type_id').iterator(),
+            columns=['source', 'target', 'edge_id']
+        )
+
+        edge_data = reduce(lambda x, y: x.str.cat(y, sep=',', na_rep='', join='outer'),
+                           map(lambda x: x['edge'],
+                               map(itemgetter(1),
+                                   (edge_data
+                                    .merge(edge_types, on='edge_id')
+                                    .drop('edge_id', axis=1)
+                                    .set_index(['source', 'target'])
+                                    .groupby('edge', squeeze=True))))
+                           ).str.strip(',').reset_index()
+
+        edge_data = edge_data.merge(anno, left_on='source', right_on='ath_id').merge(anno, left_on='target',
+                                                                                     right_on='ath_id')
+        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
+        edge_data.columns = ['TF', 'TARGET', 'EDGE_PROPS']
+
+        df = df.merge(edge_data, on=['TF', 'TARGET'], how='left')
+
+    df = (df.set_index(['TF', 'REF', 'TARGET'])
           .unstack(level=[0, 1])
           .reorder_levels([1, 2, 0], axis=1)
           .sort_index(axis=1, level=[0, 1], sort_remaining=False)
@@ -328,10 +398,11 @@ def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
     return ' "' + prec.filter_string + '"', ' "' + succ.filter_string + '"'
 
 
-def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
+def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List[str]] = None) -> TargetFrame:
     """
     Query TF DataFrame according to query
     :param query:
+    :param edges:
     :return:
     """
     if isinstance(query, pp.ParseResults):
@@ -342,7 +413,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
             while True:
                 curr = next(it)
                 if curr in ('and', 'or'):
-                    prec, succ = get_tf(stack.pop()), get_tf(next(it))
+                    prec, succ = get_tf(stack.pop(), edges), get_tf(next(it), edges)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
@@ -379,12 +450,12 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
                     df.filter_string = filter_string
                     stack.append(df)
                 elif curr == 'not':
-                    succ = get_tf(next(it))
+                    succ = get_tf(next(it), edges)
                     succ.include = not succ.include
                     succ.filter_string = 'not ' + succ.filter_string
                     stack.append(succ)
                 elif is_modifier(curr):
-                    prec = get_tf(stack.pop())
+                    prec = get_tf(stack.pop(), edges)
                     mod = get_mod(prec, curr)
                     prec = prec[mod].dropna(how='all')
 
@@ -396,14 +467,14 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame]) -> TargetFrame:
                 else:
                     stack.append(curr)
         except StopIteration:
-            return get_tf(stack.pop())
+            return get_tf(stack.pop(), edges)
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
         if query in {'andalltfs', 'oralltfs'}:
-            return get_all_tf(query)
+            return get_all_tf(query, edges)
 
-        return get_tf_data(query)
+        return get_tf_data(query, edges)
 
 
 def reorder_data(df: TargetFrame) -> TargetFrame:
@@ -480,10 +551,10 @@ def expand_ref_ids(df: TargetFrame, level: Optional[Union[str, int]] = None) -> 
     return df
 
 
-def parse_query(query: str) -> TargetFrame:
+def parse_query(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     parse = expr.parseString(query, parseAll=True)
 
-    result = get_tf(parse.get('query'))
+    result = get_tf(parse.get('query'), edges)
 
     if result.empty or not result.include:
         raise ValueError('empty query')
@@ -513,13 +584,15 @@ def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def get_query_result(query: Optional[str] = None, user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
+def get_query_result(query: Optional[str] = None,
+                     user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
+                     edges: Optional[List[str]] = None,
                      cache_path: Optional[Union[str, Path]] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
     if query is None and cache_path is None:
         raise ValueError("Need query or cache_path")
 
     if query is not None:
-        result = parse_query(query)
+        result = parse_query(query, edges)
         metadata = get_metadata(result.columns.get_level_values(1))
         result = expand_ref_ids(result, 1)
 
@@ -564,7 +637,7 @@ def get_query_result(query: Optional[str] = None, user_lists: Optional[Tuple[pd.
             result
         ], axis=1)
 
-    result = ANNOTATIONS.merge(result, how='right', left_index=True, right_index=True)
+    result = ANNOTATIONS.drop('ath_id', axis=1).merge(result, how='right', left_index=True, right_index=True)
 
     result = result.sort_values('TF Count', ascending=False, kind='mergesort')
 

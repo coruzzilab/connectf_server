@@ -1,12 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
-'''
-
-This script setup the Django mysql database for TargetDB version2
-
-'''
-
 from django.db import models
 
 
@@ -76,6 +67,19 @@ class DAPdata(models.Model):
     db_tfid = models.ForeignKey(TargetDBTF, on_delete=models.CASCADE, to_field='db_tf_id')
     # one-to-many relationship: one target can have multiple interactionids
     ath_id = models.ForeignKey(Annotation, on_delete=models.CASCADE, to_field='ath_id')
+
+
+class EdgeData(models.Model):
+    tf = models.ForeignKey(Annotation, on_delete=models.CASCADE, related_name='tfs')
+    target = models.ForeignKey(Annotation, on_delete=models.CASCADE, related_name='targets')
+    type = models.ForeignKey("EdgeType", on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = (("tf", "target", "type"),)
+
+
+class EdgeType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
 
 
 class Interactions(models.Model):

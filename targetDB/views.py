@@ -7,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, DAPdata, Edges, Interactions, MetaIddata, ReferenceId
+from querytgdb.models import AnalysisIddata, EdgeData, EdgeType, Edges, Interactions, MetaIddata, ReferenceId
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -46,6 +46,11 @@ class TFView(views.APIView):
         return Response(serializer.data)
 
 
+class EdgeListView(views.APIView):
+    def get(self, request, *args, **kwargs):
+        return Response(EdgeType.objects.values_list("name", flat=True))
+
+
 class InterestingListsView(views.APIView):
     def get(self, request, *args, **kwargs):
         directories, files = storage.listdir('./')
@@ -57,7 +62,7 @@ class KeyView(views.APIView):
     def get(self, request):
         tfs = set(request.GET.getlist('tf'))
 
-        if tfs & {'oralltf', 'andalltf'}:
+        if tfs & {'oralltfs', 'andalltfs'}:
             tfs = set()
 
         queryset = ['pvalue', 'edge', 'fc', 'has_column']
@@ -66,8 +71,8 @@ class KeyView(views.APIView):
             refs = Interactions.objects.filter(
                 db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
 
-            if DAPdata.objects.filter(db_tfid__db_tf_agi__in=tfs).exists():
-                queryset.append('DAP')
+            if EdgeData.objects.filter(tf__agi_id__in=tfs).exists():
+                queryset.append('edge_properties')
 
             queryset.extend(AnalysisIddata.objects.filter(
                 analysis_id__referenceid__ref_id__in=refs
@@ -77,7 +82,7 @@ class KeyView(views.APIView):
                 meta_id__referenceid__ref_id__in=refs
             ).distinct().values_list('meta_type', flat=True))
         else:
-            queryset.append('DAP')
+            queryset.append('edge_properties')
             queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
             queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
 
@@ -100,8 +105,11 @@ class ValueView(views.APIView):
                 return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__in=tfs).distinct().values_list(
                     'edge_id__edge_name', flat=True))
             return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
-        elif key == 'DAP':
-            return Response(['Present'])
+        elif key == 'EDGE_PROPERTIES':
+            if tfs:
+                return Response(
+                    EdgeData.objects.filter(tf__agi_id__in=tfs).distinct().values_list('type__name', flat=True))
+            return Response(EdgeType.objects.distinct().values_list('name', flat=True))
         elif key == 'HAS_COLUMN':
             queryset = ['EDGE']
 
@@ -109,10 +117,10 @@ class ValueView(views.APIView):
                 if any(map(check_regulation,
                            ReferenceId.objects.filter(interactions__db_tf_id__db_tf_agi__in=tfs).distinct())):
                     queryset.extend(('Pvalue', 'FC'))
-                if DAPdata.objects.filter(db_tfid__db_tf_agi__in=tfs).exists():
-                    queryset.append('DAP')
+                if EdgeData.objects.filter(tf__agi_id__in=tfs).exists():
+                    queryset.append('edge_properties')
             else:
-                queryset.extend(('Pvalue', 'FC', 'DAP'))
+                queryset.extend(('Pvalue', 'FC', 'edge_properties'))
 
             return Response(queryset)
         else:

@@ -15,7 +15,7 @@ import pandas as pd
 from pandas.core.common import SettingWithCopyWarning
 from pandas.errors import PerformanceWarning
 
-from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Interactions, MetaIddata, Metadata, ReferenceId, \
+from ..models import Analysis, AnalysisIddata, Annotation, Interactions, MetaIddata, Metadata, ReferenceId, \
     Regulation, TargetDBTF
 
 __all__ = ('query_tgdb', 'rand_string')
@@ -171,13 +171,13 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
             rs_final_trim.to_pickle(rs_final_trim_output)
 
         # get the dap-seq data from the database
-        dap_data = pd.DataFrame(
-            DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).values_list(
-                'db_tfid__db_tf_agi', 'ath_id__agi_id').iterator(),
-            columns=['DAP_tf', 'DAP_target'])
-        # dap_data.DAP_tf.replace(to_replace=refid_tf_mapping, inplace=True)
-        dap_data['present'] = 'Present'
-        dap_data_pivot = dap_data.pivot(columns='DAP_tf', index='DAP_target', values='present')
+        # dap_data = pd.DataFrame(
+        #     DAPdata.objects.select_related().filter(db_tfid__db_tf_agi__in=refid_tf_mapping.keys()).values_list(
+        #         'db_tfid__db_tf_agi', 'ath_id__agi_id').iterator(),
+        #     columns=['DAP_tf', 'DAP_target'])
+        # # dap_data.DAP_tf.replace(to_replace=refid_tf_mapping, inplace=True)
+        # dap_data['present'] = 'Present'
+        # dap_data_pivot = dap_data.pivot(columns='DAP_tf', index='DAP_target', values='present')
 
         # count_nesteddict dict will be used when creating heatmaps
         # While creating heatmaps, the dataframe is filtered based on loaded list of target genes. Means number of
@@ -206,13 +206,13 @@ def query_tgdb(tf_query, edges, metadata, target_genes, output):
 
         rs_final_trim.dropna(how='all', inplace=True)
 
-        if not dap_data_pivot.empty:
-            dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
-                                                 dap_data_pivot.columns.tolist() for k in l}, axis=1)
-            rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
-                                                  left_index=True, right_index=True)
-        else:
-            rs_reg_df_merge = rs_final_trim
+        # if not dap_data_pivot.empty:
+        #     dap_data_pivot_replaced = pd.concat({k: dap_data_pivot[v] for v, l in refid_tf_mapping.items() if v in
+        #                                          dap_data_pivot.columns.tolist() for k in l}, axis=1)
+        #     rs_reg_df_merge = rs_final_trim.merge(dap_data_pivot_replaced, how='left',
+        #                                           left_index=True, right_index=True)
+        # else:
+        rs_reg_df_merge = rs_final_trim
 
         new_res_df, db_metadict, mid_tfname_dict, ath_annotation, df_genelistid = create_tabular(output,
                                                                                                  rs_reg_df_merge,

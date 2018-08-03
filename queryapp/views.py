@@ -67,13 +67,18 @@ class QueryView(View):
                 if "targetgenes" in request.FILES:
                     targetgenes_file = TextIOWrapper(request.FILES["targetgenes"])
 
+            edges = request.POST.getlist('edges')
+
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
                 result, metadata, stats = get_query_result(request.POST['query'],
                                                            user_lists=user_lists,
+                                                           edges=edges,
                                                            cache_path=output)
             else:
-                result, metadata, stats = get_query_result(request.POST['query'], cache_path=output)
+                result, metadata, stats = get_query_result(request.POST['query'],
+                                                           edges=edges,
+                                                           cache_path=output)
 
             columns, merged_cells, result_list = format_data(result, stats)
 
@@ -90,6 +95,7 @@ class QueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
+            raise
             raise Http404('Query not available') from e
         except (MultiValueDictKeyError, ParseException):
             return HttpResponseBadRequest("Propblem with query.")

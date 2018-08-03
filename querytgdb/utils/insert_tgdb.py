@@ -1,11 +1,10 @@
 import sys
-from collections import defaultdict
 from decimal import Decimal
 
 from django.db.models import Max
 from django.db.transaction import atomic
 
-from ..models import Analysis, AnalysisIddata, Annotation, DAPdata, Edges, Interactions, MetaIddata, Metadata, \
+from ..models import Analysis, AnalysisIddata, Annotation, Edges, Interactions, MetaIddata, Metadata, \
     ReferenceId, Regulation, TargetDBTF
 
 
@@ -47,8 +46,8 @@ def insert_data(data_file, meta_file):
             insert_nodes_binding(datalist, metadict, curr_metaid, curr_analysisid, curr_refid)
 
         # If DAP-data does not exist for this TF in the database, check if the TF exist in DAP data and insert the data
-        if flag_dap == 1:
-            insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
+        # if flag_dap == 1:
+        #     insert_dapseq(metadict['Transcription_Factor_ID'.upper()], dapdatafile)
 
 
 # FUNC1: insert metadata
@@ -259,38 +258,37 @@ def insert_edges(edgelist):
             edge_obj = Edges(edge_name=j)
             edge_obj.save()
 
-
 # FUNC5: Insert DAP-seq data if TF is already not in the database
-def insert_dapseq(tfid, dapdatafile):
-    dapdata = open(dapdatafile, 'r')
-
-    # get the gene number from the Annotation table
-    daptf = list()
-    daptargets = list()
-    dapinteract = defaultdict(list)
-    for valt in dapdata:
-        if valt.split('\t')[0].strip() == tfid:
-            daptf.append(valt.split('\t')[0].strip())
-            daptargets.append(valt.split('\t')[1].strip())
-            dapinteract[valt.split('\t')[0].strip()].append(valt.split('\t')[1].strip())
-
-    # print('length= ', dapinteract)
-
-    daptf_number = {z[0]: z[1] for z in
-                    list(TargetDBTF.objects.filter(db_tf_agi__in=daptf).values_list('db_tf_agi', 'db_tf_id'))}
-
-    daptargets_number = {x[0]: x[1] for x in
-                         list(Annotation.objects.filter(agi_id__in=daptargets).values_list('agi_id', 'ath_id'))}
-    # print('daptargets_number= ', daptargets_number)
-
-    for val_d in dapinteract:
-        # print('val_d= ',val_d)
-        # print('daptf_number[val_d]= ',daptf_number[val_d])
-        for val_d_tg in dapinteract[val_d]:
-
-            dapdata_obj = DAPdata(db_tfid=TargetDBTF.objects.get(db_tf_id__exact=
-                                                                 daptf_number[val_d]),
-                                  ath_id=Annotation.objects.get(ath_id__exact=
-                                                                daptargets_number[val_d_tg]))
-
-            dapdata_obj.save()
+# def insert_dapseq(tfid, dapdatafile):
+#     dapdata = open(dapdatafile, 'r')
+#
+#     # get the gene number from the Annotation table
+#     daptf = list()
+#     daptargets = list()
+#     dapinteract = defaultdict(list)
+#     for valt in dapdata:
+#         if valt.split('\t')[0].strip() == tfid:
+#             daptf.append(valt.split('\t')[0].strip())
+#             daptargets.append(valt.split('\t')[1].strip())
+#             dapinteract[valt.split('\t')[0].strip()].append(valt.split('\t')[1].strip())
+#
+#     # print('length= ', dapinteract)
+#
+#     daptf_number = {z[0]: z[1] for z in
+#                     list(TargetDBTF.objects.filter(db_tf_agi__in=daptf).values_list('db_tf_agi', 'db_tf_id'))}
+#
+#     daptargets_number = {x[0]: x[1] for x in
+#                          list(Annotation.objects.filter(agi_id__in=daptargets).values_list('agi_id', 'ath_id'))}
+#     # print('daptargets_number= ', daptargets_number)
+#
+#     for val_d in dapinteract:
+#         # print('val_d= ',val_d)
+#         # print('daptf_number[val_d]= ',daptf_number[val_d])
+#         for val_d_tg in dapinteract[val_d]:
+#
+#             dapdata_obj = DAPdata(db_tfid=TargetDBTF.objects.get(db_tf_id__exact=
+#                                                                  daptf_number[val_d]),
+#                                   ath_id=Annotation.objects.get(ath_id__exact=
+#                                                                 daptargets_number[val_d_tg]))
+#
+#             dapdata_obj.save()
