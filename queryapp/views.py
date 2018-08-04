@@ -17,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from pyparsing import ParseException
 
-from querytgdb.models import ReferenceId
+from querytgdb.models import Analysis
 from querytgdb.utils.clustering import heatmap
 from querytgdb.utils.excel import create_export_zip
 from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict
@@ -95,7 +95,6 @@ class QueryView(View):
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
-            raise
             raise Http404('Query not available') from e
         except (MultiValueDictKeyError, ParseException):
             return HttpResponseBadRequest("Propblem with query.")
@@ -212,23 +211,20 @@ class HeatMapTableView(View):
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
-            meta_ids, analysis_ids = zip(*map(parse_heatmap_idx, df.index))
-            references = ReferenceId.objects.filter(analysis_id__analysis_fullid__in=analysis_ids,
-                                                    meta_id__meta_fullid__in=meta_ids)
+            exp_ids, analysis_ids = zip(*map(parse_heatmap_idx, df.index))
+            analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
 
             def get_rows():
-                for (idx, *row), analysis_id, meta_id in zip(df.itertuples(name=None), analysis_ids, meta_ids):
+                for (idx, *row), analysis_id, exp_id in zip(df.itertuples(name=None), analysis_ids, exp_ids):
                     info = {'name': idx}
                     try:
-                        ref = references.get(
-                            analysis_id__analysis_fullid=analysis_id,
-                            meta_id__meta_fullid=meta_id)
+                        analysis = analyses.get(
+                            name=analysis_id,
+                            experiment__name=exp_id)
                         info.update(
-                            ref.analysis_id.analysisiddata_set.values_list(
-                                'analysis_type',
-                                'analysis_value'))
-                        info.update(ref.meta_id.metaiddata_set.values_list('meta_type', 'meta_value'))
-                    except ReferenceId.DoesNotExist:
+                            analysis.analysisdata_set.values_list('key', 'value'))
+                        info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
+                    except Analysis.DoesNotExist:
                         pass
 
                     yield [info] + row

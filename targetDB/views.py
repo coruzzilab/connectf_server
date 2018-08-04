@@ -7,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import AnalysisIddata, EdgeData, EdgeType, Edges, Interactions, MetaIddata, ReferenceId
+from querytgdb.models import Analysis, AnalysisData, Edge, EdgeData, EdgeType, Experiment, ExperimentData
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -20,25 +20,25 @@ def get_lists(files: Iterable) -> Generator[str, None, None]:
             yield name
 
 
-def check_regulation(instance: ReferenceId):
+def check_regulation(instance: Analysis):
     return instance.regulation_set.exists()
 
 
 class TFView(views.APIView):
     def get(self, request, *args, **kwargs):
-        queryset = [OrderedDict([('db_tf_agi', 'oralltfs')]),
-                    OrderedDict([('db_tf_agi', 'andalltfs')])]
+        queryset = [OrderedDict([('gene_id', 'oralltfs')]),
+                    OrderedDict([('gene_id', 'andalltfs')])]
 
         with connection.cursor() as cursor:
-            cursor.execute("SELECT DISTINCT db_tf_id, db_tf_agi, ath_name FROM querytgdb_targetdbtf "
-                           "LEFT JOIN querytgdb_annotation ON agi_id = db_tf_agi "
-                           "ORDER BY db_tf_agi, ath_name")
+            cursor.execute(
+                "SELECT DISTINCT a.gene_id as gene_id, a.name as gene_name FROM querytgdb_experiment as e "
+                "LEFT JOIN querytgdb_annotation as a ON e.tf_id = a.id "
+                "ORDER BY gene_id, gene_name")
 
-            for db_tf_id, db_tf_agi, ath_name in cursor:
+            for gene_id, gene_name in cursor:
                 queryset.append(OrderedDict([
-                    ("db_tf_id", db_tf_id),
-                    ("db_tf_agi", db_tf_agi),
-                    ("ath_name", ath_name)
+                    ("gene_id", gene_id),
+                    ("gene_name", gene_name)
                 ]))
 
         serializer = TFValueSerializer(queryset, many=True)
@@ -68,23 +68,22 @@ class KeyView(views.APIView):
         queryset = ['pvalue', 'edge', 'fc', 'has_column']
 
         if tfs:
-            refs = Interactions.objects.filter(
-                db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
+            experiments = Experiment.objects.filter(tf__gene_id__in=tfs)
 
-            if EdgeData.objects.filter(tf__agi_id__in=tfs).exists():
+            if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                 queryset.append('edge_properties')
 
-            queryset.extend(AnalysisIddata.objects.filter(
-                analysis_id__referenceid__ref_id__in=refs
-            ).distinct().values_list('analysis_type', flat=True))
+            queryset.extend(AnalysisData.objects.filter(
+                analysis__experiment__in=experiments
+            ).distinct().values_list('key', flat=True))
 
-            queryset.extend(MetaIddata.objects.filter(
-                meta_id__referenceid__ref_id__in=refs
-            ).distinct().values_list('meta_type', flat=True))
+            queryset.extend(ExperimentData.objects.filter(
+                experiment__in=experiments
+            ).distinct().values_list('key', flat=True))
         else:
             queryset.append('edge_properties')
-            queryset.extend(AnalysisIddata.objects.distinct().values_list('analysis_type', flat=True))
-            queryset.extend(MetaIddata.objects.distinct().values_list('meta_type', flat=True))
+            queryset.extend(AnalysisData.objects.distinct().values_list('key', flat=True))
+            queryset.extend(ExperimentData.objects.distinct().values_list('key', flat=True))
 
         return Response(queryset)
 
@@ -102,22 +101,22 @@ class ValueView(views.APIView):
             return Response([])
         elif key == 'EDGE':
             if tfs:
-                return Response(Interactions.objects.filter(db_tf_id__db_tf_agi__in=tfs).distinct().values_list(
-                    'edge_id__edge_name', flat=True))
-            return Response(Edges.objects.distinct().values_list('edge_name', flat=True))
+
+                return Response(Experiment.objects.filter(tf__gene_id__in=tfs).distinct().values_list(
+                    'analysis__interaction__edge__name', flat=True))
+            return Response(Edge.objects.distinct().values_list('name', flat=True))
         elif key == 'EDGE_PROPERTIES':
             if tfs:
                 return Response(
-                    EdgeData.objects.filter(tf__agi_id__in=tfs).distinct().values_list('type__name', flat=True))
+                    EdgeData.objects.filter(tf__gene_id__in=tfs).distinct().values_list('type__name', flat=True))
             return Response(EdgeType.objects.distinct().values_list('name', flat=True))
         elif key == 'HAS_COLUMN':
             queryset = ['EDGE']
 
             if tfs:
-                if any(map(check_regulation,
-                           ReferenceId.objects.filter(interactions__db_tf_id__db_tf_agi__in=tfs).distinct())):
+                if any(map(check_regulation, Analysis.objects.filter(experiment__tf__gene_id__in=tfs))):
                     queryset.extend(('Pvalue', 'FC'))
-                if EdgeData.objects.filter(tf__agi_id__in=tfs).exists():
+                if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                     queryset.append('edge_properties')
             else:
                 queryset.extend(('Pvalue', 'FC', 'edge_properties'))
@@ -127,24 +126,20 @@ class ValueView(views.APIView):
             queryset = []
 
             if tfs:
-                refs = Interactions.objects.filter(
-                    db_tf_id__db_tf_agi__in=tfs).distinct().values_list('ref_id_id', flat=True)
+                experiments = Experiment.objects.filter(tf__gene_id__in=tfs)
 
-                queryset.extend(AnalysisIddata.objects.filter(
-                    analysis_id__referenceid__ref_id__in=refs,
-                    analysis_type__iexact=key).distinct().values_list(
-                    'analysis_value',
-                    flat=True))
+                queryset.extend(AnalysisData.objects.filter(
+                    analysis__experiment__in=experiments,
+                    key__iexact=key
+                ).distinct().values_list('value', flat=True))
 
                 queryset.extend(
-                    MetaIddata.objects.filter(
-                        meta_id__referenceid__ref_id__in=refs,
-                        meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
+                    ExperimentData.objects.filter(experiment__in=experiments,
+                                                  key__iexact=key).distinct().values_list('value', flat=True))
             else:
                 queryset.extend(
-                    AnalysisIddata.objects.filter(analysis_type__iexact=key).distinct().values_list('analysis_value',
-                                                                                                    flat=True))
+                    AnalysisData.objects.filter(key__iexact=key).distinct().values_list('value', flat=True))
                 queryset.extend(
-                    MetaIddata.objects.filter(meta_type__iexact=key).distinct().values_list('meta_value', flat=True))
+                    ExperimentData.objects.filter(key__iexact=key).distinct().values_list('value', flat=True))
 
             return Response(queryset)

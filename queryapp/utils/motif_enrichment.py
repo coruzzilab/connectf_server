@@ -18,7 +18,7 @@ from django.conf import settings
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
-from querytgdb.models import ReferenceId
+from querytgdb.models import Analysis
 
 matplotlib.use('SVG')
 import matplotlib.pyplot as plt
@@ -199,25 +199,25 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     df.columns = df.columns.droplevel(3)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
-    tfs, meta_ids, analysis_ids = zip(*res.keys())
-    references = ReferenceId.objects.filter(analysis_id__analysis_fullid__in=analysis_ids,
-                                            meta_id__meta_fullid__in=meta_ids)
+    tfs, exp_ids, analysis_ids = zip(*res.keys())
+    analyses = Analysis.objects.filter(name__in=analysis_ids,
+                                       experiment__name__in=exp_ids)
 
     meta_dicts: OrderedDict[Tuple[str, ...], OrderedDict] = OrderedDict()
 
-    for tf, meta_id, analysis_id in res.keys():
+    for tf, exp_id, analysis_id in res.keys():
         data = OrderedDict()
         try:
-            ref = references.get(
-                analysis_id__analysis_fullid=analysis_id,
-                meta_id__meta_fullid=meta_id)
+            analysis = analyses.get(
+                name=analysis_id,
+                experiment__name=exp_id)
             data.update(OrderedDict(
-                ref.analysis_id.analysisiddata_set.values_list('analysis_type', 'analysis_value')))
+                analysis.analysisdata_set.values_list('key', 'value')))
             data.update(
-                ref.meta_id.metaiddata_set.values_list('meta_type', 'meta_value'))
-        except ReferenceId.DoesNotExist:
+                analysis.experiment.experimentdata_set.values_list('key', 'value'))
+        except Analysis.DoesNotExist:
             pass
-        meta_dicts[(tf, meta_id, analysis_id)] = data
+        meta_dicts[(tf, exp_id, analysis_id)] = data
 
     try:
         if target_genes_path:

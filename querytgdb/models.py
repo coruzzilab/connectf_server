@@ -1,75 +1,80 @@
 from django.db import models
 
 
-class TargetDBTF(models.Model):
-    db_tf_id = models.AutoField(primary_key=True, db_index=True)
-    db_tf_agi = models.CharField(max_length=100, db_index=True, unique=True)
+class Edge(models.Model):
+    """
+    Target Edge names
+    """
+    name = models.CharField(max_length=100, unique=True)
 
     def __str__(self):
-        return "{} ({})".format(self.db_tf_agi, self.db_tf_id)
+        return "{} ({})".format(self.name, self.id)
 
 
-class Edges(models.Model):
-    edge_id = models.AutoField(primary_key=True, db_index=True)
-    edge_name = models.CharField(max_length=100, db_index=True, unique=True)
-
-    def __str__(self):
-        return "{} ({})".format(self.edge_name, self.edge_id)
-
-
-class Metadata(models.Model):
-    meta_p = models.AutoField(primary_key=True, db_index=True)
-    meta_id = models.IntegerField(db_index=True, unique=True)
-    meta_fullid = models.CharField(max_length=100, db_index=True)
+class Experiment(models.Model):
+    """
+    A set of analyses for a TF
+    """
+    name = models.CharField(max_length=100, unique=True)
+    tf = models.ForeignKey("Annotation", on_delete=models.CASCADE)
 
     def __str__(self):
-        return "{} ({})".format(self.meta_fullid, self.meta_id)
+        return "{} ({})".format(self.name, self.id)
 
 
 class Analysis(models.Model):
-    analysis_p = models.AutoField(primary_key=True, db_index=True)
-    analysis_id = models.IntegerField(db_index=True, unique=True)
-    analysis_fullid = models.CharField(max_length=100, db_index=True)
+    """
+    Individual analyses
+    """
+    name = models.CharField(max_length=100, db_index=True)
+    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return "{} ({})".format(self.name, self.id)
+
+    class Meta:
+        unique_together = (('experiment', 'name'),)
 
 
-class ReferenceId(models.Model):
-    ref_id = models.AutoField(primary_key=True)
-    meta_id = models.ForeignKey(Metadata, on_delete=models.CASCADE, to_field='meta_id')
-    analysis_id = models.ForeignKey(Analysis, on_delete=models.CASCADE, to_field='analysis_id')
+class ExperimentData(models.Model):
+    """
+    Metadata for an Experiment
+    """
+    experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE)
+    key = models.CharField(max_length=100, db_index=True)
+    value = models.CharField(max_length=200)
+
+    class Meta:
+        unique_together = (('experiment', 'key'),)
 
 
-class MetaIddata(models.Model):
-    metaid_id = models.AutoField(primary_key=True)
-    meta_value = models.CharField(max_length=100, db_index=True)
-    meta_type = models.CharField(max_length=100, db_index=True)
-    meta_id = models.ForeignKey(Metadata, on_delete=models.CASCADE, to_field='meta_id')
+class AnalysisData(models.Model):
+    """
+    Metadata for an analysis
+    """
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    key = models.CharField(max_length=100, db_index=True)
+    value = models.CharField(max_length=200)
 
-
-class AnalysisIddata(models.Model):
-    analysisid_id = models.AutoField(primary_key=True)
-    analysis_value = models.CharField(max_length=100, db_index=True)
-    analysis_type = models.CharField(max_length=100, db_index=True)
-    analysis_id = models.ForeignKey(Analysis, on_delete=models.CASCADE, to_field='analysis_id')
+    class Meta:
+        unique_together = (('analysis', 'key'),)
 
 
 class Annotation(models.Model):
-    ath_id = models.AutoField(primary_key=True, db_index=True)
-    agi_id = models.CharField(max_length=100, db_index=True)
-    ath_name = models.CharField(max_length=100)
-    ath_fullname = models.TextField(max_length=2000)
-    ath_gene_type = models.CharField(max_length=100)
-    ath_gene_fam = models.TextField(max_length=2000)
-
-
-class DAPdata(models.Model):
-    dap_interaction = models.AutoField(primary_key=True)
-    # one-to-many relationship: one TF can have multiple interactions
-    db_tfid = models.ForeignKey(TargetDBTF, on_delete=models.CASCADE, to_field='db_tf_id')
-    # one-to-many relationship: one target can have multiple interactionids
-    ath_id = models.ForeignKey(Annotation, on_delete=models.CASCADE, to_field='ath_id')
+    """
+    Gene annotations
+    """
+    gene_id = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+    fullname = models.TextField(max_length=2000)
+    gene_type = models.CharField(max_length=100)
+    gene_family = models.TextField(max_length=2000)
 
 
 class EdgeData(models.Model):
+    """
+    Extra edge property relationships
+    """
     tf = models.ForeignKey(Annotation, on_delete=models.CASCADE, related_name='tfs')
     target = models.ForeignKey(Annotation, on_delete=models.CASCADE, related_name='targets')
     type = models.ForeignKey("EdgeType", on_delete=models.CASCADE)
@@ -79,26 +84,34 @@ class EdgeData(models.Model):
 
 
 class EdgeType(models.Model):
+    """
+    Extra edge property types (DAP, DAPamp, etc.)
+    """
     name = models.CharField(max_length=100, unique=True)
 
 
-class Interactions(models.Model):
-    interaction_id = models.AutoField(primary_key=True)
-    # one-to-many relationship: one TF can have multiple interactions
-    db_tf_id = models.ForeignKey(TargetDBTF, on_delete=models.CASCADE, to_field='db_tf_id')
-    # one-to-many relationship: one target can have multiple interactionids
-    target_id = models.ForeignKey(Annotation, on_delete=models.CASCADE, to_field='ath_id')
-    # one-to-many relationship: one edge can have multiple interactionid
-    edge_id = models.ForeignKey(Edges, on_delete=models.CASCADE, to_field='edge_id')
-    # one-to-many relationship: one referenceid can have multiple interactionid
-    ref_id = models.ForeignKey(ReferenceId, on_delete=models.CASCADE, to_field='ref_id')
+class Interaction(models.Model):
+    """
+    Edge for TF—target interactions
+    """
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    target = models.ForeignKey(Annotation, on_delete=models.CASCADE)
+    edge = models.ForeignKey(Edge, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = (('analysis', 'target'),)
 
 
 class Regulation(models.Model):
-    regulation_id = models.AutoField(primary_key=True)
-    # one-to-many relationship: one referenceid can have multiple regulationids
-    ref_id = models.ForeignKey(ReferenceId, on_delete=models.CASCADE, to_field='ref_id')
-    # one-to-many relationship:one AGI ID can have multiple regulationids
-    ath_id = models.ForeignKey(Annotation, on_delete=models.CASCADE, to_field='ath_id')
-    foldchange = models.CharField(max_length=100)
-    pvalue = models.CharField(max_length=100)
+    """
+    P-value and fold change for TF—target interactions
+
+    Not necessary for every TF analysis
+    """
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE)
+    target = models.ForeignKey(Annotation, on_delete=models.CASCADE)
+    foldchange = models.FloatField()
+    p_value = models.FloatField()
+
+    class Meta:
+        unique_together = (('analysis', 'target'),)

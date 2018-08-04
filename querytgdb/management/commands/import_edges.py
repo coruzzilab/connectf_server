@@ -25,18 +25,18 @@ class Command(BaseCommand):
                                                        df['edge'].unique()))),
                                               columns=['edge_id', 'edge'])
 
-            anno = pd.DataFrame(Annotation.objects.values_list('ath_id', 'agi_id', named=True).iterator())
+            anno = pd.DataFrame(Annotation.objects.values_list('id', 'gene_id', named=True).iterator())
 
             df = (df
                   .merge(edges, on='edge')
-                  .merge(anno, left_on='source', right_on='agi_id')
-                  .merge(anno, left_on='target', right_on='agi_id'))
+                  .merge(anno, left_on='source', right_on='gene_id')
+                  .merge(anno, left_on='target', right_on='gene_id'))
 
             EdgeData.objects.bulk_create(
                 (EdgeData(
                     type_id=e,
                     tf_id=s,
                     target_id=t
-                ) for e, s, t in df[['edge_id', 'ath_id_x', 'ath_id_y']].itertuples(index=False, name=None)),
+                ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
                 batch_size=1000
             )

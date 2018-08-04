@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from querytgdb.models import MetaIddata
+from querytgdb.models import Experiment as SavedExperiment
 from .models import Experiment
 
 
@@ -55,8 +55,8 @@ class ExperimentSerializer(serializers.Serializer):
     design = serializers.FileField()
 
     def validate_experiment_id(self, value):
-        if Experiment.objects.filter(name=value).exists() or MetaIddata.objects.filter(meta_type='EXPERIMENT_ID',
-                                                                                       meta_value=value):
+        if Experiment.objects.filter(name=value).exists() or SavedExperiment.objects.filter(key='EXPERIMENT_ID',
+                                                                                            value=value).exists():
             raise serializers.ValidationError("Experiment ID exstis!")
 
         return value
