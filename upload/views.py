@@ -7,8 +7,8 @@ from rest_framework.generics import CreateAPIView
 from rest_framework.permissions import AllowAny
 from rest_framework.serializers import ValidationError
 
-from querytgdb.utils import validate_autosubmit as validate
-from querytgdb.utils.insert_tgdb import insert_data
+# from querytgdb.utils import validate_autosubmit as validate
+# from querytgdb.utils.insert_tgdb import insert_data
 from . import forms, models, serializers
 
 storage = FileSystemStorage()
@@ -125,32 +125,32 @@ class UploadAnalysisView(CreateAPIView):
         handle_analysis_file(data, 'experimental_design', "expdesign", uid)
 
 
-class UploadExperimentView(CreateAPIView):
-    serializer_class = serializers.ExperimentSerializer
-    permission_classes = (AllowAny,)
-
-    def perform_create(self, serializer):
-        data = serializer.validated_data
-
-        uid = uuid.uuid1()
-        try:
-            # save data even if checks don't pass
-            meta_path = save_metadata(uid, data)
-            gene_list_path = handle_file(data['gene_list'], data, "genelist", uid)
-            exp_value_path = handle_file(data['expression_values'], data, "rawdata", uid)
-            design_path = handle_file(data['design'], data, "expdesign", uid)
-            models.Experiment.objects.create(name=data['experiment_id'])
-
-            if self.request.GET.get('auto'):
-                # actually check
-                metadict = validate.validate_metadata(meta_path)
-                validate.validate_genelist(gene_list_path, metadict)
-                validate.validate_readcount_expdesign(exp_value_path, design_path)
-
-                # insert if checks pass
-                insert_data(gene_list_path, meta_path,
-                           '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
-                           '.all.txt')
-
-        except ValueError as e:
-            raise ValidationError(str(e)) from e
+# class UploadExperimentView(CreateAPIView):
+#     serializer_class = serializers.ExperimentSerializer
+#     permission_classes = (AllowAny,)
+#
+#     def perform_create(self, serializer):
+#         data = serializer.validated_data
+#
+#         uid = uuid.uuid1()
+#         try:
+#             # save data even if checks don't pass
+#             meta_path = save_metadata(uid, data)
+#             gene_list_path = handle_file(data['gene_list'], data, "genelist", uid)
+#             exp_value_path = handle_file(data['expression_values'], data, "rawdata", uid)
+#             design_path = handle_file(data['design'], data, "expdesign", uid)
+#             models.Experiment.objects.create(name=data['experiment_id'])
+#
+#             if self.request.GET.get('auto'):
+#                 # actually check
+#                 metadict = validate.validate_metadata(meta_path)
+#                 validate.validate_genelist(gene_list_path, metadict)
+#                 validate.validate_readcount_expdesign(exp_value_path, design_path)
+#
+#                 # insert if checks pass
+#                 insert_data(gene_list_path, meta_path,
+#                            '/Users/Reetu/Documents/Projects/TargetDB_V2/170801_TargetDB_latestdata/TargetDBdata/dap-seq'
+#                            '.all.txt')
+#
+#         except ValueError as e:
+#             raise ValidationError(str(e)) from e
