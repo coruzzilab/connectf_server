@@ -13,11 +13,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: ArgumentParser):
         parser.add_argument('file', help='edge property file')
+        parser.add_argument('--clear', help='clear current edges', action='store_true')
 
     def handle(self, *args, **options):
         with atomic():
             df = pd.read_csv(options['file'])
             df.columns = ['source', 'target', 'edge']
+
+            if options['clear']:
+                EdgeData.objects.all().delete()
+                EdgeType.objects.all().delete()
 
             edges = pd.DataFrame.from_records(map(attrgetter('id', 'name'),
                                                   map(itemgetter(0),
