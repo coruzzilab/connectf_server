@@ -26,8 +26,13 @@ def check_regulation(instance: Analysis):
 
 class TFView(views.APIView):
     def get(self, request, *args, **kwargs):
-        queryset = [OrderedDict([('gene_id', 'oralltfs')]),
-                    OrderedDict([('gene_id', 'andalltfs')])]
+        all_genes = request.GET.get('all', '1')
+
+        if all_genes == '1':
+            queryset = [OrderedDict([('gene_id', 'oralltfs')]),
+                        OrderedDict([('gene_id', 'andalltfs')])]
+        else:
+            queryset = []
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -44,6 +49,19 @@ class TFView(views.APIView):
         serializer = TFValueSerializer(queryset, many=True)
 
         return Response(serializer.data)
+
+
+class ExperimentListView(views.APIView):
+    def get(self, request, *args, **kwargs):
+        tfs = set(request.GET.getlist('tf'))
+
+        if tfs & {'oralltfs', 'andalltfs'}:
+            tfs = set()
+
+        if tfs:
+            return Response(Experiment.objects.filter(tf__gene_id__in=tfs).values_list('name', flat=True))
+        else:
+            return Response(Experiment.objects.values_list('name', flat=True))
 
 
 class EdgeListView(views.APIView):
