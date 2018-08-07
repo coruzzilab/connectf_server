@@ -6,7 +6,7 @@ from typing import List, Sized
 import numpy as np
 import pandas as pd
 
-from queryapp.utils.parser import expand_ref_ids
+from ..utils.parser import expand_ref_ids
 
 __all__ = ('create_export_zip',)
 

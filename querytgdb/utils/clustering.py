@@ -8,7 +8,7 @@ import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 from scipy.stats import fisher_exact
 
-from queryapp.utils.parser import ANNOTATIONS
+from querytgdb.utils.parser import ANNOTATIONS
 
 matplotlib.use('SVG')
 import matplotlib.pyplot as plt

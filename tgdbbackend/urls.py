@@ -42,7 +42,7 @@ urlpatterns = [
                                              namespace='rest_framework')),
 
                   # Your stuff: custom urls includes go here
-                  url(r'^queryapp/', include(('queryapp.urls', 'queryapp'),
+                  url(r'^queryapp/', include(('querytgdb.urls', 'queryapp'),
                                              namespace='queryapp')),
                   url(r'^upload/', include('upload.urls'))
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
