@@ -89,7 +89,7 @@ class KeyView(views.APIView):
             experiments = Experiment.objects.filter(tf__gene_id__in=tfs)
 
             if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
-                queryset.append('edge_properties')
+                queryset.append('additional_edge')
 
             queryset.extend(AnalysisData.objects.filter(
                 analysis__experiment__in=experiments
@@ -99,7 +99,7 @@ class KeyView(views.APIView):
                 experiment__in=experiments
             ).distinct().values_list('key', flat=True))
         else:
-            queryset.append('edge_properties')
+            queryset.append('additional_edge')
             queryset.extend(AnalysisData.objects.distinct().values_list('key', flat=True))
             queryset.extend(ExperimentData.objects.distinct().values_list('key', flat=True))
 
@@ -123,7 +123,7 @@ class ValueView(views.APIView):
                 return Response(Experiment.objects.filter(tf__gene_id__in=tfs).distinct().values_list(
                     'analysis__interaction__edge__name', flat=True))
             return Response(Edge.objects.distinct().values_list('name', flat=True))
-        elif key == 'EDGE_PROPERTIES':
+        elif key == 'ADDITIONAL_EDGE':
             if tfs:
                 return Response(
                     EdgeData.objects.filter(tf__gene_id__in=tfs).distinct().values_list('type__name', flat=True))
@@ -135,9 +135,9 @@ class ValueView(views.APIView):
                 if any(map(check_regulation, Analysis.objects.filter(experiment__tf__gene_id__in=tfs))):
                     queryset.extend(('Pvalue', 'FC'))
                 if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
-                    queryset.append('edge_properties')
+                    queryset.append('additional_edge')
             else:
-                queryset.extend(('Pvalue', 'FC', 'edge_properties'))
+                queryset.extend(('Pvalue', 'FC', 'additional_edge'))
 
             return Response(queryset)
         else:

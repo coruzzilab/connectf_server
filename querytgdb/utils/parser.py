@@ -176,7 +176,7 @@ def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
 COL_TRANSLATE = {
     'PVALUE': 'Pvalue',
     'FC': 'Log2FC',
-    'EDGE_PROPERTIES': 'EDGE_PROPS'
+    'ADDITIONAL_EDGE': 'ADD_EDGES'
 }
 
 
@@ -192,7 +192,7 @@ def apply_has_column(df: TargetFrame, value) -> pd.DataFrame:
     return pd.DataFrame(False, columns=df.columns, index=df.index)
 
 
-def apply_has_edge_props(df: TargetFrame, value) -> pd.DataFrame:
+def apply_has_add_edges(df: TargetFrame, value) -> pd.DataFrame:
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
     target_ids = EdgeData.objects.filter(
         type__name__iexact=value,
@@ -242,8 +242,8 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
         elif re.match(r'^edge$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
-        elif re.match(r'^edge_properties$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_has_edge_props, value=value)
+        elif re.match(r'^additional_edge$', key, flags=re.I):
+            return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges, value=value)
         elif re.match(r'^has_column$', key, flags=re.I):
             value = value.upper()
             return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
@@ -304,7 +304,7 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
                 edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
                                                                                          right_on='id')
                 edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
-                edge_data.columns = ['TF', 'TARGET', 'EDGE_PROPS']
+                edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
 
                 df = df.merge(edge_data.drop('TF', axis=1), on='TARGET', how='left')
 
@@ -381,7 +381,7 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
             edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
                                                                                      right_on='id')
             edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
-            edge_data.columns = ['TF', 'TARGET', 'EDGE_PROPS']
+            edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
 
             df = df.merge(edge_data, on=['TF', 'TARGET'], how='left')
 
