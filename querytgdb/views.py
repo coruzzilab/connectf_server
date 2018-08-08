@@ -7,6 +7,7 @@ from io import BytesIO, TextIOWrapper
 from threading import Lock
 from typing import List
 
+import matplotlib
 import pandas as pd
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
@@ -18,14 +19,22 @@ from django.views.generic import View
 from pyparsing import ParseException
 
 from querytgdb.models import Analysis
-from querytgdb.utils.clustering import heatmap
 from querytgdb.utils.excel import create_export_zip
 from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
-from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json
 from .utils.parser import get_query_result
+
+# matplotlib import order issues
+matplotlib.use('SVG')
+
+import matplotlib.pyplot as plt
+
+plt.rcParams['svg.fonttype'] = 'none'
+
+from querytgdb.utils.clustering import heatmap
+from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json
 
 lock = Lock()
 

@@ -10,19 +10,16 @@ from multiprocessing.pool import ThreadPool
 from operator import or_
 from typing import Dict, Tuple, Union
 
-import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
+import seaborn as sns
 from django.conf import settings
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-
-matplotlib.use('SVG')
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 class MotifData:

@@ -1,19 +1,15 @@
+import sys
 from itertools import product
 from typing import Optional
-import sys
 
-import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
+import seaborn as sns
 from scipy.stats import fisher_exact
 
 from querytgdb.utils.parser import ANNOTATIONS
-
-matplotlib.use('SVG')
-import matplotlib.pyplot as plt
-
-import seaborn as sns
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
