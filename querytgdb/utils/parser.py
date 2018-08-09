@@ -1,7 +1,7 @@
 import re
 import warnings
 from collections import deque
-from functools import partial, reduce
+from functools import partial
 from operator import itemgetter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -291,15 +291,23 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
             )
 
             if not edge_data.empty:
-                edge_data = reduce(lambda x, y: x.str.cat(y, sep=',', na_rep='', join='outer'),
-                                   map(lambda x: x['edge'],
-                                       map(itemgetter(1),
-                                           (edge_data
-                                            .merge(edge_types, on='edge_id')
-                                            .drop('edge_id', axis=1)
-                                            .set_index(['source', 'target'])
-                                            .groupby('edge', squeeze=True))))
-                                   ).str.strip(',').reset_index()
+                edge_data = pd.concat(map(itemgetter(1),
+                                          (edge_data
+                                           .merge(edge_types, on='edge_id')
+                                           .drop('edge_id', axis=1)
+                                           .set_index(['source', 'target'])
+                                           .groupby('edge'))),
+                                      axis=1)
+
+                row_num, col_num = edge_data.shape
+
+                if col_num > 1:
+                    edge_data = edge_data.iloc[:, 0].str.cat(
+                        edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
+                else:
+                    edge_data = edge_data.fillna('')
+
+                edge_data = edge_data.reset_index()
 
                 edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
                                                                                          right_on='id')
@@ -368,15 +376,23 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
         )
 
         if not edge_data.empty:
-            edge_data = reduce(lambda x, y: x.str.cat(y, sep=',', na_rep='', join='outer'),
-                               map(lambda x: x['edge'],
-                                   map(itemgetter(1),
-                                       (edge_data
-                                        .merge(edge_types, on='edge_id')
-                                        .drop('edge_id', axis=1)
-                                        .set_index(['source', 'target'])
-                                        .groupby('edge'))))
-                               ).str.strip(',').reset_index()
+            edge_data = pd.concat(map(itemgetter(1),
+                                      (edge_data
+                                       .merge(edge_types, on='edge_id')
+                                       .drop('edge_id', axis=1)
+                                       .set_index(['source', 'target'])
+                                       .groupby('edge'))),
+                                  axis=1)
+
+            row_num, col_num = edge_data.shape
+
+            if col_num > 1:
+                edge_data = edge_data.iloc[:, 0].str.cat(
+                    edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
+            else:
+                edge_data = edge_data.fillna('')
+
+            edge_data = edge_data.reset_index()
 
             edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
                                                                                      right_on='id')
