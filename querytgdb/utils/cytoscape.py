@@ -102,10 +102,20 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
     edge_colors = get_edge_colors(network_table)
 
+    edge_node_stack = edge_nodes.stack()
     # edge building and positioning
-    edge_group = edge_nodes.groupby(edge_nodes.count(axis=1))
 
-    max_group_num = edge_group.size().max()
+    edge_counts = (edge_node_stack
+                   .groupby(level=[0, 1])
+                   .value_counts())
+    edge_group = (edge_counts
+                  .reset_index(level=[1, 2])
+                  .groupby(edge_node_stack
+                           .reset_index(level=1)
+                           .groupby(level=0)
+                           .apply(lambda x: x.iloc[:, 0].nunique())))
+
+    max_group_num = edge_group.apply(lambda x: x.index.nunique()).max()
 
     num_targets = len(edge_group)
     s_target = math.ceil(math.sqrt(num_targets))
@@ -124,15 +134,13 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
         'target': t,
         'name': e,
         'color': edge_colors[e]
-    }} for (t, s), e in tf_nodes.stack().iteritems())
+    }} for t, s, e in tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
 
     group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
         (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
 
     for (num, e_group), g_ij in zip(edge_group, group_grid):
-        stack_group = e_group.stack().sort_values()
-
-        s_group = math.ceil(math.sqrt(e_group.shape[0]))
+        s_group = math.ceil(math.sqrt(e_group.index.nunique()))
 
         e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'), dtype=np.float64).reshape(
             (2, -1), order='C').T * (SIZE + GAP)
@@ -140,7 +148,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
         data.extend(
             make_nodes(
-                GENE_TYPE.loc[stack_group.index.unique(level=0), :].sort_values('Type', kind='mergesort'),
+                GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
                 e_grid))
 
         data.extend({'group': 'edges', 'data': {
@@ -148,7 +156,8 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
             'source': s,
             'target': t,
             'name': e,
-            'color': edge_colors[e]
-        }} for (t, s), e in stack_group.iteritems())
+            'color': edge_colors[e],
+            'weight': w
+        }} for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
     return data
