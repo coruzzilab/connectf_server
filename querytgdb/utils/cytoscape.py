@@ -108,6 +108,9 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     edge_counts = (edge_node_stack
                    .groupby(level=[0, 1])
                    .value_counts())
+    # scale edge weights here
+    edge_counts = edge_counts - edge_counts.min() + 1
+
     edge_group = (edge_counts
                   .reset_index(level=[1, 2])
                   .groupby(edge_node_stack
