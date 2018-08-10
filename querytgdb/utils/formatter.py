@@ -1,6 +1,6 @@
 from itertools import groupby, islice, takewhile, zip_longest
 from operator import itemgetter
-from typing import Dict, List, Tuple, Union, Iterable
+from typing import Dict, Iterable, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -124,6 +124,8 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
     ind_rep = None
     for i, col in enumerate(islice(zip(*columns), data_col_len, None)):
         try:
+            name, _, uuid_ = col[0].rpartition(' ')
+            columns[0][i + data_col_len] = name or uuid_
             if col != prev:
                 prev = col
                 edge = "Edges: {} ({})".format(edge_counts[(*col[:3], 'EDGE')], total_edge_counts[col[:3]])
