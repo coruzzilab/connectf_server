@@ -143,6 +143,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
         (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
 
     for (num, e_group), g_ij in zip(edge_group, group_grid):
+        e_group = e_group.sort_values(by=e_group.columns.tolist())
         s_group = math.ceil(math.sqrt(e_group.index.nunique()))
 
         e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'), dtype=np.float64).reshape(
