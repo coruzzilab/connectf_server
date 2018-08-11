@@ -20,7 +20,8 @@ from pyparsing import ParseException
 
 from querytgdb.models import Analysis
 from querytgdb.utils.excel import create_export_zip
-from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict
+from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict, \
+    svg_font_adder
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
@@ -32,9 +33,12 @@ matplotlib.use('SVG')
 import matplotlib.pyplot as plt
 
 plt.rcParams['svg.fonttype'] = 'none'
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 
-from querytgdb.utils.clustering import heatmap
-from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json
+from querytgdb.utils.gene_list_enrichment import heatmap
+from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
+    get_motif_enrichment_heatmap_table
 
 lock = Lock()
 
@@ -187,7 +191,7 @@ class FileExportView(View):
             return HttpResponseNotFound(content_type='application/zip')
 
 
-class HeatMapPNGView(View):
+class HeatMapSVGView(View):
     def get(self, request, request_id):
         try:
             upper = convert_float(request.GET.get('upper'))
@@ -205,6 +209,8 @@ class HeatMapPNGView(View):
                 upper=upper
             ).savefig(buff)
 
+            buff.seek(0)
+            svg_font_adder(buff)
             buff.seek(0)
             shutil.copyfileobj(buff, response)
 
@@ -305,4 +311,24 @@ class MotifEnrichmentHeatmapView(View):
             except (FileNotFoundError, NoEnrichedMotif):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
+                raise
                 return HttpResponseBadRequest(content_type='image/svg+xml')
+
+
+class MotifEnrichmentHeatmapTableView(View):
+    def get(self, request, request_id):
+        if not request_id:
+            raise Http404
+
+        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+
+        if not os.path.exists(cache_path):
+            time.sleep(3)
+
+        return JsonResponse(
+            list(get_motif_enrichment_heatmap_table(
+                cache_path
+                # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id))
+            )),
+            safe=False
+        )

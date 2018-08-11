@@ -1,3 +1,4 @@
+import base64
 import gzip
 import mimetypes
 import pickle
@@ -12,12 +13,12 @@ from uuid import UUID
 
 import numpy as np
 import pandas as pd
+from django.core.files.storage import default_storage
 from django.core.management.base import CommandError
 from django.core.serializers.json import DjangoJSONEncoder
+from lxml import etree
 
 from ..models import Analysis, AnalysisData, Annotation, Edge, Experiment, ExperimentData, Interaction, Regulation
-
-__all__ = ('insert_data',)
 
 
 class PandasJSONEncoder(DjangoJSONEncoder):
@@ -232,3 +233,27 @@ def insert_data(data_file, metadata_file, auto_naming=False):
                 target_id=row.id
             ) for row in data.itertuples(index=False)
         )
+
+
+def column_string(n: int) -> str:
+    s = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        s = chr(65 + remainder) + s
+    return s
+
+
+def svg_font_adder(buff):
+    tree = etree.parse(buff)
+    style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
+
+    with default_storage.open('fonts/DejaVuSans.woff', 'rb') as font_file:
+        font_str = base64.b64encode(font_file.read()).decode()
+
+    style.text += '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
+                  'url({}) format("woff");}}'.format('data:font/woff;base64,' + font_str)
+
+    buff.truncate(0)
+    tree.write(buff)
+
+    return buff

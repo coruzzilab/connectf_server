@@ -7,16 +7,9 @@ import numpy as np
 import pandas as pd
 
 from ..utils.parser import expand_ref_ids
+from ..utils import column_string
 
 __all__ = ('create_export_zip',)
-
-
-def column_string(n):
-    s = ""
-    while n > 0:
-        n, remainder = divmod(n - 1, 26)
-        s = chr(65 + remainder) + s
-    return s
 
 
 def create_export_zip(cache_dir, out_dir):

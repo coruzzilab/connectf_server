@@ -5,7 +5,7 @@ import sys
 from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
-from itertools import chain
+from itertools import chain, tee
 from multiprocessing.pool import ThreadPool
 from operator import or_
 from typing import Dict, Tuple, Union
@@ -20,6 +20,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
+from ..utils import column_string, svg_font_adder
 
 
 class MotifData:
@@ -104,9 +105,9 @@ APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
 
 MOTIF = MotifData(APPS_DIR)
 
-CLUSTER_INFO = pd.read_pickle(
-    APPS_DIR / 'static' / 'cluster_info.pickle.gz',
-    compression='gzip'
+CLUSTER_INFO = pd.read_csv(
+    APPS_DIR / 'static' / 'cluster_info.csv',
+    index_col=0
 ).to_dict('index')
 
 COLORS = sns.color_palette("husl", 2)
@@ -151,9 +152,10 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
                                                     ann_cluster_size=MOTIF.body_cluster_size), res.values()))
 
         df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
+        _promo, _body = tee(res.keys(), 2)
         columns = list(chain.from_iterable(zip(
-            map(lambda c: c + ('promo',), res.keys()),
-            map(lambda c: c + ('body',), res.keys()))))
+            map(lambda c: c + ('promo',), _promo),
+            map(lambda c: c + ('body',), _body))))
 
         if show_reject:
             rejects = reduce(or_, chain(promo_reject, body_reject))
@@ -171,6 +173,7 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
     df.columns = columns
 
     if show_reject:
+        rejects = rejects.reindex(df.index)
         df = df[rejects]
     else:
         rejects.columns = columns
@@ -278,7 +281,17 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     df = df.clip_upper(sys.maxsize)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
-    df = df.rename(columns='_'.join)
+
+    if not body:
+        df.columns = map(column_string, range(1, len(res) + 1))
+    else:
+        _promo, _body = tee(map(column_string, range(1, len(res) + 1)), 2)
+        df.columns = chain.from_iterable(zip(
+            map(lambda x: x + '_promo', _promo),
+            map(lambda x: x + '_body', _body)
+        ))
+
+    # df = df.rename(columns='_'.join)
 
     df = df.T
 
@@ -308,5 +321,42 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     buff = BytesIO()
     heatmap_graph.savefig(buff)
     buff.seek(0)
+    svg_font_adder(buff)
+    buff.seek(0)
 
     return buff
+
+
+def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
+    df = pd.read_pickle(cache_path)
+    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
+    df.columns = df.columns.droplevel(3)
+    res = df.columns.tolist()
+
+    try:
+        if target_genes_path:
+            with gzip.open(target_genes_path, 'rb') as f:
+                _, target_lists = pickle.load(f)
+                res.extend([(t_name, *r_name)
+                            for r_name in res
+                            for t_name in target_lists.keys()])
+    except FileNotFoundError:
+        pass
+
+    names, exp_ids, analysis_ids = zip(*res)
+
+    analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
+
+    for (name, exp_id, analysis_id), col_str in zip(res, map(column_string, range(1, len(res) + 1))):
+        info = OrderedDict([('name', name)])
+
+        try:
+            analysis = analyses.get(name=analysis_id, experiment__name=exp_id)
+            info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
+            info.update(analysis.analysisdata_set.values_list('key', 'value'))
+
+            name_, _, uuid_ = name.rpartition(' ')
+
+            yield [info, col_str, name_ or uuid_]
+        except Analysis.DoesNotExist:
+            pass
