@@ -1,11 +1,9 @@
 import os
 import pathlib
-import re
 import shutil
 import time
 from io import BytesIO, TextIOWrapper
 from threading import Lock
-from typing import List
 
 import matplotlib
 import pandas as pd
@@ -47,16 +45,6 @@ STATIC_DIR = APPS_DIR / 'static' / 'queryBuilder'
 
 static_storage = FileSystemStorage(pathlib.Path(settings.MEDIA_ROOT) / 'queryBuilder')
 common_genes_storage = FileSystemStorage('commongenelists')
-
-
-def parse_heatmap_idx(idx: str) -> List[str]:
-    """
-    Parsing heatmap names to analysis and meta id
-    :param idx:
-    :return:
-    """
-    # pretty error prone, maybe redo this some other way
-    return re.split(r'\s+\|\|\s+|\s+\(', idx)[1:-1]
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -191,7 +179,7 @@ class FileExportView(View):
             return HttpResponseNotFound(content_type='application/zip')
 
 
-class HeatMapSVGView(View):
+class ListEnrichmentSVGView(View):
     def get(self, request, request_id):
         try:
             upper = convert_float(request.GET.get('upper'))
@@ -219,19 +207,31 @@ class HeatMapSVGView(View):
             return HttpResponseNotFound(content_type='image/svg+xml')
 
 
-class HeatMapTableView(View):
+class ListEnrichmentLegendView(View):
+    def get(self, request, request_id):
+        try:
+            cache_path = static_storage.path("{}_pickle".format(request_id))
+            return JsonResponse(heatmap(
+                cache_path,
+                legend=True
+            ), safe=False)
+        except FileNotFoundError as e:
+            raise Http404 from e
+
+
+class ListEnrichmentTableView(View):
     def get(self, request, request_id):
         try:
             df = heatmap(
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
-            exp_ids, analysis_ids = zip(*map(parse_heatmap_idx, df.index))
+            names, exp_ids, analysis_ids = zip(*df.index)
             analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
 
             def get_rows():
-                for (idx, *row), analysis_id, exp_id in zip(df.itertuples(name=None), analysis_ids, exp_ids):
-                    info = {'name': idx}
+                for (name, exp_id, analysis_id), *row in df.itertuples(name=None):
+                    info = {'name': name}
                     try:
                         analysis = analyses.get(
                             name=analysis_id,

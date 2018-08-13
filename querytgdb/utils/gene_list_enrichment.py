@@ -1,5 +1,6 @@
 import sys
-from itertools import product
+from itertools import count, product
+from operator import itemgetter
 from typing import Optional
 
 import matplotlib.pyplot as plt
@@ -9,7 +10,9 @@ import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from scipy.stats import fisher_exact
 
-from querytgdb.utils.parser import ANNOTATIONS
+from ..models import Analysis, Experiment
+from ..utils import column_string
+from ..utils.parser import ANNOTATIONS
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -34,18 +37,22 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
                                  **kwargs,
                                  **opts)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
+    plt.setp(sns_heatmap.ax_heatmap.yaxis.get_label(), text="Analyses", rotation=270)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
+    plt.setp(sns_heatmap.ax_heatmap.xaxis.get_label(), text="Target Genes")
 
     return sns_heatmap
 
 
-def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=False, upper=None, lower=None):
+def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False, save_file=False, upper=None,
+            lower=None):
     """
     Draws gene list enrichment heatmap from cached query
 
     :param pickledir:
     :param background:
     :param draw:
+    :param legend:
     :param save_file:
     :param upper:
     :param lower:
@@ -59,6 +66,8 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=Fa
 
     if background is None:
         background = ANNOTATIONS.shape[0]
+        if not background:
+            background = 28775
 
     query_result = pd.read_pickle(pickledir + '/tabular_output_unfiltered.pickle.gz')
 
@@ -66,23 +75,29 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=Fa
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
 
     query_result = query_result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
+    query_result.columns = query_result.columns.droplevel(3)
+
+    names, exp_ids, analysis_ids = zip(*query_result.columns)
+    analyses = Analysis.objects.filter(
+        name__in=analysis_ids,
+        experiment__name__in=exp_ids
+    ).prefetch_related('experiment')
 
     # save targets for each TF into a dict
     targets = {}
 
-    for val_expid, column in query_result.iteritems():
-        target_eachanalysis = set(column.dropna().index)
-        gene_id = val_expid[0]
+    for (name, exp_id, analysis_id), column in query_result.iteritems():
+        analysis_targets = set(column.dropna().index)
+
         try:
-            # temporary fix for wonky names
-            genename = ANNOTATIONS.at[gene_id, 'Name'] or gene_id
-        except KeyError:
-            genename = gene_id
+            gene_id = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf.gene_id
+            gene_name = ANNOTATIONS.at[gene_id, 'Name']
+        except (KeyError, Experiment.DoesNotExist):
+            gene_name = ''
 
-        targets['{0} || {1[1]} || {1[2]} ({2})'.format(
-            genename, val_expid, len(target_eachanalysis))] = target_eachanalysis
+        targets[(f'{name} {gene_name} ({len(analysis_targets)})', exp_id, analysis_id)] = analysis_targets
 
-    dfpval_forheatmap = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
+    list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
     colnames = {}
 
@@ -94,27 +109,45 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, save_file=Fa
             [intersect_len, len(user_list - analysis_list)],
             [len(analysis_list - user_list), background - len(user_list | analysis_list)]
         ], alternative='greater')
-        dfpval_forheatmap.at[analysis_name, name] = pvalue
+        list_enrichment_pvals.at[analysis_name, name] = pvalue
 
-    dfpval_forheatmap.rename(columns=colnames, inplace=True)
+    list_enrichment_pvals.rename(columns=colnames, inplace=True)
 
-    if draw:
-        scaleddfpval_forhmap = scale_df(dfpval_forheatmap)
-        sns_heatmap = draw_heatmap(scaleddfpval_forhmap, vmin=lower, vmax=upper)
+    if draw or legend:
+        scaled_pvals = scale_df(list_enrichment_pvals)
+        orig_index = list(zip(scaled_pvals.index, map(column_string, count(1))))
+        scaled_pvals.index = map(itemgetter(1), orig_index)
+        if legend:
+            result = []
 
-        if save_file:
-            sns_heatmap.savefig(pickledir + '/heatmap.svg')
+            for (name, exp_id, analysis_id), col_label in orig_index:
+                info = {'name': name}
+                analysis = analyses.get(
+                    name=analysis_id,
+                    experiment__name=exp_id)
+                info.update(analysis.analysisdata_set.values_list('key', 'value').iterator())
+                info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
 
-        return sns_heatmap
+                gene_id = analysis.experiment.tf.gene_id
+                result.append([info, col_label, name, ANNOTATIONS.at[gene_id, 'Name'], analysis_id])
+
+            return result
+        else:
+            sns_heatmap = draw_heatmap(scaled_pvals, vmin=lower, vmax=upper)
+
+            if save_file:
+                sns_heatmap.savefig(pickledir + '/heatmap.svg')
+
+            return sns_heatmap
 
     else:
-        row_num, col_num = dfpval_forheatmap.shape
+        row_num, col_num = list_enrichment_pvals.shape
         if row_num > 1:
-            z = hierarchy.linkage(dfpval_forheatmap.values, method='average', optimal_ordering=True)
-            dfpval_forheatmap = dfpval_forheatmap.iloc[hierarchy.leaves_list(z), :]
+            z = hierarchy.linkage(list_enrichment_pvals.values, method='average', optimal_ordering=True)
+            list_enrichment_pvals = list_enrichment_pvals.iloc[hierarchy.leaves_list(z), :]
 
         if col_num > 1:
-            z = hierarchy.linkage(dfpval_forheatmap.values.T, method='average', optimal_ordering=True)
-            dfpval_forheatmap = dfpval_forheatmap.iloc[:, hierarchy.leaves_list(z)]
+            z = hierarchy.linkage(list_enrichment_pvals.values.T, method='average', optimal_ordering=True)
+            list_enrichment_pvals = list_enrichment_pvals.iloc[:, hierarchy.leaves_list(z)]
 
-        return dfpval_forheatmap
+        return list_enrichment_pvals
