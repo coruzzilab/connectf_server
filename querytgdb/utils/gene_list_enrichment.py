@@ -99,24 +99,24 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
-    colnames = {}
+    if not legend:
+        colnames = {}
 
-    for (analysis_name, analysis_list), (name, user_list) in product(targets.items(), list_to_name.items()):
-        intersect_len = len(analysis_list & user_list)
-        colnames[name] = "{} ({})".format(name, len(user_list))
+        for (analysis_name, analysis_list), (name, user_list) in product(targets.items(), list_to_name.items()):
+            intersect_len = len(analysis_list & user_list)
+            colnames[name] = "{} ({})".format(name, len(user_list))
 
-        odds, pvalue = fisher_exact([
-            [intersect_len, len(user_list - analysis_list)],
-            [len(analysis_list - user_list), background - len(user_list | analysis_list)]
-        ], alternative='greater')
-        list_enrichment_pvals.at[analysis_name, name] = pvalue
+            odds, pvalue = fisher_exact([
+                [intersect_len, len(user_list - analysis_list)],
+                [len(analysis_list - user_list), background - len(user_list | analysis_list)]
+            ], alternative='greater')
+            list_enrichment_pvals.at[analysis_name, name] = pvalue
 
-    list_enrichment_pvals.rename(columns=colnames, inplace=True)
+        list_enrichment_pvals.rename(columns=colnames, inplace=True)
 
     if draw or legend:
-        scaled_pvals = scale_df(list_enrichment_pvals)
-        orig_index = list(zip(scaled_pvals.index, map(column_string, count(1))))
-        scaled_pvals.index = map(itemgetter(1), orig_index)
+        orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
+        list_enrichment_pvals.index = map(itemgetter(1), orig_index)
         if legend:
             result = []
 
@@ -129,10 +129,11 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
                 info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
 
                 gene_id = analysis.experiment.tf.gene_id
-                result.append([info, col_label, name, ANNOTATIONS.at[gene_id, 'Name'], analysis_id])
+                result.append((info, col_label, name, ANNOTATIONS.at[gene_id, 'Name'], analysis_id))
 
             return result
         else:
+            scaled_pvals = scale_df(list_enrichment_pvals)
             sns_heatmap = draw_heatmap(scaled_pvals, vmin=lower, vmax=upper)
 
             if save_file:
