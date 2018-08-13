@@ -107,7 +107,7 @@ APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
 MOTIF = MotifData(APPS_DIR)
 
 CLUSTER_INFO = pd.read_csv(
-    APPS_DIR / 'static' / 'cluster_info.csv',
+    APPS_DIR / 'static' / 'cluster_info.csv.gz',
     index_col=0
 ).to_dict('index')
 
