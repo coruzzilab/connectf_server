@@ -1,6 +1,7 @@
 import base64
 import gzip
 import mimetypes
+import os.path as path
 import pickle
 import random
 import re
@@ -13,7 +14,7 @@ from uuid import UUID
 
 import numpy as np
 import pandas as pd
-from django.core.files.storage import default_storage
+from django.conf import settings
 from django.core.management.base import CommandError
 from django.core.serializers.json import DjangoJSONEncoder
 from lxml import etree
@@ -247,7 +248,7 @@ def svg_font_adder(buff):
     tree = etree.parse(buff)
     style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
 
-    with default_storage.open('fonts/DejaVuSans.woff', 'rb') as font_file:
+    with open(path.join(settings.BASE_DIR, 'tgdbbackend/static/fonts/DejaVuSans.woff'), 'rb') as font_file:
         font_str = base64.b64encode(font_file.read()).decode()
 
     style.text += '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
