@@ -22,7 +22,7 @@ class Command(BaseCommand):
         meta = pd.DataFrame(glob.glob(path.join(options['folder'], 'metadata/*.txt')))
         meta[1] = meta[0].apply(path.basename).str.extract(r'^(.+)\.txt$')
 
-        df = data.merge(meta, on=1, how='outer')
+        df = data.merge(meta, on=1, how='inner', validate='one_to_one')
 
         with atomic():
             try:
