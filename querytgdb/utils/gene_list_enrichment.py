@@ -2,6 +2,7 @@ import sys
 from itertools import count, product
 from operator import itemgetter
 from typing import Optional
+from uuid import uuid4
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +11,7 @@ import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from scipy.stats import fisher_exact
 
-from ..models import Analysis, Experiment
+from ..models import Analysis
 from ..utils import column_string
 from ..utils.parser import ANNOTATIONS
 
@@ -37,7 +38,7 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
                                  **kwargs,
                                  **opts)
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
-    plt.setp(sns_heatmap.ax_heatmap.yaxis.get_label(), text="Analyses", rotation=270)
+    # plt.setp(sns_heatmap.ax_heatmap.yaxis.get_label(), text="Analyses", rotation=270)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_label(), text="Target Genes")
 
@@ -89,13 +90,10 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
     for (name, exp_id, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index)
 
-        try:
-            gene_id = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf.gene_id
-            gene_name = ANNOTATIONS.at[gene_id, 'Name']
-        except (KeyError, Experiment.DoesNotExist):
-            gene_name = ''
+        name_, _, uid_ = name.rpartition(' ')
+        name = f'{name_ or uid_} ({len(analysis_targets)})'
 
-        targets[(f'{name} {gene_name} ({len(analysis_targets)})', exp_id, analysis_id)] = analysis_targets
+        targets[(name, exp_id, analysis_id, uuid4())] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
@@ -120,16 +118,25 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
         if legend:
             result = []
 
-            for (name, exp_id, analysis_id), col_label in orig_index:
+            for idx, col_label in orig_index:
+                name, exp_id, analysis_id, uid = idx
+
                 info = {'name': name}
                 analysis = analyses.get(
                     name=analysis_id,
                     experiment__name=exp_id)
+
+                gene_id = analysis.experiment.tf.gene_id
+
+                try:
+                    gene_name = ANNOTATIONS.at[gene_id, 'Name']
+                except KeyError:
+                    gene_name = ''
+
                 info.update(analysis.analysisdata_set.values_list('key', 'value').iterator())
                 info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
 
-                gene_id = analysis.experiment.tf.gene_id
-                result.append((info, col_label, name, ANNOTATIONS.at[gene_id, 'Name'], analysis_id))
+                result.append((info, col_label, name, gene_name, analysis_id))
 
             return result
         else:

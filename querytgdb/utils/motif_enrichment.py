@@ -346,19 +346,25 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
 
     names, exp_ids, analysis_ids = zip(*res)
 
-    analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
+    analyses = Analysis.objects.filter(
+        name__in=analysis_ids,
+        experiment__name__in=exp_ids).prefetch_related('experiment')
 
     for (name, exp_id, analysis_id), col_str in zip(res, map(column_string, count(1))):
         info = OrderedDict([('name', name)])
 
         try:
             analysis = analyses.get(name=analysis_id, experiment__name=exp_id)
+            gene_id = analysis.experiment.tf.gene_id
+
+            try:
+                gene_name = ANNOTATIONS.at[gene_id, 'Name']
+            except KeyError:
+                gene_name = ''
+
             info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
             info.update(analysis.analysisdata_set.values_list('key', 'value'))
 
-            name_, _, uuid_ = name.rpartition(' ')
-            gene_id = name_ or uuid_
-
-            yield (info, col_str, gene_id, ANNOTATIONS.at[gene_id, 'Name'], analysis_id)
+            yield (info, col_str, gene_id, gene_name, analysis_id)
         except Analysis.DoesNotExist:
             pass

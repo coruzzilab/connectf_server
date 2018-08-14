@@ -226,11 +226,11 @@ class ListEnrichmentTableView(View):
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
-            names, exp_ids, analysis_ids = zip(*df.index)
+            names, exp_ids, analysis_ids, uids = zip(*df.index)
             analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
 
             def get_rows():
-                for (name, exp_id, analysis_id), *row in df.itertuples(name=None):
+                for (name, exp_id, analysis_id, uid), *row in df.itertuples(name=None):
                     info = {'name': name}
                     try:
                         analysis = analyses.get(
@@ -311,7 +311,6 @@ class MotifEnrichmentHeatmapView(View):
             except (FileNotFoundError, NoEnrichedMotif):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
-                raise
                 return HttpResponseBadRequest(content_type='image/svg+xml')
 
 
