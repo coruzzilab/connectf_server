@@ -91,9 +91,9 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
         analysis_targets = set(column.dropna().index)
 
         name_, _, uid_ = name.rpartition(' ')
-        name = f'{name_ or uid_} ({len(analysis_targets)})'
+        name = name_ or uid_
 
-        targets[(name, exp_id, analysis_id, uuid4())] = analysis_targets
+        targets[(name, exp_id, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
@@ -114,12 +114,15 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
 
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
-        list_enrichment_pvals.index = map(itemgetter(1), orig_index)
+        list_enrichment_pvals.index = [
+            '{1} — {0.experiment.tf.gene_id} ({2})'.format(analyses.get(name=analysis_id, experiment__name=exp_id),
+                                                           col_name, l)
+            for (name, exp_id, analysis_id, l, uid), col_name in orig_index]
         if legend:
             result = []
 
             for idx, col_label in orig_index:
-                name, exp_id, analysis_id, uid = idx
+                name, exp_id, analysis_id, l, uid = idx
 
                 info = {'name': name}
                 analysis = analyses.get(
@@ -136,7 +139,7 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
                 info.update(analysis.analysisdata_set.values_list('key', 'value').iterator())
                 info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
 
-                result.append((info, col_label, name, gene_name, analysis_id))
+                result.append((info, col_label, name, l, gene_name, analysis_id))
 
             return result
         else:

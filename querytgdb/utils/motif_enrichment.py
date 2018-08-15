@@ -283,13 +283,24 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
 
+    names, exp_ids, analysis_ids = zip(*res.keys())
+
+    analyses = Analysis.objects.filter(
+        name__in=analysis_ids,
+        experiment__name__in=exp_ids).prefetch_related('experiment')
+
+    columns = [
+        '{1} — {0.experiment.tf.gene_id}'.format(analyses.get(name=analysis_id, experiment__name=exp_id), col_name) for
+        (name, exp_id, analysis_id), col_name in
+        zip(res.keys(), map(column_string, count(1)))]
+
     if not body:
-        df.columns = map(column_string, range(1, len(res) + 1))
+        df.columns = columns
     else:
-        _promo, _body = tee(map(column_string, range(1, len(res) + 1)), 2)
+        _promo, _body = tee(columns, 2)
         df.columns = chain.from_iterable(zip(
-            map(lambda x: x + '_promo', _promo),
-            map(lambda x: x + '_body', _body)
+            map(lambda x: x + ' promo', _promo),
+            map(lambda x: x + ' body', _body)
         ))
 
     # df = df.rename(columns='_'.join)
@@ -352,6 +363,8 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
 
     for (name, exp_id, analysis_id), col_str in zip(res, map(column_string, count(1))):
         info = OrderedDict([('name', name)])
+        name_, _, uid_ = name.rpartition(' ')
+        name = name_ or uid_
 
         try:
             analysis = analyses.get(name=analysis_id, experiment__name=exp_id)
@@ -365,6 +378,6 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
             info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
             info.update(analysis.analysisdata_set.values_list('key', 'value'))
 
-            yield (info, col_str, gene_id, gene_name, analysis_id)
+            yield (info, col_str, name, gene_name, analysis_id)
         except Analysis.DoesNotExist:
             pass
