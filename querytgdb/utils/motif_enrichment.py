@@ -5,7 +5,7 @@ import sys
 from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
-from itertools import chain, tee, count
+from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
 from operator import or_
 from typing import Dict, Tuple, Union
@@ -201,21 +201,22 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     tfs, exp_ids, analysis_ids = zip(*res.keys())
-    analyses = Analysis.objects.filter(name__in=analysis_ids,
-                                       experiment__name__in=exp_ids)
+    analyses = Analysis.objects.filter(
+        name__in=analysis_ids,
+        experiment__name__in=exp_ids).prefetch_related('experiment')
 
     meta_dicts: OrderedDict[Tuple[str, ...], OrderedDict] = OrderedDict()
 
     for tf, exp_id, analysis_id in res.keys():
-        data = OrderedDict()
+        name_, _, uid_ = tf.rpartition(' ')
+        name = name_ or uid_
+        data = OrderedDict([('name', name)])
         try:
             analysis = analyses.get(
                 name=analysis_id,
                 experiment__name=exp_id)
-            data.update(OrderedDict(
-                analysis.analysisdata_set.values_list('key', 'value')))
-            data.update(
-                analysis.experiment.experimentdata_set.values_list('key', 'value'))
+            data.update(analysis.analysisdata_set.values_list('key', 'value'))
+            data.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
         except Analysis.DoesNotExist:
             pass
         meta_dicts[(tf, exp_id, analysis_id)] = data
