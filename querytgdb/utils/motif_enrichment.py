@@ -208,9 +208,15 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     meta_dicts: OrderedDict[Tuple[str, ...], OrderedDict] = OrderedDict()
 
     for tf, exp_id, analysis_id in res.keys():
-        name_, _, uid_ = tf.rpartition(' ')
-        name = name_ or uid_
-        data = OrderedDict([('name', name)])
+        m = NAME_REGEX.match(tf)
+
+        if m:
+            name, criterion = m.groups('')
+        else:
+            name = tf
+            criterion = ''
+
+        data = OrderedDict([('name', name), ('filter', criterion)])
         try:
             analysis = analyses.get(
                 name=analysis_id,
