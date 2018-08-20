@@ -1,6 +1,5 @@
 import sys
 from itertools import count, product
-from operator import itemgetter
 from typing import Optional
 from uuid import uuid4
 
@@ -12,7 +11,7 @@ import seaborn as sns
 from scipy.stats import fisher_exact
 
 from ..models import Analysis
-from ..utils import column_string
+from ..utils import NAME_REGEX, column_string
 from ..utils.parser import ANNOTATIONS
 
 
@@ -90,10 +89,14 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
     for (name, exp_id, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index)
 
-        name_, _, uid_ = name.rpartition(' ')
-        name = name_ or uid_
+        m = NAME_REGEX.match(name)
 
-        targets[(name, exp_id, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
+        if m:
+            name, criterion = m.groups('')
+        else:
+            criterion = ''
+
+        targets[(name, criterion, exp_id, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
@@ -114,17 +117,22 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
 
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
-        list_enrichment_pvals.index = [
-            '{1} — {0.experiment.tf.gene_id} ({2})'.format(analyses.get(name=analysis_id, experiment__name=exp_id),
-                                                           col_name, l)
-            for (name, exp_id, analysis_id, l, uid), col_name in orig_index]
+
+        indices = []
+
+        for (name, criterion, exp_id, analysis_id, l, uid), col_name in orig_index:
+            tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
+            indices.append('{2} — {0}{1} ({3})'.format(tf.gene_id, ' ' + tf.name if tf.name else '', col_name, l))
+
+        list_enrichment_pvals.index = indices
+
         if legend:
             result = []
 
             for idx, col_label in orig_index:
-                name, exp_id, analysis_id, l, uid = idx
+                name, criterion, exp_id, analysis_id, l, uid = idx
 
-                info = {'name': name}
+                info = {'name': name, 'filter': criterion}
                 analysis = analyses.get(
                     name=analysis_id,
                     experiment__name=exp_id)
@@ -139,7 +147,7 @@ def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False
                 info.update(analysis.analysisdata_set.values_list('key', 'value').iterator())
                 info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
 
-                result.append((info, col_label, name, l, gene_name, analysis_id))
+                result.append((info, col_label, name, criterion, l, gene_name, analysis_id))
 
             return result
         else:

@@ -587,11 +587,17 @@ def parse_query(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     return result
 
 
+def split_edge_component(x: pd.Series) -> pd.Series:
+    s = x.str.split(':', expand=True)
+
+    if s.shape[1] > 1:
+        return s.iloc[:, 0].str.cat(s.iloc[:, -1], sep=':')
+    return x
+
+
 def trim_edges(df: TargetFrame) -> TargetFrame:
     df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')] = \
-        df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].apply(
-            lambda x: x.str.replace('.+(?=INDUCED|REPRESSED|REGULATED|BOUND)', '',
-                                    regex=True, flags=re.I))
+        df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].apply(split_edge_component)
 
     return df
 

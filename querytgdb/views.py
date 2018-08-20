@@ -214,7 +214,7 @@ class ListEnrichmentLegendView(View):
             return JsonResponse(heatmap(
                 cache_path,
                 legend=True
-            ), safe=False)
+            ), safe=False, encoder=PandasJSONEncoder)
         except FileNotFoundError as e:
             raise Http404 from e
 
@@ -226,11 +226,11 @@ class ListEnrichmentTableView(View):
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
-            names, exp_ids, analysis_ids, ls, uids = zip(*df.index)
+            names, criteria, exp_ids, analysis_ids, ls, uids = zip(*df.index)
             analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
 
             def get_rows():
-                for (name, exp_id, analysis_id, l, uid), *row in df.itertuples(name=None):
+                for (name, criterion, exp_id, analysis_id, l, uid), *row in df.itertuples(name=None):
                     info = {'name': name, 'targets': l}
                     try:
                         analysis = analyses.get(

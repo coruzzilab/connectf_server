@@ -6,31 +6,16 @@ import numpy as np
 import pandas as pd
 
 
-def is_numeric_column(col: Union[str, Tuple]) -> bool:
-    if isinstance(col, tuple):
-        return col[3] in ('Pvalue', 'Log2FC')
-    else:
-        return col in ('User List Count', 'TF Count')
+def is_numeric_column(col: str) -> bool:
+    return col in {'User List Count', 'TF Count', 'Pvalue', 'Log2FC'}
 
 
-def is_p_value(col: Union[str, Tuple]) -> bool:
-    return isinstance(col, tuple) and col[3] == 'Pvalue'
+def is_p_value(col: str) -> bool:
+    return col == 'Pvalue'
 
 
 def is_edge(col: Union[str, Tuple[str]]) -> bool:
-    return isinstance(col, tuple) and col[3] == 'EDGE'
-
-
-def get_numeric_columns(df: pd.DataFrame) -> List[bool]:
-    return list(map(is_numeric_column, df.columns))
-
-
-def get_p_value_columns(df: pd.DataFrame) -> List[bool]:
-    return list(map(is_p_value, df.columns))
-
-
-def get_edge_columns(df: pd.DataFrame) -> List[bool]:
-    return list(map(is_edge, df.columns))
+    return col == 'EDGE'
 
 
 def is_data_column(col: str) -> bool:
@@ -65,9 +50,15 @@ def get_merge_cells(columns: List[Iterable]) -> List:
 
 
 def induce_repress_count(s: pd.Series):
-    return pd.Series((s.str.contains('induced', case=False).sum(),
-                      s.str.contains('repressed', case=False).sum()),
+    return pd.Series(((s > 0).sum(), (s < 0).sum()),
                      index=['induced', 'repressed'])
+
+
+def get_col_type(s):
+    if isinstance(s, tuple):
+        return s[3]
+    else:
+        return s
 
 
 def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
@@ -77,13 +68,18 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
     df = df.reindex([*data_cols, df.columns[0], *df.columns[len(data_cols) + 1:]], axis=1)
     df = df.rename(columns={'TARGET': 'Gene ID'})
 
-    num_cols = get_numeric_columns(df)
-    p_values = get_p_value_columns(df)
+    col_types = list(map(get_col_type, df.columns))
 
-    edge_cols = get_edge_columns(df)
+    num_cols = list(map(is_numeric_column, col_types))
+    p_values = list(map(is_p_value, col_types))
+
+    edge_cols = list(map(is_edge, col_types))
     edge_counts = df.loc[:, edge_cols].count(axis=0)
+
     total_edge_counts = stats['total']
-    induce_repress = df.loc[:, edge_cols].apply(induce_repress_count)
+
+    fc_cols = list(map(lambda c: c == 'Log2FC', col_types))
+    induce_repress = df.loc[:, fc_cols].apply(induce_repress_count)
 
     # for JSON response, can't have NaN or Inf
     df.loc[:, num_cols] = df.loc[:, num_cols].mask(np.isinf(df.loc[:, num_cols]), None)
@@ -93,19 +89,23 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
 
     # Column formatting for Handsontable
     column_formats = []
-    for i, (num, p) in enumerate(zip(num_cols, p_values)):
+    for i, (num, p, fc) in enumerate(zip(num_cols, p_values, fc_cols)):
         opt = {}
         if num:
             if p:
                 opt.update({'type': 'p_value'})
             else:
                 opt.update({'type': 'numeric'})
+
+            if fc:
+                opt.update({'renderer': 'renderFc'})
+            else:
+                opt.update({'renderer': 'renderNumber'})
+
             if i >= data_col_len:
-                opt.update({'renderer': 'renderNumber', 'validator': 'exponential'})
+                opt.update({'validator': 'exponential'})
         else:
             opt.update({'type': 'text'})
-            if i >= data_col_len:
-                opt.update({'renderer': 'renderTarget'})
 
         column_formats.append(opt)
 
@@ -129,7 +129,7 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
             if col != prev:
                 prev = col
                 edge = "Edges: {} ({})".format(edge_counts[(*col[:3], 'EDGE')], total_edge_counts[col[:3]])
-                ind_rep = "Induced-{} Repressed-{}".format(*induce_repress[(*col[:3], 'EDGE')])
+                ind_rep = "Induced-{} Repressed-{}".format(*induce_repress[(*col[:3], 'Log2FC')])
             columns[3][i + data_col_len] = edge
             columns[4][i + data_col_len] = ind_rep
         except KeyError:

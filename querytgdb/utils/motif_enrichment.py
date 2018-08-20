@@ -20,7 +20,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from ..utils import column_string, svg_font_adder
+from ..utils import NAME_REGEX, column_string, svg_font_adder
 from ..utils.parser import ANNOTATIONS
 
 
@@ -290,10 +290,11 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
         name__in=analysis_ids,
         experiment__name__in=exp_ids).prefetch_related('experiment')
 
-    columns = [
-        '{1} — {0.experiment.tf.gene_id}'.format(analyses.get(name=analysis_id, experiment__name=exp_id), col_name) for
-        (name, exp_id, analysis_id), col_name in
-        zip(res.keys(), map(column_string, count(1)))]
+    columns = []
+
+    for (name, exp_id, analysis_id), col_name in zip(res.keys(), map(column_string, count(1))):
+        tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
+        columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
 
     if not body:
         df.columns = columns
@@ -363,9 +364,14 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
         experiment__name__in=exp_ids).prefetch_related('experiment')
 
     for (name, exp_id, analysis_id), col_str in zip(res, map(column_string, count(1))):
-        info = OrderedDict([('name', name)])
-        name_, _, uid_ = name.rpartition(' ')
-        name = name_ or uid_
+        m = NAME_REGEX.match(name)
+
+        if m:
+            name, criterion = m.groups('')
+        else:
+            criterion = ''
+
+        info = OrderedDict([('name', name), ('filter', criterion)])
 
         try:
             analysis = analyses.get(name=analysis_id, experiment__name=exp_id)
@@ -379,6 +385,6 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
             info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
             info.update(analysis.analysisdata_set.values_list('key', 'value'))
 
-            yield (info, col_str, name, gene_name, analysis_id)
+            yield (info, col_str, name, criterion, gene_name, analysis_id)
         except Analysis.DoesNotExist:
             pass

@@ -25,8 +25,10 @@ from ..models import Analysis, AnalysisData, Annotation, Edge, Experiment, Exper
 class PandasJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
         if isinstance(o, np.number):
-            if np.isinf(o) or np.isnan(o):
+            if np.isinf(o):
                 return float('inf')
+            if np.isnan(o):
+                return None
             if isinstance(o, np.integer):
                 return int(o)
             if isinstance(o, np.floating):
@@ -258,3 +260,6 @@ def svg_font_adder(buff):
     tree.write(buff)
 
     return buff
+
+
+NAME_REGEX = re.compile(r"^([^\s\"]+)(?:\s+\"([^\"]+)\")?")
