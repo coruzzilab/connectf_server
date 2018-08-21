@@ -99,6 +99,8 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
 
             if fc:
                 opt.update({'renderer': 'renderFc'})
+            elif p:
+                pass
             else:
                 opt.update({'renderer': 'renderNumber'})
 

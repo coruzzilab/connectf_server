@@ -35,6 +35,8 @@ class PandasJSONEncoder(DjangoJSONEncoder):
                 return float(o)
         if isinstance(o, pd.Index):
             return o.tolist()
+        if isinstance(o, np.ndarray):
+            return o.tolist()
 
         return super().default(o)
 

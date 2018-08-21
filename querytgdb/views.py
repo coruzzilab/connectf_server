@@ -130,10 +130,12 @@ class StatsView(View):
             cache_dir = static_storage.path(request_id + '_pickle')
             df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
 
-            return JsonResponse({
+            info = {
                 'num_edges': df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count().sum(),
                 'num_targets': df.shape[0]
-            }, encoder=PandasJSONEncoder)
+            }
+
+            return JsonResponse(info, encoder=PandasJSONEncoder)
         except FileNotFoundError:
             raise Http404
 
