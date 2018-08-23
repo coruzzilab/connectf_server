@@ -109,7 +109,7 @@ MOTIF = MotifData(APPS_DIR)
 CLUSTER_INFO = pd.read_csv(
     APPS_DIR / 'static' / 'cluster_info.csv.gz',
     index_col=0
-).to_dict('index')
+).fillna('').to_dict('index')
 
 COLORS = sns.color_palette("husl", 2)
 
@@ -329,6 +329,7 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     plt.figure()
     heatmap_graph = sns.clustermap(df,
                                    cmap="YlGnBu",
+                                   cbar_kws={'label': 'Enrichment (-log10 p)'},
                                    xticklabels=1,
                                    row_cluster=rows > 1,
                                    col_cluster=cols > 1,
