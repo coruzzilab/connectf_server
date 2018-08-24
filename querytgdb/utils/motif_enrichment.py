@@ -258,7 +258,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     df = df.where(pd.notnull(df), None)
 
     return {
-        'columns': OrderedDict(('_'.join(c), meta_dicts[c]) for c in res.keys()),
+        'columns': [meta_dicts[c] for c in res.keys()],
         'result': list(merge_cluster_info(df))
     }
 

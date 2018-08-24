@@ -99,10 +99,8 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
 
             if fc:
                 opt.update({'renderer': 'renderFc'})
-            elif p:
-                pass
-            else:
-                opt.update({'renderer': 'renderNumber'})
+            elif i >= data_col_len and not p:
+                opt.update({'renderer': 'renderExp'})
 
             if i >= data_col_len:
                 opt.update({'validator': 'exponential'})
