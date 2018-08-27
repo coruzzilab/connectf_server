@@ -290,14 +290,13 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
                 columns=['source', 'target', 'edge_id']
             )
 
+            edge_data = (edge_data
+                         .merge(edge_types, on='edge_id')
+                         .drop('edge_id', axis=1)
+                         .set_index(['source', 'target']))
+
             if not edge_data.empty:
-                edge_data = pd.concat(map(itemgetter(1),
-                                          (edge_data
-                                           .merge(edge_types, on='edge_id')
-                                           .drop('edge_id', axis=1)
-                                           .set_index(['source', 'target'])
-                                           .groupby('edge'))),
-                                      axis=1)
+                edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
 
                 row_num, col_num = edge_data.shape
 
@@ -375,14 +374,13 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
             columns=['source', 'target', 'edge_id']
         )
 
+        edge_data = (edge_data
+                     .merge(edge_types, on='edge_id')
+                     .drop('edge_id', axis=1)
+                     .set_index(['source', 'target']))
+
         if not edge_data.empty:
-            edge_data = pd.concat(map(itemgetter(1),
-                                      (edge_data
-                                       .merge(edge_types, on='edge_id')
-                                       .drop('edge_id', axis=1)
-                                       .set_index(['source', 'target'])
-                                       .groupby('edge'))),
-                                  axis=1)
+            edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
 
             row_num, col_num = edge_data.shape
 
