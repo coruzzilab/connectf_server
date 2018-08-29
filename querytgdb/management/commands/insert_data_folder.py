@@ -6,7 +6,7 @@ import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db.transaction import atomic
 
-from ..commands.insert_tgdb import MetaDataException
+from ..commands.insert_data import MetaDataException
 from ...utils import insert_data
 
 
