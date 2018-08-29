@@ -32,6 +32,7 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
                                  cmap="YlGnBu",
                                  cbar_kws={'label': 'Enrichment (-log10 p)'},
                                  xticklabels=1,
+                                 yticklabels=1,
                                  row_cluster=row_num > 1,
                                  col_cluster=col_num > 1,
                                  **kwargs,
