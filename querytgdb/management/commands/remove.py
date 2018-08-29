@@ -25,7 +25,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options["dry_run"]
         command = options["command"]
-        print(options)
 
         with atomic():
             if not dry_run:
