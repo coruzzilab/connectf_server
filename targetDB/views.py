@@ -1,5 +1,6 @@
 import os
 from collections import OrderedDict
+from itertools import chain
 from typing import Generator, Iterable
 
 from django.core.files.storage import FileSystemStorage
@@ -83,13 +84,18 @@ class KeyView(views.APIView):
         if tfs & {'oralltfs', 'andalltfs'}:
             tfs = set()
 
-        queryset = ['pvalue', 'edge', 'fc', 'has_column']
+        queryset = ['edge', 'has_column']
 
         if tfs:
-            experiments = Experiment.objects.filter(tf__gene_id__in=tfs)
+            experiments = Experiment.objects.filter(tf__gene_id__in=tfs).prefetch_related("analysis_set")
 
             if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                 queryset.append('additional_edge')
+
+            if any(chain.from_iterable((analysis.regulation_set.exists()
+                                        for analysis in exp.analysis_set.all())
+                                       for exp in experiments)):
+                queryset[0:0] = ['fc', 'pvalue']
 
             queryset.extend(AnalysisData.objects.filter(
                 analysis__experiment__in=experiments
@@ -99,7 +105,7 @@ class KeyView(views.APIView):
                 experiment__in=experiments
             ).distinct().values_list('key', flat=True))
         else:
-            queryset.append('additional_edge')
+            queryset.extend(['additional_edge', 'fc', 'pvalue'])
             queryset.extend(AnalysisData.objects.distinct().values_list('key', flat=True))
             queryset.extend(ExperimentData.objects.distinct().values_list('key', flat=True))
 
