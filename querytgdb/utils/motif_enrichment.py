@@ -127,13 +127,17 @@ def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show
 
         def cluster_fisher(row):
             return fisher_exact(
-                [[row[0], row[1] - row[0]],
-                 [list_cluster_dedup.shape[0] - row[0],
-                  annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - row[1] + row[0]]],
+                [[row[0], row[1]],
+                 [row[2], row[3]]],
                 alternative='greater')[1]
 
-        p_values = pd.concat([list_cluster_size, ann_cluster_size],
-                             axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
+        p_values = pd.concat([
+            list_cluster_size,
+            ann_cluster_size - list_cluster_size,
+            list_cluster_dedup.shape[0] - list_cluster_size,
+            annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
+        ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
+
         reject, adj_p = fdrcorrection(p_values, alpha=alpha, is_sorted=True)
 
         str_index = p_values.index.astype(str)
