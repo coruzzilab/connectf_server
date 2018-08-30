@@ -70,6 +70,9 @@ class Annotation(models.Model):
     gene_type = models.CharField(max_length=100)
     gene_family = models.TextField(max_length=2000)
 
+    def __str__(self):
+        return self.name or self.gene_id
+
 
 class EdgeData(models.Model):
     """
