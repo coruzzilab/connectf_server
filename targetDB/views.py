@@ -105,7 +105,7 @@ class KeyView(views.APIView):
                 experiment__in=experiments
             ).distinct().values_list('key', flat=True))
         else:
-            queryset.extend(['additional_edge', 'fc', 'pvalue'])
+            queryset[0:0] = ['fc', 'pvalue', 'additional_edge']
             queryset.extend(AnalysisData.objects.distinct().values_list('key', flat=True))
             queryset.extend(ExperimentData.objects.distinct().values_list('key', flat=True))
 
