@@ -600,12 +600,6 @@ def trim_edges(df: TargetFrame) -> TargetFrame:
     return df
 
 
-def induce_repress_count(df: TargetFrame):
-    return TargetSeries((df[(*df.name, 'EDGE')].str.contains('induced', case=False).sum(),
-                         df[(*df.name, 'EDGE')].str.contains('repressed', case=False).sum()),
-                        index=['induced', 'repressed'])
-
-
 def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
     return {
         'total': result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(

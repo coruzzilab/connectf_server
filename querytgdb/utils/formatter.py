@@ -123,17 +123,17 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
     edge = None
     ind_rep = None
     for i, col in enumerate(islice(zip(*columns), data_col_len, None)):
-        try:
-            name, _, uuid_ = col[0].rpartition(' ')
-            columns[0][i + data_col_len] = name or uuid_
-            if col != prev:
-                prev = col
-                edge = "Edges: {} ({})".format(edge_counts[(*col[:3], 'EDGE')], total_edge_counts[col[:3]])
+        name, _, uuid_ = col[0].rpartition(' ')
+        columns[0][i + data_col_len] = name or uuid_
+        if col != prev:
+            prev = col
+            edge = "Edges: {} ({})".format(edge_counts[(*col[:3], 'EDGE')], total_edge_counts[col[:3]])
+            try:
                 ind_rep = "Induced-{} Repressed-{}".format(*induce_repress[(*col[:3], 'Log2FC')])
-            columns[3][i + data_col_len] = edge
-            columns[4][i + data_col_len] = ind_rep
-        except KeyError:
-            pass
+            except KeyError:
+                pass
+        columns[3][i + data_col_len] = edge
+        columns[4][i + data_col_len] = ind_rep
 
     merged_cells = get_merge_cells(columns)
 
