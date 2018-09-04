@@ -118,32 +118,31 @@ class NoEnrichedMotif(ValueError):
     pass
 
 
+def cluster_fisher(row):
+    return fisher_exact((row[:2], row[2:]), alternative='greater')[1]
+
+
+def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
+                        alpha: float = 0.05) -> Tuple[pd.Series, pd.Series]:
+    list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
+    list_cluster_size = list_cluster_dedup.groupby('#pattern name').size()
+
+    p_values = pd.concat([
+        list_cluster_size,
+        ann_cluster_size - list_cluster_size,
+        list_cluster_dedup.shape[0] - list_cluster_size,
+        annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
+    ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
+
+    reject, adj_p = fdrcorrection(p_values, alpha=alpha, is_sorted=True)
+
+    str_index = p_values.index.astype(str)
+
+    return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
+
+
 def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
-    def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
-                            alpha: float = 0.05) -> Tuple[pd.Series, pd.Series]:
-        list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
-        list_cluster_size = list_cluster_dedup.groupby('#pattern name').size()
-
-        def cluster_fisher(row):
-            return fisher_exact(
-                [[row[0], row[1]],
-                 [row[2], row[3]]],
-                alternative='greater')[1]
-
-        p_values = pd.concat([
-            list_cluster_size,
-            ann_cluster_size - list_cluster_size,
-            list_cluster_dedup.shape[0] - list_cluster_size,
-            annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
-        ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
-
-        reject, adj_p = fdrcorrection(p_values, alpha=alpha, is_sorted=True)
-
-        str_index = p_values.index.astype(str)
-
-        return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
-
     promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
                                                   alpha=alpha,
                                                   annotated=MOTIF.annotated_promo,
@@ -290,7 +289,7 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
         raise NoEnrichedMotif
 
     df = -np.log10(df)
-    df = df.clip_upper(sys.maxsize)
+    df = df.clip_upper(sys.float_info.max_10_exp)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
 
@@ -332,6 +331,7 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
     plt.figure()
     heatmap_graph = sns.clustermap(df,
+                                   method="ward",
                                    cmap="YlGnBu",
                                    cbar_kws={'label': 'Enrichment (-log10 p)'},
                                    xticklabels=1,
