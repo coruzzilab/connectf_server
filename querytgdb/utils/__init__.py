@@ -264,4 +264,4 @@ def svg_font_adder(buff):
     return buff
 
 
-NAME_REGEX = re.compile(r"^([^\s\"]+)(?:\s+\"([^\"]+)\")?")
+NAME_REGEX = re.compile(r"^([^\"]+)(?:\s*\"([^\"]+)\")?")
