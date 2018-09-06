@@ -8,7 +8,7 @@ from io import BytesIO
 from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
 from operator import or_
-from typing import Dict, Tuple, Union
+from typing import Dict, Iterable, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -141,7 +141,7 @@ def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
     return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
 
 
-def motif_enrichment(res: Dict[Tuple[str], pd.Series], alpha: float = 0.05, show_reject: bool = True,
+def motif_enrichment(res: Dict[Tuple[str], Iterable], alpha: float = 0.05, show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
     promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
                                                   alpha=alpha,
@@ -203,14 +203,21 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     df.columns = df.columns.droplevel(3)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
+    try:
+        with gzip.open(target_genes_path, 'rb') as f:
+            _, target_lists = pickle.load(f)
+            res[('Target Gene List', '', '')] = set(chain.from_iterable(target_lists.values()))
+    except (FileNotFoundError, TypeError):
+        pass
+
     tfs, exp_ids, analysis_ids = zip(*res.keys())
     analyses = Analysis.objects.filter(
         name__in=analysis_ids,
         experiment__name__in=exp_ids).prefetch_related('experiment')
 
-    meta_dicts: OrderedDict[Tuple[str, ...], OrderedDict] = OrderedDict()
+    columns = []
 
-    for tf, exp_id, analysis_id in res.keys():
+    for (tf, exp_id, analysis_id), value in res.items():
         m = NAME_REGEX.match(tf)
 
         if m:
@@ -227,22 +234,10 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
             data.update(analysis.analysisdata_set.values_list('key', 'value'))
             data.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
         except Analysis.DoesNotExist:
-            pass
-        meta_dicts[(tf, exp_id, analysis_id)] = data
+            if (tf, exp_id, analysis_id) == ('Target Gene List', '', ''):
+                data['genes'] = ", ".join(value)
 
-    try:
-        if target_genes_path:
-            with gzip.open(target_genes_path, 'rb') as f:
-                _, target_lists = pickle.load(f)
-                meta_dicts.update(
-                    [((name, *m_name), OrderedDict({'list_name': name, **m})) for m_name, m in meta_dicts.items() for
-                     name in target_lists.keys()])
-                # Use list comprehension instead of generator expression to avoid mutating dict as we update it
-                res.update([((t_name, *r_name), t_list & r_list)
-                            for r_name, r_list in res.items()
-                            for t_name, t_list in target_lists.items()])
-    except FileNotFoundError:
-        pass
+        columns.append(data)
 
     df = motif_enrichment(res, alpha=alpha, show_reject=False, body=body)
 
@@ -261,7 +256,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     df = df.where(pd.notnull(df), None)
 
     return {
-        'columns': [meta_dicts[c] for c in res.keys()],
+        'columns': columns,
         'result': list(merge_cluster_info(df))
     }
 
@@ -274,13 +269,10 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     try:
-        if target_genes_path:
-            with gzip.open(target_genes_path, 'rb') as f:
-                _, target_lists = pickle.load(f)
-                res.update([((t_name, *r_name), t_list & r_list)
-                            for r_name, r_list in res.items()
-                            for t_name, t_list in target_lists.items()])
-    except FileNotFoundError:
+        with gzip.open(target_genes_path, 'rb') as f:
+            _, target_lists = pickle.load(f)
+            res[('Target Gene List', '', '')] = set(chain.from_iterable(target_lists.values()))
+    except (FileNotFoundError, TypeError):
         pass
 
     df = motif_enrichment(res, alpha=alpha, body=body)
@@ -288,8 +280,8 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     if df.empty:
         raise NoEnrichedMotif
 
+    df = df.clip_lower(sys.float_info.min)
     df = -np.log10(df)
-    df = df.clip_upper(sys.float_info.max_10_exp)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
 
@@ -302,8 +294,11 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     columns = []
 
     for (name, exp_id, analysis_id), col_name in zip(res.keys(), map(column_string, count(1))):
-        tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
-        columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
+        try:
+            tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
+            columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
+        except Analysis.DoesNotExist:
+            columns.append('{} — {}'.format(col_name, name))
 
     if not body:
         df.columns = columns
@@ -313,8 +308,6 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
             map(lambda x: x + ' promo', _promo),
             map(lambda x: x + ' body', _body)
         ))
-
-    # df = df.rename(columns='_'.join)
 
     df = df.T
 
@@ -359,23 +352,15 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
     df.columns = df.columns.droplevel(3)
     res = df.columns.tolist()
 
-    try:
-        if target_genes_path:
-            with gzip.open(target_genes_path, 'rb') as f:
-                _, target_lists = pickle.load(f)
-                res.extend([(t_name, *r_name)
-                            for r_name in res
-                            for t_name in target_lists.keys()])
-    except FileNotFoundError:
-        pass
-
     names, exp_ids, analysis_ids = zip(*res)
 
     analyses = Analysis.objects.filter(
         name__in=analysis_ids,
         experiment__name__in=exp_ids).prefetch_related('experiment')
 
-    for (name, exp_id, analysis_id), col_str in zip(res, map(column_string, count(1))):
+    col_strings = map(column_string, count(1))
+
+    for (name, exp_id, analysis_id), col_str in zip(res, col_strings):
         m = NAME_REGEX.match(name)
 
         if m:
@@ -396,7 +381,20 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
 
             info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
             info.update(analysis.analysisdata_set.values_list('key', 'value'))
-
-            yield (info, col_str, name, criterion, gene_name, analysis_id)
         except Analysis.DoesNotExist:
-            pass
+            gene_name = ''
+
+        yield (info, col_str, name, criterion, gene_name, analysis_id)
+
+    try:
+        with gzip.open(target_genes_path, 'rb') as f:
+            _, target_lists = pickle.load(f)
+
+            name = 'Target Gene List'
+
+            yield (
+                {'name': name, 'genes': ", ".join(set(chain.from_iterable(target_lists.values())))},
+                next(col_strings), name, '', '', ''
+            )
+    except (FileNotFoundError, TypeError):
+        pass

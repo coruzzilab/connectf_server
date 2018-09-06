@@ -257,7 +257,7 @@ class ListEnrichmentTableView(View):
 class MotifEnrichmentJSONView(View):
     def get(self, request, request_id):
         if not request_id:
-            return JsonResponse({}, status=404)
+            raise Http404
         with lock:
             try:
                 alpha = float(request.GET.get('alpha', 0.05))
@@ -271,12 +271,12 @@ class MotifEnrichmentJSONView(View):
                 return JsonResponse(
                     get_motif_enrichment_json(
                         cache_path,
-                        # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
+                        static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
                         alpha=alpha,
                         body=body == '1'),
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif) as e:
-                return JsonResponse({}, status=404)
+                raise Http404 from e
             except (ValueError, TypeError) as e:
                 return JsonResponse({'error': str(e)}, status=400)
 
@@ -299,7 +299,7 @@ class MotifEnrichmentHeatmapView(View):
 
                 buff = get_motif_enrichment_heatmap(
                     cache_path,
-                    # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
+                    static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id)),
                     upper_bound=upper,
                     lower_bound=lower,
                     alpha=alpha,
@@ -326,10 +326,14 @@ class MotifEnrichmentHeatmapTableView(View):
         if not os.path.exists(cache_path):
             time.sleep(3)
 
-        return JsonResponse(
-            list(get_motif_enrichment_heatmap_table(
-                cache_path
-                # static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id))
-            )),
-            safe=False
-        )
+        try:
+            return JsonResponse(
+                list(get_motif_enrichment_heatmap_table(
+                    cache_path,
+                    static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id))
+                )),
+                safe=False
+            )
+        except FileNotFoundError:
+            raise Http404
+

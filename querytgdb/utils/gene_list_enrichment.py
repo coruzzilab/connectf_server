@@ -16,8 +16,8 @@ from ..utils.parser import ANNOTATIONS
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
-    df = -np.log10(df)
-    return df.clip_upper(sys.maxsize)
+    df = df.clip_lower(sys.float_info.min)
+    return -np.log10(df)
 
 
 def draw_heatmap(df: pd.DataFrame, **kwargs):

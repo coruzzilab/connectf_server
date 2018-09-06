@@ -1,14 +1,14 @@
-from collections import defaultdict
+from collections import OrderedDict
 from contextlib import closing
 from string import whitespace
-from typing import Dict, TextIO, Tuple
+from typing import TextIO, Tuple
 
 import pandas as pd
 
 
-def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict]:
-    gene_to_name = defaultdict(set)
-    name_to_gene = defaultdict(set)
+def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, OrderedDict]:
+    gene_to_name = OrderedDict()
+    name_to_gene = OrderedDict()
 
     with closing(f) as gene_file:
         list_name = 'default'
@@ -17,8 +17,8 @@ def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict]:
             if line.startswith('>'):
                 list_name = line.strip('>' + whitespace)
             else:
-                gene_to_name[line].add(list_name)
-                name_to_gene[list_name].add(line)
+                gene_to_name.setdefault(line, set()).add(list_name)
+                name_to_gene.setdefault(list_name, set()).add(line)
 
     df = pd.DataFrame(
         ((key, ', '.join(val), len(val)) for key, val in gene_to_name.items()),
