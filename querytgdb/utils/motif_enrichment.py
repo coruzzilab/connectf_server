@@ -147,13 +147,15 @@ def motif_enrichment(res: Dict[Tuple[str], Iterable], alpha: float = 0.05, show_
                                                   alpha=alpha,
                                                   annotated=MOTIF.annotated_promo,
                                                   annotated_dedup=MOTIF.ann_promo_dedup,
-                                                  ann_cluster_size=MOTIF.promo_cluster_size), res.values()))
+                                                  ann_cluster_size=MOTIF.promo_cluster_size),
+                                          res.values()))
     if body:
         body_enrich, body_reject = zip(*map(partial(get_list_enrichment,
                                                     alpha=alpha,
                                                     annotated=MOTIF.annotated_body,
                                                     annotated_dedup=MOTIF.ann_body_dedup,
-                                                    ann_cluster_size=MOTIF.body_cluster_size), res.values()))
+                                                    ann_cluster_size=MOTIF.body_cluster_size),
+                                            res.values()))
 
         df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
         _promo, _body = tee(res.keys(), 2)

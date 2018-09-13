@@ -83,7 +83,7 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
 def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     network_table = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
     network_table.columns = network_table.columns.droplevel(level=[1, 2, 3])
-    network_table = network_table.rename(columns=lambda x: re.split(r'\s', x, 1)[0], level=0)
+    network_table = network_table.rename(columns=lambda x: re.split(r'\s', x, 1)[0].upper(), level=0)
 
     edge_nodes = network_table.loc[network_table.index.difference(network_table.columns.get_level_values(0)), :]
 
