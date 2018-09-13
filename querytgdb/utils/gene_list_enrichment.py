@@ -45,8 +45,8 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
     return sns_heatmap
 
 
-def heatmap(pickledir, background: Optional[int] = None, draw=True, legend=False, save_file=False, upper=None,
-            lower=None):
+def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True, legend=False, save_file=False,
+                         upper=None, lower=None):
     """
     Draws gene list enrichment heatmap from cached query
 

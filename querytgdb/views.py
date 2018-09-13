@@ -34,7 +34,7 @@ plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 
-from querytgdb.utils.gene_list_enrichment import heatmap
+from querytgdb.utils.gene_list_enrichment import gene_list_enrichment
 from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
     get_motif_enrichment_heatmap_table
 
@@ -192,7 +192,7 @@ class ListEnrichmentSVGView(View):
             buff = BytesIO()
             response = HttpResponse(content_type='image/svg+xml')
 
-            heatmap(
+            gene_list_enrichment(
                 cache_path,
                 draw=True,
                 lower=lower,
@@ -213,7 +213,7 @@ class ListEnrichmentLegendView(View):
     def get(self, request, request_id):
         try:
             cache_path = static_storage.path("{}_pickle".format(request_id))
-            return JsonResponse(heatmap(
+            return JsonResponse(gene_list_enrichment(
                 cache_path,
                 legend=True
             ), safe=False, encoder=PandasJSONEncoder)
@@ -224,7 +224,7 @@ class ListEnrichmentLegendView(View):
 class ListEnrichmentTableView(View):
     def get(self, request, request_id):
         try:
-            df = heatmap(
+            df = gene_list_enrichment(
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
@@ -233,7 +233,7 @@ class ListEnrichmentTableView(View):
 
             def get_rows():
                 for (name, criterion, exp_id, analysis_id, l, uid), *row in df.itertuples(name=None):
-                    info = {'name': name, 'targets': l}
+                    info = {'name': name, 'filter': criterion, 'targets': l}
                     try:
                         analysis = analyses.get(
                             name=analysis_id,
