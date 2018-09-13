@@ -20,6 +20,7 @@ from querytgdb.models import Analysis
 from querytgdb.utils.excel import create_export_zip
 from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict, \
     svg_font_adder
+from .utils.analysis_enrichment import analysis_enrichment
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
@@ -337,3 +338,15 @@ class MotifEnrichmentHeatmapTableView(View):
         except FileNotFoundError:
             raise Http404
 
+
+class AnalysisEnrichmentView(View):
+    def get(self, request, request_id):
+        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+
+        try:
+            return JsonResponse(analysis_enrichment(cache_path))
+
+        except FileNotFoundError:
+            return HttpResponseNotFound("Please make a new query")
+        except ValueError as e:
+            return HttpResponseBadRequest(e)
