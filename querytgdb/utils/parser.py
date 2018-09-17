@@ -468,9 +468,16 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List
                                             suffixes=get_suffix(prec, succ))
                             df.include = False
                     filter_string += succ.filter_string
-                    df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+
+                    try:
+                        df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+                    except IndexError:
+                        # beware of the shape of indices and columns
+                        df = TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
+
                     df.filter_string = filter_string
                     stack.append(df)
+
                 elif curr == 'not':
                     succ = get_tf(next(it), edges)
                     succ.include = not succ.include
