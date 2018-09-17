@@ -41,17 +41,22 @@ def analysis_enrichment(cache_path) -> Dict:
                                                       for name, col in df.iteritems()), 2):
         columns.append((name1, name2))
 
+        common = col1.intersection(col2).sort_values()
+
         c = (
-            (len(col1.intersection(col2)), len(col1.difference(col2))),
+            (len(common), len(col1.difference(col2))),
             (len(col2.difference(col1)), background - len(col1.union(col2)))
         )
 
         data.append({
             'greater': fisher_exact(c, 'greater')[1],
-            'less': fisher_exact(c, 'less')[1]
+            'less': fisher_exact(c, 'less')[1],
+            'genes': common
         })
 
-    p_values = pd.DataFrame(data).apply(lambda x: fdrcorrection(x)[1]).rename(columns=lambda x: x + '_adj')
+    p_values = (pd.DataFrame(data)[['less', 'greater']]
+                .apply(lambda x: fdrcorrection(x)[1])
+                .rename(columns=lambda x: x + '_adj'))
 
     for d, adj_p in zip(data, p_values.itertuples(index=False)):
         d.update(adj_p._asdict())

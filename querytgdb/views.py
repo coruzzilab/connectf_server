@@ -344,7 +344,7 @@ class AnalysisEnrichmentView(View):
         cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
 
         try:
-            return JsonResponse(analysis_enrichment(cache_path))
+            return JsonResponse(analysis_enrichment(cache_path), encoder=PandasJSONEncoder)
 
         except FileNotFoundError:
             return HttpResponseNotFound("Please make a new query")
