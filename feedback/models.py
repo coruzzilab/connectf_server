@@ -28,7 +28,7 @@ def send_feedback_alert(sender: Type[models.Model], instance: Feedback, *args, *
             "noreply@coruzzilab-macpro.bio.nyu.edu",
             settings.ALERT_EMAILS
         )
-    except smtplib.SMTPException:
+    except (smtplib.SMTPException, ConnectionRefusedError):
         pass
 
 
