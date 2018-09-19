@@ -20,7 +20,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from ..utils import NAME_REGEX, column_string, svg_font_adder
+from ..utils import column_string, split_name, svg_font_adder
 from ..utils.parser import ANNOTATIONS
 
 
@@ -220,13 +220,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
     columns = []
 
     for (tf, exp_id, analysis_id), value in res.items():
-        m = NAME_REGEX.match(tf)
-
-        if m:
-            name, criterion = m.groups('')
-        else:
-            name = tf
-            criterion = ''
+        name, criterion = split_name(tf)
 
         data = OrderedDict([('name', name), ('filter', criterion)])
         try:
@@ -363,12 +357,7 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
     col_strings = map(column_string, count(1))
 
     for (name, exp_id, analysis_id), col_str in zip(res, col_strings):
-        m = NAME_REGEX.match(name)
-
-        if m:
-            name, criterion = m.groups('')
-        else:
-            criterion = ''
+        name, criterion = split_name(name)
 
         info = OrderedDict([('name', name), ('filter', criterion)])
 

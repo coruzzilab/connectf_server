@@ -11,7 +11,7 @@ import seaborn as sns
 from scipy.stats import fisher_exact
 
 from ..models import Analysis
-from ..utils import NAME_REGEX, column_string
+from ..utils import column_string, split_name
 from ..utils.parser import ANNOTATIONS
 
 
@@ -90,12 +90,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
     for (name, exp_id, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index)
 
-        m = NAME_REGEX.match(name)
-
-        if m:
-            name, criterion = m.groups('')
-        else:
-            criterion = ''
+        name, criterion = split_name(name)
 
         targets[(name, criterion, exp_id, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
 

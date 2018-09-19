@@ -263,3 +263,14 @@ def svg_font_adder(buff):
 
 
 NAME_REGEX = re.compile(r"^([^\"]+)(?:\s*\"([^\"]+)\")?")
+
+
+def split_name(name: str) -> Tuple[str, str]:
+    m = NAME_REGEX.match(name)
+
+    if m:
+        name, criterion = m.groups('')
+    else:
+        criterion = ''
+
+    return name, criterion
