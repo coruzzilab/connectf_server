@@ -1,12 +1,19 @@
 from itertools import combinations, islice
-from typing import Dict
+from typing import Dict, Tuple
 
 import pandas as pd
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from ..models import Analysis
+from ..utils import split_name
 from ..utils.parser import ANNOTATIONS
+
+
+def split_col_name(col_name: Tuple[str, ...]) -> Tuple[str, ...]:
+    name, *rest = col_name
+
+    return (*split_name(name), *rest)
 
 
 def analysis_enrichment(cache_path) -> Dict:
@@ -29,17 +36,17 @@ def analysis_enrichment(cache_path) -> Dict:
     analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids).prefetch_related(
         'experiment', 'experiment__experimentdata_set', 'analysisdata_set')
 
-    for name in df.columns:
-        analysis = analyses.get(name=name[2], experiment__name=name[1])
+    for col_name in df.columns:
+        analysis = analyses.get(name=col_name[2], experiment__name=col_name[1])
 
         i = dict(analysis.analysisdata_set.values_list('key', 'value'))
         i.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
 
-        info.append((name, i))
+        info.append((split_col_name(col_name), i))
 
     for (name1, col1), (name2, col2) in combinations(((name, col.index[col.notna()])
                                                       for name, col in df.iteritems()), 2):
-        columns.append((name1, name2))
+        columns.append((split_col_name(name1), split_col_name(name2)))
 
         common = col1.intersection(col2).sort_values()
 
