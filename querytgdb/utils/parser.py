@@ -81,11 +81,11 @@ floatnum = pp.Combine(integer + pp.Optional(point + pp.Optional(number)) + pp.Op
 
 and_ = pp.CaselessKeyword('and')
 or_ = pp.CaselessKeyword('or')
-andor = and_ | or_
 
 opers = [
     (pp.CaselessKeyword("not"), 1, pp.opAssoc.RIGHT),
-    (andor, 2, pp.opAssoc.LEFT)
+    (and_, 2, pp.opAssoc.LEFT),
+    (or_, 2, pp.opAssoc.LEFT)
 ]
 
 quote_word = pp.Word(pp.alphanums + '-_. :')
