@@ -17,5 +17,7 @@ urlpatterns = [
         views.MotifEnrichmentHeatmapView.as_view()),
     url(r'^motif_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})?/heatmap_table/$',
         views.MotifEnrichmentHeatmapTableView.as_view()),
-    url(r'^analysis_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})/$', views.AnalysisEnrichmentView.as_view())
+    url(r'^analysis_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})/$',
+        views.AnalysisEnrichmentView.as_view()),
+    url(r'^summary/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})/$', views.SummaryView.as_view())
 ]

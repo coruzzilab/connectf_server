@@ -25,6 +25,7 @@ from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
 from .utils.parser import get_query_result
+from .utils.summary import get_summary
 
 # matplotlib import order issues
 matplotlib.use('SVG')
@@ -350,3 +351,15 @@ class AnalysisEnrichmentView(View):
             return HttpResponseNotFound("Please make a new query")
         except ValueError as e:
             return HttpResponseBadRequest(e)
+
+
+class SummaryView(View):
+    def get(self, request, request_id):
+        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+
+        try:
+            result = get_summary(cache_path)
+
+            return JsonResponse(result, encoder=PandasJSONEncoder)
+        except FileNotFoundError:
+            return HttpResponseNotFound("Please make a new query")

@@ -1,5 +1,6 @@
 import base64
 import gzip
+import math
 import mimetypes
 import os.path as path
 import pickle
@@ -26,7 +27,7 @@ class PandasJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
         if isinstance(o, np.number):
             if np.isinf(o):
-                return float('inf')
+                return math.inf
             if np.isnan(o):
                 return None
             if isinstance(o, np.integer):
