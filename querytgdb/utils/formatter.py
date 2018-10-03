@@ -127,7 +127,14 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
         columns[0][i + data_col_len] = name or uuid_
         if col != prev:
             prev = col
-            edge = "Edges: {} ({})".format(edge_counts[(*col[:3], 'EDGE')], total_edge_counts[col[:3]])
+
+            edge_count = edge_counts[(*col[:3], 'EDGE')]
+            total_edge_count = total_edge_counts[col[:3]]
+
+            edge = "Edges: {}".format(edge_count)
+            if edge_count != total_edge_count:
+                edge += " ({})".format(total_edge_count)
+
             try:
                 ind_rep = "Induced-{} Repressed-{}".format(*induce_repress[(*col[:3], 'Log2FC')])
             except KeyError:
