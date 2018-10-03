@@ -131,7 +131,7 @@ def format_data(df: pd.DataFrame, stats: Union[Dict, None] = None):
             try:
                 ind_rep = "Induced-{} Repressed-{}".format(*induce_repress[(*col[:3], 'Log2FC')])
             except KeyError:
-                pass
+                ind_rep = None
         columns[3][i + data_col_len] = edge
         columns[4][i + data_col_len] = ind_rep
 
