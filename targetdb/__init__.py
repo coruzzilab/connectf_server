@@ -1,1 +1,1 @@
-default_app_config = 'targetDB.apps.TargetdbConfig'
+default_app_config = 'targetdb.apps.TargetdbConfig'

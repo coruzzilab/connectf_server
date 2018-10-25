@@ -24,6 +24,8 @@ class Command(BaseCommand):
         infile, outfile = itemgetter("input", "output")(options)
 
         anno = pd.DataFrame(Annotation.objects.values_list(named=True).iterator())
+        if anno.empty:
+            anno = pd.DataFrame(columns=["id", "gene_id", "name", "fullname", "gene_type", "gene_family"])
 
         if outfile:
             anno[["gene_id", "name", "fullname", "gene_type", "gene_family"]].to_csv(outfile, index=False)

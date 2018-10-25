@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from querytgdb.models import Experiment
+from querytgdb.models import Analysis
 
 
 class TFValueSerializer(serializers.ModelSerializer):
@@ -8,5 +8,5 @@ class TFValueSerializer(serializers.ModelSerializer):
     name = serializers.CharField(required=False, source='gene_name')
 
     class Meta:
-        model = Experiment
+        model = Analysis
         fields = ("value", "name")

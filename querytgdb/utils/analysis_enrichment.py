@@ -10,20 +10,24 @@ from ..utils import split_name
 from ..utils.parser import ANNOTATIONS
 
 
-def split_col_name(col_name: Tuple[str, ...]) -> Tuple[str, ...]:
-    name, *rest = col_name
+class AnalysisEnrichmentError(ValueError):
+    pass
 
-    return (*split_name(name), *rest)
+
+def split_col_name(col_name: Tuple[str, int]) -> Tuple[str, str, int]:
+    name, analysis_id = col_name
+
+    return (*split_name(name), analysis_id)
 
 
 def analysis_enrichment(cache_path) -> Dict:
     df = pd.read_pickle(cache_path)
 
-    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    df.columns = df.columns.droplevel(3)
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df.columns = df.columns.droplevel(2)
 
     if df.shape[1] < 2:
-        raise ValueError('Analysis enrichment requires more than 1 queried analysis')
+        raise AnalysisEnrichmentError('Analysis enrichment requires more than 1 queried analysis')
 
     columns = []
     data = []
@@ -31,18 +35,13 @@ def analysis_enrichment(cache_path) -> Dict:
 
     background = ANNOTATIONS.shape[0]
 
-    exp_ids, analysis_ids = islice(zip(*df.columns), 1, None)
+    analysis_ids = df.columns.get_level_values(1)
 
-    analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids).prefetch_related(
-        'experiment', 'experiment__experimentdata_set', 'analysisdata_set')
+    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set')
 
     for col_name in df.columns:
-        analysis = analyses.get(name=col_name[2], experiment__name=col_name[1])
-
-        i = dict(analysis.analysisdata_set.values_list('key', 'value'))
-        i.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
-
-        info.append((split_col_name(col_name), i))
+        analysis = analyses.get(pk=col_name[1])
+        info.append((split_col_name(col_name), dict(analysis.analysisdata_set.values_list('key__name', 'value'))))
 
     for (name1, col1), (name2, col2) in combinations(((name, col.index[col.notna()])
                                                       for name, col in df.iteritems()), 2):

@@ -1,15 +1,28 @@
+from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
+
+from ..models import Analysis
+from ..utils import data_to_edges
 
 
 def get_summary(cache_path):
     df = pd.read_pickle(cache_path)
 
-    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    df.columns = df.columns.droplevel(3)
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
 
-    chart = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_).to_dict(into=OrderedDict)
+    analyses = Analysis.objects.filter(
+        pk__in=df.columns.get_level_values(1)
+    ).prefetch_related('analysisdata_set', 'analysisdata_set__key')
+
+    col_names = {a.pk: a.name for a in analyses}
+
+    df = data_to_edges(df, analyses)
+
+    chart = (df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
+             .rename(columns=col_names, level=1)
+             .to_dict(into=OrderedDict))
 
     chart = OrderedDict((','.join(key), value) for key, value in chart.items())
 

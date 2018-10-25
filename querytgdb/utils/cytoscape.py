@@ -8,6 +8,7 @@ import hsluv
 import numpy as np
 import pandas as pd
 
+from ..utils import data_to_edges
 from ..utils.parser import ANNOTATIONS
 
 
@@ -81,18 +82,26 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
 
 
 def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    network_table = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    network_table.columns = network_table.columns.droplevel(level=[1, 2, 3])
-    network_table = network_table.rename(columns=lambda x: re.split(r'\s', x, 1)[0].upper(), level=0)
+    network_table = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+
+    network_table = data_to_edges(network_table)
+
+    network_table.columns = network_table.columns.droplevel(1)
+    network_table = network_table.rename(columns=lambda x: re.split(r'\s', x, 1)[0], level=0)
 
     edge_nodes = network_table.loc[network_table.index.difference(network_table.columns.get_level_values(0)), :]
 
     uniq_tfs = network_table.columns.get_level_values(0).unique()
+
     try:
         tf_nodes = network_table.loc[uniq_tfs, :]
     except KeyError:
         tf_nodes = pd.DataFrame(index=uniq_tfs, columns=network_table.columns)
     tf_nodes = tf_nodes.loc[tf_nodes.count(axis=1).sort_values(ascending=False).index, :]
+
+    # having duplicate names is a no-no so clear all names
+    tf_nodes.columns.name = None
+    tf_nodes.index.name = None
 
     s_tfs = math.ceil(math.sqrt(tf_nodes.shape[0]))
     e_tfs = group_edge_len(s_tfs, gap=TF_GAP)

@@ -36,8 +36,8 @@ urlpatterns = [
                   # url(r'^accounts/', include('allauth.urls')),
 
                   # restful API
-                  url(r"^api/", include(('targetDB.urls', 'targetDB'),
-                                        namespace='targetDB')),
+                  url(r"^api/", include(('targetdb.urls', 'targetdb'),
+                                        namespace='targetdb')),
                   url(r'^api-auth/', include('rest_framework.urls',
                                              namespace='rest_framework')),
 

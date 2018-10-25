@@ -4,11 +4,9 @@ import math
 import mimetypes
 import os.path as path
 import pickle
-import random
 import re
-import string
+import sys
 from contextlib import closing
-from operator import attrgetter, itemgetter
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 from uuid import UUID
@@ -16,11 +14,12 @@ from uuid import UUID
 import numpy as np
 import pandas as pd
 from django.conf import settings
-from django.core.management.base import CommandError
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import QuerySet
 from lxml import etree
 
-from ..models import Analysis, AnalysisData, Annotation, Edge, Experiment, ExperimentData, Interaction, Regulation
+from ..models import Analysis, AnalysisData, Annotation, Interaction, MetaKey, Regulation
 
 
 class PandasJSONEncoder(DjangoJSONEncoder):
@@ -86,16 +85,11 @@ def metadata_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
             'data': df.to_dict(orient='index')}
 
 
-def rand_string(length):
-    return ''.join(random.choices(string.ascii_letters + string.digits + '_', k=length))
+nan_regex = re.compile(r'^n/?an?$', flags=re.I)
 
-
-nan_regex = re.compile(r'^nan?$', flags=re.I)
-
-analysis_datatypes = ['ANALYSIS_ID', 'ANALYSIS_METHOD', 'ANALYSIS_CUTOFF', 'ANALYSIS_COMMAND', 'ANALYSIS_NOTES',
-                      'ANALYSIS_BATCHEFFECT']
-
-experiment_types = ["EXPERIMENT", "EXPERIMENT_TYPE", "EXPRESSION_TYPE", "BINDING_TYPE"]
+analysis_datatypes = ['ANALYSIS_METHOD', 'ANALYSIS_CUTOFF']
+searchable = ['TRANSCRIPTION_FACTOR_ID', 'EXPERIMENT_TYPE', 'EXPERIMENTER', 'DATE', 'TECHNOLOGY', 'ANALYSIS_METHOD',
+              'ANALYSIS_CUTOFF', 'EDGE_TYPE', 'GENOTYPE', 'DATA_SOURCE', 'TREATMENTS', 'CONTROL', 'TISSUE/SAMPLE']
 
 
 def process_meta_file(f) -> pd.Series:
@@ -105,32 +99,37 @@ def process_meta_file(f) -> pd.Series:
                 .str.split(':', 1, True)
                 .apply(lambda x: x.str.strip())
                 .replace([r'', nan_regex], np.nan, regex=True)
-                .set_index(0, verify_integrity=True))[1].dropna()
+                .dropna(subset=[0])
+                .fillna('')
+                .set_index(0, verify_integrity=True)
+                .squeeze())
 
     metadata.index = metadata.index.str.upper().str.replace(' ', '_')
 
-    metadata[metadata.index.str.endswith('_DATE')] = pd.to_datetime(
-        metadata[metadata.index.str.endswith('_DATE')], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
-    metadata[metadata.index.str.endswith('_ID')] = metadata[metadata.index.str.endswith('_ID')].str.upper()
-    metadata[metadata.index.isin(experiment_types)] = metadata[metadata.index.isin(experiment_types)].str.upper()
+    metadata[metadata.index.str.contains(r'_?DATE$')] = pd.to_datetime(
+        metadata[metadata.index.str.contains(r'_?DATE$')], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
 
     return metadata
 
 
 def process_data(f) -> Tuple[pd.DataFrame, bool]:
-    data = pd.read_csv(f, header=0, index_col=0)
+    data = pd.read_csv(f, header=0, na_values=['#DIV/0!', '#N/A!', '#NAME?', '#NULL!', '#NUM!', '#REF!', '#VALUE!'])
+    data = data.dropna(axis=0, how='all').dropna(axis=1, how='all')
 
-    has_pvals = True
+    if data.shape[1] == 3:
+        data.columns = ['gene_id', 'log2fc', 'pvalue']
 
-    try:
-        # with fc pvalue induce/repress edge
-        data.iloc[:, [2, 3]] = data.iloc[:, [2, 3]].apply(lambda x: x.str.upper())
-    except IndexError:
-        # edge only
-        data.iloc[:, 0] = data.iloc[:, 0].str.upper()
-        has_pvals = False
+        data['log2fc'] = data['log2fc'].mask(np.isneginf(data['log2fc']), -sys.float_info.max)
+        data['log2fc'] = data['log2fc'].mask(np.isposinf(data['log2fc']), sys.float_info.max)
 
-    return data, has_pvals
+        return data, True
+    elif data.shape[1] == 1:
+        data.columns = ['gene_id']
+        return data, False
+    else:
+        raise ValueError(
+            "Malformed Data. Must have 1 gene id column, optionally accompanied by 2 columns, log2 fold change and "
+            "adjusted p-value.")
 
 
 def get_exp_type(metadata: pd.Series) -> str:
@@ -142,7 +141,7 @@ def get_exp_type(metadata: pd.Series) -> str:
         raise ValueError('Invalid EXPERIMENT_TYPE')
 
 
-def insert_data(data_file, metadata_file, auto_naming=False):
+def insert_data(data_file, metadata_file):
     data, has_pvals = process_data(data_file)
 
     with open(metadata_file) as m:
@@ -151,80 +150,33 @@ def insert_data(data_file, metadata_file, auto_naming=False):
     try:
         tf = Annotation.objects.get(gene_id=metadata['TRANSCRIPTION_FACTOR_ID'])
     except Annotation.DoesNotExist:
-        raise ValueError('Transcription Factor ID does not exist.')
+        raise ValueError('Transcription Factor ID {} does not exist.'.format(metadata['TRANSCRIPTION_FACTOR_ID']))
 
-    try:
-        edge_prefix = metadata['EXPERIMENT'] + ':' + get_exp_type(metadata) + ':'
-    except ValueError as e:
-        raise CommandError(e) from e
-
-    edge_prefix = edge_prefix.upper()
-
-    try:
-        exp_id = metadata['EXPERIMENT_ID']
-    except KeyError:
-        tf_name, experimenter, date_ = itemgetter('TRANSCRIPTION_FACTOR_ID', 'EXPERIMENTER',
-                                                  'EXPERIMENT_DATE')(metadata)
-
-        exp_id = tf_name + '_' + ''.join(
-            map(itemgetter(0), re.split(r'\s+|_', experimenter))) + '{:%m%d%y}_'.format(pd.to_datetime(date_))
-
-        exp_id += get_exp_type(metadata)
-
-    exp_id = exp_id.upper()
-
-    # Insert Experiment
-    experiment, exp_created = Experiment.objects.get_or_create(name=exp_id, tf=tf)
-
-    try:
-        analysis_id = metadata['ANALYSIS_ID']
-    except KeyError:
-        analysis_id = metadata['TRANSCRIPTION_FACTOR_ID'] + '_' + metadata[
-            'ANALYSIS_METHOD'] + '_' + rand_string(10)
-
-    if Analysis.objects.filter(experiment=experiment, name=analysis_id).exists() and auto_naming:
-        analysis_id += '_' + rand_string(10)
-
-    analysis = Analysis(experiment=experiment, name=analysis_id)
+    # Insert Analysis
+    analysis = Analysis(tf=tf)
     analysis.save()
 
-    if exp_created:
-        # Insert experiment metadata if new experiment
-        ExperimentData.objects.bulk_create(
-            [ExperimentData(experiment=experiment, key=key, value=val) for key, val in
-             metadata[~metadata.index.isin(analysis_datatypes)].iteritems()])
+    meta_keys = [MetaKey.objects.get_or_create(name=n, defaults={'searchable': n in searchable})
+                 for n in metadata.index]
+
+    meta_key_frame = pd.DataFrame(((m.id, m.name, m.searchable, c) for m, c in meta_keys),
+                                  columns=['id', 'name', 'searchable', 'created'])
+    meta_key_frame = meta_key_frame.set_index('name')
 
     AnalysisData.objects.bulk_create(
-        [AnalysisData(analysis=analysis, key=key, value=val) for key, val in
-         metadata[metadata.index.isin(analysis_datatypes)].iteritems()])
-
-    if has_pvals:
-        edges = (edge_prefix +
-                 data.iloc[:, 2].str.cat(data.iloc[:, 3], ':'))
-    else:
-        edges = edge_prefix + data.iloc[:, 0]
-
-    edges.name = "edge"
-    edges.index.name = None
-
-    data = pd.concat([data, edges], axis=1)
-
-    edge_objs = map(itemgetter(0), (Edge.objects.get_or_create(name=e) for e in edges.unique()))
-    edge_frame = pd.DataFrame.from_records(
-        map(attrgetter('id', 'name'), edge_objs), columns=['edge_id', 'edge'])
-    data = data.reset_index().merge(edge_frame, on='edge', how='left')
+        [AnalysisData(analysis=analysis, key_id=meta_key_frame.at[key, 'id'], value=val)
+         for key, val in metadata.iteritems()])
 
     anno = pd.DataFrame(Annotation.objects.filter(
-        gene_id__in=data['index']
+        gene_id__in=data.iloc[:, 0]
     ).values_list('gene_id', 'id', named=True).iterator())
 
-    data = data.merge(anno, left_on='index', right_on='gene_id')
+    data = data.merge(anno, on='gene_id')
 
     Interaction.objects.bulk_create(
         Interaction(
             analysis=analysis,
-            target_id=row.id,
-            edge_id=row.edge_id
+            target_id=row.id
         ) for row in data.itertuples()
     )
 
@@ -232,8 +184,8 @@ def insert_data(data_file, metadata_file, auto_naming=False):
         Regulation.objects.bulk_create(
             Regulation(
                 analysis=analysis,
-                foldchange=row[1],
-                p_value=row[2],
+                foldchange=row.log2fc,
+                p_value=row.pvalue,
                 target_id=row.id
             ) for row in data.itertuples(index=False)
         )
@@ -248,6 +200,13 @@ def column_string(n: int) -> str:
 
 
 def svg_font_adder(buff):
+    """
+    Adds font file as a base64 encoded string to an SVG
+
+    The very definition of overkill
+    :param buff:
+    :return:
+    """
     tree = etree.parse(buff)
     style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
 
@@ -275,3 +234,50 @@ def split_name(name: str) -> Tuple[str, str]:
         criterion = ''
 
     return name, criterion
+
+
+def clear_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove unneeded columns when doing later calculations
+    :param df:
+    :return:
+    """
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df.columns = df.columns.droplevel(2)
+
+    return df
+
+
+def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: bool = True) -> pd.DataFrame:
+    """
+    Convert EDGE and Log2FC to respective edge_type
+    :param df:
+    :param analyses:
+    :param drop:
+    :return:
+    """
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+
+    if analyses is None:
+        analyses = Analysis.objects.filter(
+            pk__in=df.columns.get_level_values(1)
+        ).prefetch_related('analysisdata_set', 'analysisdata_set__key')
+
+    for name, column in df.iteritems():
+        try:
+            edge_type = analyses.get(pk=name[1]).analysisdata_set.get(key__name='EDGE_TYPE').value
+        except ObjectDoesNotExist:
+            edge_type = 'edge'
+
+        if name[2] == 'Log2FC':
+            c = column.mask(column >= 0, edge_type + ':INDUCED')
+            c = c.mask(column < 0, edge_type + ':REPRESSED')
+
+            df.loc[:, name] = c
+        else:
+            df.loc[:, name] = column.mask(column.notna(), edge_type)
+
+    if drop:
+        df.columns = df.columns.droplevel(2)
+
+    return df

@@ -1,5 +1,6 @@
 import sys
 from itertools import count, product
+from operator import itemgetter
 from typing import Optional
 from uuid import uuid4
 
@@ -11,7 +12,7 @@ import seaborn as sns
 from scipy.stats import fisher_exact
 
 from ..models import Analysis
-from ..utils import column_string, split_name
+from ..utils import column_string, split_name, clear_data
 from ..utils.parser import ANNOTATIONS
 
 
@@ -75,24 +76,19 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
     # default background:
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
 
-    query_result = query_result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    query_result.columns = query_result.columns.droplevel(3)
+    query_result = clear_data(query_result)
 
-    names, exp_ids, analysis_ids = zip(*query_result.columns)
-    analyses = Analysis.objects.filter(
-        name__in=analysis_ids,
-        experiment__name__in=exp_ids
-    ).prefetch_related('experiment')
+    analyses = Analysis.objects.filter(pk__in=map(itemgetter(1), query_result.columns))
 
     # save targets for each TF into a dict
     targets = {}
 
-    for (name, exp_id, analysis_id), column in query_result.iteritems():
+    for (name, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index)
 
         name, criterion = split_name(name)
 
-        targets[(name, criterion, exp_id, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
+        targets[(name, criterion, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
@@ -116,8 +112,8 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
         indices = []
 
-        for (name, criterion, exp_id, analysis_id, l, uid), col_name in orig_index:
-            tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
+        for (name, criterion, analysis_id, l, uid), col_name in orig_index:
+            tf = analyses.get(pk=analysis_id).tf
             indices.append('{2} — {0}{1} ({3})'.format(tf.gene_id, ' ' + tf.name if tf.name else '', col_name, l))
 
         list_enrichment_pvals.index = indices
@@ -126,22 +122,19 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
             result = []
 
             for idx, col_label in orig_index:
-                name, criterion, exp_id, analysis_id, l, uid = idx
+                name, criterion, analysis_id, l, uid = idx
 
                 info = {'name': name, 'filter': criterion}
-                analysis = analyses.get(
-                    name=analysis_id,
-                    experiment__name=exp_id)
+                analysis = analyses.get(pk=analysis_id)
 
-                gene_id = analysis.experiment.tf.gene_id
+                gene_id = analysis.tf.gene_id
 
                 try:
                     gene_name = ANNOTATIONS.at[gene_id, 'Name']
                 except KeyError:
                     gene_name = ''
 
-                info.update(analysis.analysisdata_set.values_list('key', 'value').iterator())
-                info.update(analysis.experiment.experimentdata_set.values_list('key', 'value').iterator())
+                info.update(analysis.analysisdata_set.values_list('key__name', 'value').iterator())
 
                 result.append((info, col_label, name, criterion, l, gene_name, analysis_id))
 

@@ -2,12 +2,13 @@ import re
 from itertools import groupby
 from operator import itemgetter
 from typing import List, Sized
+import shutil
 
 import numpy as np
 import pandas as pd
 
 from ..utils.parser import expand_ref_ids
-from ..utils import column_string
+from ..utils import column_string, data_to_edges
 
 __all__ = ('create_export_zip',)
 
@@ -16,6 +17,7 @@ def create_export_zip(cache_dir, out_dir):
     df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
     create_sifs(df, out_dir)
     create_all_tf_genelists(df, out_dir)
+    shutil.copy(cache_dir + "/query.txt", out_dir)
     write_excel(cache_dir, out_dir)
 
 
@@ -65,7 +67,6 @@ def write_data(data: List[Sized], writer: pd.ExcelWriter):
 
     format_repressed = workbook.add_format({'bg_color': '#FA8072', 'font_color': '#000000'})
     format_induced = workbook.add_format({'bg_color': '#98FB98', 'font_color': '#000000'})
-    format_present = workbook.add_format({'bg_color': '#F7DC6F', 'font_color': '#000000'})
     merge_format = workbook.add_format({
         'bold': 1,
         'font_size': 14,
@@ -80,9 +81,6 @@ def write_data(data: List[Sized], writer: pd.ExcelWriter):
     worksheet.conditional_format('I7:{}{}'.format(last_col, row_num),
                                  {'type': 'text', 'criteria': 'containing', 'value': 'REPRESSED',
                                   'format': format_repressed})
-    worksheet.conditional_format('I7:{}{}'.format(last_col, row_num),
-                                 {'type': 'text', 'criteria': 'containing', 'value': 'Present',
-                                  'format': format_present})
 
     columns = list(zip(*data[:6]))
     for i in range(6):
@@ -106,20 +104,25 @@ def write_data(data: List[Sized], writer: pd.ExcelWriter):
 group_opt = {
     'axis': 1,
     'level': 0,
-    'by': lambda x: re.sub(r'_\w+$', '', x)
+    'by': lambda x: re.split(r'\s+', x, 1)[0]
 }
 
 
 #################################
 # Generate sif output
-def create_sifs(result, output):
+def create_sifs(result: pd.DataFrame, output):
+    df = data_to_edges(result).stack([0, 1])
+    result = result.stack([0, 1])
+    result["EDGE"] = df
+    result = result.unstack([1, 2]).reorder_levels([1, 2, 0], axis=1)
+
     res_group = result.groupby(**group_opt)
 
     with open(output + '/all_tfs.sif', 'w') as all_sif, open(output + '/all_tfs.tbl', 'w') as all_tbl:
         all_tbl.write('shared name\tFOLDCHANGE\tPVALUE\n')
 
         for name, group in res_group:
-            g = group.stack(level=[0, 1, 2]).reset_index(level=[1, 2, 3], drop=True).reset_index().drop_duplicates()
+            g = group.stack(level=[0, 1]).reset_index(level=[1, 2], drop=True).reset_index().drop_duplicates()
 
             with open(output + '/{}.sif'.format(name), 'w') as f:
                 temp_sif = g.groupby('EDGE').apply(
@@ -134,17 +137,15 @@ def create_sifs(result, output):
                 temp_tbl.to_csv(f, index=False)
                 temp_tbl.to_csv(all_tbl, index=False)
 
-    crit_tfs = res_group.apply(lambda x: x.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].notna().any(axis=1))
+    crit_tfs = res_group.apply(lambda x: x.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().any(axis=1))
     common_tfs = crit_tfs.all(axis=1)
     shared_tfs = crit_tfs.sum(axis=1) > 1
 
     def create_filtered_sifs(index, sif_file, tbl_file):
         with open(sif_file, 'w') as sif, open(tbl_file, 'w') as tbl:
             tbl.write('shared name\tFOLDCHANGE\tPVALUE\n')
-            for name, group in result.loc[index, :].groupby(**group_opt):
-                g = group.stack(level=[0, 1, 2]).reset_index(level=[1, 2, 3], drop=True).reset_index().drop_duplicates()
-                # with pd.option_context('display.width', 200, 'display.max_columns', 20, 'display.max_rows', 20000):
-
+            for name, group in result.loc[index, :].fillna('').groupby(**group_opt):
+                g = group.stack(level=[0, 1]).reset_index(level=[1, 2], drop=True).reset_index().drop_duplicates()
                 temp_sif = g.groupby('EDGE').apply(
                     lambda x: '{}\t{}\t{}'.format(name, x.name, '\t'.join(x['TARGET']))
                 )

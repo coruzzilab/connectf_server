@@ -1,6 +1,5 @@
 import os
 from collections import OrderedDict
-from itertools import chain
 from typing import Generator, Iterable
 
 from django.core.files.storage import FileSystemStorage
@@ -8,7 +7,7 @@ from django.db import connection
 from rest_framework import views
 from rest_framework.response import Response
 
-from querytgdb.models import Analysis, AnalysisData, Edge, EdgeData, EdgeType, Experiment, ExperimentData
+from querytgdb.models import Analysis, AnalysisData, EdgeData, EdgeType, MetaKey
 from .serializers import TFValueSerializer
 
 storage = FileSystemStorage('commongenelists/')
@@ -37,7 +36,7 @@ class TFView(views.APIView):
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT DISTINCT a.gene_id as gene_id, a.name as gene_name FROM querytgdb_experiment as e "
+                "SELECT DISTINCT a.gene_id as gene_id, a.name as gene_name FROM querytgdb_analysis as e "
                 "LEFT JOIN querytgdb_annotation as a ON e.tf_id = a.id "
                 "ORDER BY gene_id, gene_name")
 
@@ -50,19 +49,6 @@ class TFView(views.APIView):
         serializer = TFValueSerializer(queryset, many=True)
 
         return Response(serializer.data)
-
-
-class ExperimentListView(views.APIView):
-    def get(self, request, *args, **kwargs):
-        tfs = set(request.GET.getlist('tf'))
-
-        if tfs & {'oralltfs', 'andalltfs'}:
-            tfs = set()
-
-        if tfs:
-            return Response(Experiment.objects.filter(tf__gene_id__in=tfs).values_list('name', flat=True))
-        else:
-            return Response(Experiment.objects.values_list('name', flat=True))
 
 
 class EdgeListView(views.APIView):
@@ -84,30 +70,25 @@ class KeyView(views.APIView):
         if tfs & {'oralltfs', 'andalltfs'}:
             tfs = set()
 
-        queryset = ['edge', 'has_column']
+        queryset = ['has_column']
 
         if tfs:
-            experiments = Experiment.objects.filter(tf__gene_id__in=tfs).prefetch_related("analysis_set")
-
             if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                 queryset.append('additional_edge')
 
-            if any(chain.from_iterable((analysis.regulation_set.exists()
-                                        for analysis in exp.analysis_set.all())
-                                       for exp in experiments)):
+            analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
+
+            if any(analysis.regulation_set.exists() for analysis in analyses):
                 queryset[0:0] = ['fc', 'pvalue']
 
-            queryset.extend(AnalysisData.objects.filter(
-                analysis__experiment__in=experiments
-            ).distinct().values_list('key', flat=True))
-
-            queryset.extend(ExperimentData.objects.filter(
-                experiment__in=experiments
-            ).distinct().values_list('key', flat=True))
+            queryset.extend(
+                MetaKey.objects.filter(
+                    analysisdata__analysis__in=analyses,
+                    searchable=True
+                ).distinct().values_list('name', flat=True))
         else:
             queryset[0:0] = ['fc', 'pvalue', 'additional_edge']
-            queryset.extend(AnalysisData.objects.distinct().values_list('key', flat=True))
-            queryset.extend(ExperimentData.objects.distinct().values_list('key', flat=True))
+            queryset.extend(MetaKey.objects.filter(searchable=True).values_list('name', flat=True))
 
         return Response(queryset)
 
@@ -123,12 +104,6 @@ class ValueView(views.APIView):
 
         if key in ('PVALUE', 'FC'):
             return Response([])
-        elif key == 'EDGE':
-            if tfs:
-
-                return Response(Experiment.objects.filter(tf__gene_id__in=tfs).distinct().values_list(
-                    'analysis__interaction__edge__name', flat=True))
-            return Response(Edge.objects.distinct().values_list('name', flat=True))
         elif key == 'ADDITIONAL_EDGE':
             if tfs:
                 return Response(
@@ -138,7 +113,7 @@ class ValueView(views.APIView):
             queryset = ['EDGE']
 
             if tfs:
-                if any(map(check_regulation, Analysis.objects.filter(experiment__tf__gene_id__in=tfs))):
+                if any(map(check_regulation, Analysis.objects.filter(tf__gene_id__in=tfs))):
                     queryset.extend(('Pvalue', 'FC'))
                 if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                     queryset.append('additional_edge')
@@ -150,20 +125,14 @@ class ValueView(views.APIView):
             queryset = []
 
             if tfs:
-                experiments = Experiment.objects.filter(tf__gene_id__in=tfs)
+                analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
 
                 queryset.extend(AnalysisData.objects.filter(
-                    analysis__experiment__in=experiments,
-                    key__iexact=key
+                    analysis__in=analyses,
+                    key__name__iexact=key
                 ).distinct().values_list('value', flat=True))
-
-                queryset.extend(
-                    ExperimentData.objects.filter(experiment__in=experiments,
-                                                  key__iexact=key).distinct().values_list('value', flat=True))
             else:
                 queryset.extend(
-                    AnalysisData.objects.filter(key__iexact=key).distinct().values_list('value', flat=True))
-                queryset.extend(
-                    ExperimentData.objects.filter(key__iexact=key).distinct().values_list('value', flat=True))
+                    AnalysisData.objects.filter(key__name__iexact=key).distinct().values_list('value', flat=True))
 
             return Response(queryset)

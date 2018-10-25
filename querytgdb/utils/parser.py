@@ -13,7 +13,7 @@ import pyparsing as pp
 from django.db.models import Q
 from django.db.utils import DatabaseError
 
-from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Experiment, Interaction, Regulation
+from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from ..utils import cache_result, read_cached_result
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
@@ -125,8 +125,7 @@ def mod_to_str(curr: pp.ParseResults) -> str:
 
 def query_metadata(df: TargetFrame, key: str, value: str) -> pd.DataFrame:
     ref_ids = Analysis.objects.filter(
-        (Q(analysisdata__key__iexact=key) & Q(analysisdata__value__iexact=value)) |
-        (Q(experiment__experimentdata__key__iexact=key) & Q(experiment__experimentdata__value__iexact=value))
+        (Q(analysisdata__key__name__iexact=key) & Q(analysisdata__value__iexact=value))
     ).values_list('id', flat=True)
 
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
@@ -196,7 +195,7 @@ def apply_has_add_edges(df: TargetFrame, value) -> pd.DataFrame:
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
     target_ids = EdgeData.objects.filter(
         type__name__iexact=value,
-        tf_id=Analysis.objects.get(pk=df.name[1]).experiment.tf_id,
+        tf_id=Analysis.objects.get(pk=df.name[1]).tf_id,
         target_id__in=ANNOTATIONS.loc[df.index[df.notna().any(axis=1)], 'id']
     ).values_list('target_id', flat=True)
 
@@ -240,8 +239,6 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
         elif re.match(r'^fc$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
-        elif re.match(r'^edge$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_search_column, value=value, key='EDGE')
         elif re.match(r'^additional_edge$', key, flags=re.I):
             return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges, value=value)
         elif re.match(r'^has_column$', key, flags=re.I):
@@ -260,19 +257,24 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     :param edges:
     :return:
     """
-    experiments = Experiment.objects.filter(tf__gene_id__iexact=query)
+    analyses = Analysis.objects.filter(tf__gene_id__iexact=query)
 
     df = TargetFrame(
-        interactions.filter(analysis__experiment__in=experiments).values_list(
-            'edge__name', 'target__gene_id', 'analysis_id').iterator(),
-        columns=['EDGE', 'TARGET', 'ANALYSIS'])
+        interactions.filter(analysis__in=analyses).values_list(
+            'target__gene_id', 'analysis_id').iterator(),
+        columns=['TARGET', 'ANALYSIS'])
+
     if not df.empty:
         reg = TargetFrame(
-            Regulation.objects.filter(analysis__experiment__in=experiments).values_list(
+            Regulation.objects.filter(analysis__in=analyses).values_list(
                 'analysis_id', 'target__gene_id', 'p_value', 'foldchange').iterator(),
             columns=['ANALYSIS', 'TARGET', 'Pvalue', 'Log2FC'])
 
-        df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
+        if not reg.empty:
+            # reg['Log2FC'] = reg['Log2FC'].fillna(np.finfo(reg['Log2FC'].dtype).max)
+            df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
+        else:
+            df.insert(0, 'EDGE', '+')
 
         if edges:
             anno = ANNOTATIONS['id'].reset_index()
@@ -337,20 +339,15 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     """
     df = TargetFrame(
         Interaction.objects.values_list(
-            'edge__name', 'target__gene_id', 'analysis_id').iterator(),
-        columns=['EDGE', 'TARGET', 'ANALYSIS'])
+            'target__gene_id', 'analysis_id').iterator(),
+        columns=['TARGET', 'ANALYSIS'])
 
     analyses = TargetFrame(
-        Analysis.objects.values_list('id', 'experiment_id').iterator(),
-        columns=['ANALYSIS', 'EXP']
+        Analysis.objects.values_list('id', 'tf__gene_id').iterator(),
+        columns=['ANALYSIS', 'TF']
     )
 
-    experiments = TargetFrame(
-        Experiment.objects.values_list('id', 'tf__gene_id').iterator(),
-        columns=['EXP', 'TF']
-    )
-
-    df = df.merge(analyses, on='ANALYSIS').merge(experiments, on='EXP').drop('EXP', axis=1)
+    df = df.merge(analyses, on='ANALYSIS')
 
     reg = TargetFrame(
         Regulation.objects.values_list(
@@ -358,6 +355,11 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
         columns=['ANALYSIS', 'TARGET', 'Pvalue', 'Log2FC'])
 
     df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
+
+    if df.empty:
+        raise ValueError("No data in database.")
+
+    no_fc = df.groupby(by='ANALYSIS').apply(lambda x: pd.isna(x['Log2FC']).all())
 
     if edges:
         anno = ANNOTATIONS['id'].reset_index()
@@ -399,6 +401,9 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
 
             df = df.merge(edge_data, on=['TF', 'TARGET'], how='left')
 
+    df.insert(3, 'EDGE', np.nan)
+    df['EDGE'] = df['EDGE'].mask(df['ANALYSIS'].isin(no_fc.index[no_fc]), '+')
+
     df = (df.set_index(['TF', 'ANALYSIS', 'TARGET'])
           .unstack(level=[0, 1])
           .reorder_levels([1, 2, 0], axis=1)
@@ -408,7 +413,7 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     if query == 'oralltfs':
         df.filter_string += 'oralltfs'
     elif query == 'andalltfs':
-        df = df[df.loc[:, (slice(None), slice(None), 'EDGE')].notna().all(axis=1)]
+        df = df[df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().all(axis=1)]
         df.filter_string += 'andalltfs'
     else:
         raise ValueError('invalid query')
@@ -512,35 +517,24 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     :param df:
     :return:
     """
-    analysis_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(
-        axis=1, level=2).sum().sort_values(ascending=False)
-    meta_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1, level=1).sum().sort_values(
-        ascending=False)
-    tf_order = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1, level=0).sum().sort_values(
-        ascending=False)
+    analysis_order = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(
+        axis=1, level=1).sum().sort_values(ascending=False)
+    tf_order = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(
+        axis=1, level=0).sum().sort_values(ascending=False)
 
-    df = (df.reindex(labels=analysis_order.index, axis=1, level=2)
-          .reindex(labels=meta_order.index, axis=1, level=1)
+    df = (df.reindex(labels=analysis_order.index, axis=1, level=1)
           .reindex(labels=tf_order.index, axis=1, level=0))
     return df
 
 
 def get_metadata(ids: Sequence) -> TargetFrame:
     analyses = Analysis.objects.filter(pk__in=ids)
-    df = pd.concat([
-        TargetFrame(
-            analyses.values_list(
-                'id',
-                'analysisdata__key',
-                'analysisdata__value').iterator(),
-            columns=['ANALYSIS', 'KEY', 'VALUE']),
-        TargetFrame(
-            analyses.values_list(
-                'id',
-                'experiment__experimentdata__key',
-                'experiment__experimentdata__value').iterator(),
-            columns=['ANALYSIS', 'KEY', 'VALUE'])
-    ], ignore_index=True)
+    df = TargetFrame(
+        analyses.values_list(
+            'id',
+            'analysisdata__key__name',
+            'analysisdata__value').iterator(),
+        columns=['ANALYSIS', 'KEY', 'VALUE'])
 
     df = df.dropna(how='all', subset=['KEY', 'VALUE'])
     df = df.set_index(['ANALYSIS', 'KEY'])
@@ -551,13 +545,13 @@ def get_metadata(ids: Sequence) -> TargetFrame:
 
 
 def get_tf_count(df: TargetFrame) -> TargetSeries:
-    counts = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count(axis=1)
+    counts = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(axis=1)
     counts.name = 'TF Count'
 
     return counts
 
 
-def expand_ref_ids(df: TargetFrame, level: Optional[Union[str, int]] = None) -> TargetFrame:
+def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) -> pd.DataFrame:
     df = df.copy()
 
     if level is None:
@@ -565,16 +559,15 @@ def expand_ref_ids(df: TargetFrame, level: Optional[Union[str, int]] = None) -> 
     else:
         analysis_ids = df.columns.levels[level]
 
-    full_ids = {analysis_id: (exp_name, analysis_name) for analysis_id, exp_name, analysis_name in
+    full_ids = {a: a.name for a in
                 Analysis.objects.filter(
-                    pk__in=analysis_ids).values_list('id',
-                                                     'experiment__name',
-                                                     'name').iterator()}
+                    pk__in=analysis_ids
+                ).prefetch_related('analysisdata_set', 'analysisdata_set__key')}
 
     if level is None:
-        df.columns = pd.MultiIndex.from_tuples(full_ids[ref_id] for ref_id in df.columns)
+        df = df.rename(columns=full_ids)
     elif isinstance(df.columns, pd.MultiIndex):
-        df.columns = pd.MultiIndex.from_tuples((*c[:level], *full_ids[c[level]], *c[level + 1:]) for c in df.columns)
+        df = df.rename(columns=full_ids, level=level)
     else:
         raise ValueError('Please specify level to expand.')
 
@@ -592,25 +585,10 @@ def parse_query(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     return result
 
 
-def split_edge_component(x: pd.Series) -> pd.Series:
-    s = x.str.split(':', expand=True)
-
-    if s.shape[1] > 1:
-        return s.iloc[:, 0].str.cat(s.iloc[:, -1], sep=':')
-    return x
-
-
-def trim_edges(df: TargetFrame) -> TargetFrame:
-    df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')] = \
-        df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].apply(split_edge_component)
-
-    return df
-
-
 def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
     return {
-        'total': result.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].groupby(
-            level=[0, 1, 2], axis=1).count().sum()
+        'total': result.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].groupby(
+            level=[0, 1], axis=1).count().sum()
     }
 
 
@@ -624,7 +602,6 @@ def get_query_result(query: Optional[str] = None,
     if query is not None:
         result = parse_query(query, edges)
         metadata = get_metadata(result.columns.get_level_values(1))
-        result = expand_ref_ids(result, 1)
 
         stats = get_stats(result)
 
@@ -651,8 +628,6 @@ def get_query_result(query: Optional[str] = None,
             pass
 
     result = reorder_data(result)
-
-    result = trim_edges(result)
 
     counts = get_tf_count(result)
 

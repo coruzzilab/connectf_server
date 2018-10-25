@@ -1,5 +1,4 @@
 import os
-import pathlib
 import shutil
 import time
 from io import BytesIO, TextIOWrapper
@@ -20,7 +19,7 @@ from querytgdb.models import Analysis
 from querytgdb.utils.excel import create_export_zip
 from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict, \
     svg_font_adder
-from .utils.analysis_enrichment import analysis_enrichment
+from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.cytoscape import get_cytoscape_json
 from .utils.file import get_gene_lists
 from .utils.formatter import format_data
@@ -42,10 +41,7 @@ from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatma
 
 lock = Lock()
 
-APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
-STATIC_DIR = APPS_DIR / 'static' / 'queryBuilder'
-
-static_storage = FileSystemStorage(pathlib.Path(settings.MEDIA_ROOT) / 'queryBuilder')
+static_storage = FileSystemStorage(settings.QUERY_CACHE)
 common_genes_storage = FileSystemStorage('commongenelists')
 
 
@@ -71,6 +67,10 @@ class QueryView(View):
                     targetgenes_file = TextIOWrapper(request.FILES["targetgenes"])
 
             edges = request.POST.getlist('edges')
+
+            # save the query
+            with open(output + '/query.txt', 'w') as f:
+                f.write(request.POST['query'].strip() + '\n')
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
@@ -133,7 +133,7 @@ class StatsView(View):
             df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
 
             info = {
-                'num_edges': df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')].count().sum(),
+                'num_edges': df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count().sum(),
                 'num_targets': df.shape[0]
             }
 
@@ -230,19 +230,16 @@ class ListEnrichmentTableView(View):
                 static_storage.path("{}_pickle".format(request_id)),
                 draw=False
             )
-            names, criteria, exp_ids, analysis_ids, ls, uids = zip(*df.index)
-            analyses = Analysis.objects.filter(name__in=analysis_ids, experiment__name__in=exp_ids)
+            names, criteria, analysis_ids, ls, uids = zip(*df.index)
+            analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set',
+                                                                                     'analysisdata_set__key')
 
             def get_rows():
-                for (name, criterion, exp_id, analysis_id, l, uid), *row in df.itertuples(name=None):
+                for (name, criterion, analysis_id, l, uid), *row in df.itertuples(name=None):
                     info = {'name': name, 'filter': criterion, 'targets': l}
                     try:
-                        analysis = analyses.get(
-                            name=analysis_id,
-                            experiment__name=exp_id)
-                        info.update(
-                            analysis.analysisdata_set.values_list('key', 'value'))
-                        info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
+                        analysis = analyses.get(pk=analysis_id)
+                        info.update(analysis.analysisdata_set.values_list('key__name', 'value'))
                     except Analysis.DoesNotExist:
                         pass
 
@@ -349,7 +346,7 @@ class AnalysisEnrichmentView(View):
 
         except FileNotFoundError:
             return HttpResponseNotFound("Please make a new query")
-        except ValueError as e:
+        except AnalysisEnrichmentError as e:
             return HttpResponseBadRequest(e)
 
 

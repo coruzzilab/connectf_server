@@ -20,15 +20,14 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from ..utils import column_string, split_name, svg_font_adder
+from ..utils import clear_data, column_string, split_name, svg_font_adder
 from ..utils.parser import ANNOTATIONS
 
 
 class MotifData:
-    def __init__(self, data_dir: Union[str, pathlib.Path]):
+    def __init__(self, data_file: Union[str, pathlib.Path]):
         self.pool = ThreadPool()
-        self._annotated_async = self.pool.apply_async(pd.read_pickle,
-                                                      args=(data_dir / 'static' / 'annotated.pickle.gz',))
+        self._annotated_async = self.pool.apply_async(pd.read_pickle, args=(data_file,))
         self._annotated = None
         self._annotated_promo = None
         self._ann_promo_dedup = None
@@ -102,12 +101,10 @@ class MotifData:
         self.close()
 
 
-APPS_DIR = pathlib.Path(settings.BASE_DIR) / 'tgdbbackend'
-
-MOTIF = MotifData(APPS_DIR)
+MOTIF = MotifData(settings.MOTIF_ANNOTATION)
 
 CLUSTER_INFO = pd.read_csv(
-    APPS_DIR / 'static' / 'cluster_info.csv.gz',
+    settings.MOTIF_CLUSTER,
     index_col=0
 ).fillna('').to_dict('index')
 
@@ -141,7 +138,7 @@ def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
     return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
 
 
-def motif_enrichment(res: Dict[Tuple[str], Iterable], alpha: float = 0.05, show_reject: bool = True,
+def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Iterable], alpha: float = 0.05, show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
     promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
                                                   alpha=alpha,
@@ -200,37 +197,30 @@ def merge_cluster_info(df):
 
 def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, body=False) -> Dict:
     df = pd.read_pickle(cache_path)
-    # remove unneeded info from dataframe
-    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    df.columns = df.columns.droplevel(3)
+    df = clear_data(df)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     try:
         with gzip.open(target_genes_path, 'rb') as f:
             _, target_lists = pickle.load(f)
-            res[('Target Gene List', '', '')] = set(chain.from_iterable(target_lists.values()))
+            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
     except (FileNotFoundError, TypeError):
         pass
 
-    tfs, exp_ids, analysis_ids = zip(*res.keys())
-    analyses = Analysis.objects.filter(
-        name__in=analysis_ids,
-        experiment__name__in=exp_ids).prefetch_related('experiment')
+    tfs, analysis_ids = zip(*res.keys())
+    analyses = Analysis.objects.filter(pk__in=analysis_ids)
 
     columns = []
 
-    for (tf, exp_id, analysis_id), value in res.items():
+    for (tf, analysis_id), value in res.items():
         name, criterion = split_name(tf)
 
         data = OrderedDict([('name', name), ('filter', criterion)])
         try:
-            analysis = analyses.get(
-                name=analysis_id,
-                experiment__name=exp_id)
-            data.update(analysis.analysisdata_set.values_list('key', 'value'))
-            data.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
+            analysis = analyses.get(pk=analysis_id)
+            data.update(analysis.analysisdata_set.values_list('key__name', 'value'))
         except Analysis.DoesNotExist:
-            if (tf, exp_id, analysis_id) == ('Target Gene List', '', ''):
+            if (tf, analysis_id) == ('Target Gene List', None):
                 data['genes'] = ", ".join(value)
 
         columns.append(data)
@@ -260,14 +250,13 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
 def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=None, upper_bound=None,
                                  body=False) -> BytesIO:
     df = pd.read_pickle(cache_path)
-    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    df.columns = df.columns.droplevel(3)
+    df = clear_data(df)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     try:
         with gzip.open(target_genes_path, 'rb') as f:
             _, target_lists = pickle.load(f)
-            res[('Target Gene List', '', '')] = set(chain.from_iterable(target_lists.values()))
+            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
     except (FileNotFoundError, TypeError):
         pass
 
@@ -281,17 +270,15 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
 
-    names, exp_ids, analysis_ids = zip(*res.keys())
+    names, analysis_ids = zip(*res.keys())
 
-    analyses = Analysis.objects.filter(
-        name__in=analysis_ids,
-        experiment__name__in=exp_ids).prefetch_related('experiment')
+    analyses = Analysis.objects.filter(pk__in=analysis_ids)
 
     columns = []
 
-    for (name, exp_id, analysis_id), col_name in zip(res.keys(), map(column_string, count(1))):
+    for (name, analysis_id), col_name in zip(res.keys(), map(column_string, count(1))):
         try:
-            tf = analyses.get(name=analysis_id, experiment__name=exp_id).experiment.tf
+            tf = analyses.get(pk=analysis_id).tf
             columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
         except Analysis.DoesNotExist:
             columns.append('{} — {}'.format(col_name, name))
@@ -344,34 +331,30 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
 def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
     df = pd.read_pickle(cache_path)
-    df = df.loc[:, (slice(None), slice(None), slice(None), 'EDGE')]
-    df.columns = df.columns.droplevel(3)
+    df = clear_data(df)
     res = df.columns.tolist()
 
-    names, exp_ids, analysis_ids = zip(*res)
+    names, analysis_ids = zip(*res)
 
-    analyses = Analysis.objects.filter(
-        name__in=analysis_ids,
-        experiment__name__in=exp_ids).prefetch_related('experiment')
+    analyses = Analysis.objects.filter(pk__in=analysis_ids)
 
-    col_strings = map(column_string, count(1))
+    col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
-    for (name, exp_id, analysis_id), col_str in zip(res, col_strings):
+    for (name, analysis_id), col_str in zip(res, col_strings):
         name, criterion = split_name(name)
 
         info = OrderedDict([('name', name), ('filter', criterion)])
 
         try:
-            analysis = analyses.get(name=analysis_id, experiment__name=exp_id)
-            gene_id = analysis.experiment.tf.gene_id
+            analysis = analyses.get(pk=analysis_id)
+            gene_id = analysis.tf.gene_id
 
             try:
                 gene_name = ANNOTATIONS.at[gene_id, 'Name']
             except KeyError:
                 gene_name = ''
 
-            info.update(analysis.experiment.experimentdata_set.values_list('key', 'value'))
-            info.update(analysis.analysisdata_set.values_list('key', 'value'))
+            info.update(analysis.analysisdata_set.values_list('key__name', 'value'))
         except Analysis.DoesNotExist:
             gene_name = ''
 

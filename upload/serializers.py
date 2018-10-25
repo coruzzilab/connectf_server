@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from querytgdb.models import Experiment as SavedExperiment
+from querytgdb.models import Analysis as SavedAnalysis
 from .models import Experiment
 
 
@@ -55,8 +55,7 @@ class ExperimentSerializer(serializers.Serializer):
     design = serializers.FileField()
 
     def validate_experiment_id(self, value):
-        if Experiment.objects.filter(name=value).exists() or SavedExperiment.objects.filter(key='EXPERIMENT_ID',
-                                                                                            value=value).exists():
+        if Experiment.objects.filter(name=value).exists() or SavedAnalysis.objects.filter(name=value).exists():
             raise serializers.ValidationError("Experiment ID exstis!")
 
         return value
