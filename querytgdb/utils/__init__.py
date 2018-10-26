@@ -112,8 +112,9 @@ def process_meta_file(f) -> pd.Series:
     return metadata
 
 
-def process_data(f) -> Tuple[pd.DataFrame, bool]:
-    data = pd.read_csv(f, header=0, na_values=['#DIV/0!', '#N/A!', '#NAME?', '#NULL!', '#NUM!', '#REF!', '#VALUE!'])
+def process_data(f, sep=',') -> Tuple[pd.DataFrame, bool]:
+    data = pd.read_csv(f, header=0, sep=sep,
+                       na_values=['#DIV/0!', '#N/A!', '#NAME?', '#NULL!', '#NUM!', '#REF!', '#VALUE!'])
     data = data.dropna(axis=0, how='all').dropna(axis=1, how='all')
 
     if data.shape[1] == 3:
@@ -141,8 +142,8 @@ def get_exp_type(metadata: pd.Series) -> str:
         raise ValueError('Invalid EXPERIMENT_TYPE')
 
 
-def insert_data(data_file, metadata_file):
-    data, has_pvals = process_data(data_file)
+def insert_data(data_file, metadata_file, sep=','):
+    data, has_pvals = process_data(data_file, sep=sep)
 
     with open(metadata_file) as m:
         metadata = process_meta_file(m)

@@ -21,6 +21,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('data', help='Input file or folder for gene list')
         parser.add_argument('metadata', help='Input file for metadata of an experiment', nargs='?')
+        parser.add_argument('--sep', type=str, help="specify separator for csv. [default: ',']", default=',')
 
     def handle(self, *args, **options):
         with atomic():
@@ -35,10 +36,11 @@ class Command(BaseCommand):
                     df = data.merge(meta, on=1, how='inner', validate='one_to_one')
 
                     for row in df.itertuples():
-                        insert_data(row[1], row[3])
+                        insert_data(row[1], row[3], sep=options["sep"])
                 else:
-                    insert_data(options['data'], options['metadata'])
+                    insert_data(options['data'], options['metadata'], sep=options["sep"])
             except ValueError as e:
                 raise CommandError(e) from e
             except KeyError as e:
+                raise e
                 raise MetaDataException(e) from e
