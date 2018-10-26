@@ -2,6 +2,7 @@ import os
 from collections import OrderedDict
 from typing import Generator, Iterable
 
+from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import connection
 from rest_framework import views
@@ -10,7 +11,7 @@ from rest_framework.response import Response
 from querytgdb.models import Analysis, AnalysisData, EdgeData, EdgeType, MetaKey
 from .serializers import TFValueSerializer
 
-storage = FileSystemStorage('commongenelists/')
+storage = FileSystemStorage(settings.GENE_LISTS)
 
 
 def get_lists(files: Iterable) -> Generator[str, None, None]:

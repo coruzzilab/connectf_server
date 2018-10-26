@@ -42,7 +42,7 @@ from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatma
 lock = Lock()
 
 static_storage = FileSystemStorage(settings.QUERY_CACHE)
-common_genes_storage = FileSystemStorage('commongenelists')
+common_genes_storage = FileSystemStorage(settings.GENE_LISTS)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
