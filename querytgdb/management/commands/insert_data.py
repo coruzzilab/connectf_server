@@ -5,7 +5,7 @@ import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db.transaction import atomic
 
-from ...utils import insert_data
+from querytgdb.utils.insert_data import insert_data
 
 
 def get_file_name(x):
@@ -18,19 +18,24 @@ class MetaDataException(CommandError):
 
 
 class Command(BaseCommand):
+    help = "Loads data into the application."
+
     def add_arguments(self, parser):
-        parser.add_argument('data', help='Input file or folder for gene list')
-        parser.add_argument('metadata', help='Input file for metadata of an experiment', nargs='?')
+        parser.add_argument('data', help='Data file or folder for an experiment')
+        parser.add_argument('metadata', help='Metadata file or folder for an experiment')
         parser.add_argument('--sep', type=str, help="specify separator for csv. [default: ',']", default=',')
 
     def handle(self, *args, **options):
         with atomic():
             try:
                 if path.isdir(options["data"]):
-                    data = pd.DataFrame(glob.glob(path.join(options['data'], 'data/*')))
+                    if not path.isdir(options["metadata"]):
+                        raise CommandError("Both data and metadata should be folders.")
+
+                    data = pd.DataFrame(glob.glob(path.join(options['data'], '*')))
                     data[1] = data[0].apply(get_file_name)
 
-                    meta = pd.DataFrame(glob.glob(path.join(options['data'], 'metadata/*')))
+                    meta = pd.DataFrame(glob.glob(path.join(options['metadata'], '*')))
                     meta[1] = meta[0].apply(get_file_name)
 
                     df = data.merge(meta, on=1, how='inner', validate='one_to_one')
@@ -42,5 +47,4 @@ class Command(BaseCommand):
             except ValueError as e:
                 raise CommandError(e) from e
             except KeyError as e:
-                raise e
                 raise MetaDataException(e) from e

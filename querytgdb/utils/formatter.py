@@ -2,6 +2,7 @@ from functools import lru_cache
 from itertools import groupby, islice, takewhile, zip_longest
 from operator import itemgetter
 from typing import Dict, Iterable, List, Optional, Tuple, Union
+import re
 
 import numpy as np
 import pandas as pd
@@ -118,7 +119,7 @@ def format_data(df: pd.DataFrame, stats: Optional[Dict] = None) -> Tuple[List, L
 
     analyses = Analysis.objects.filter(
         pk__in=(c for c in columns[1] if c is not None)
-    ).prefetch_related('analysisdata_set', 'analysisdata_set__key')
+    ).prefetch_related('analysisdata_set', 'analysisdata_set__key', 'tf')
 
     prev = None
     edge = None
@@ -126,11 +127,15 @@ def format_data(df: pd.DataFrame, stats: Optional[Dict] = None) -> Tuple[List, L
     for i, col in enumerate(islice(zip(*columns), data_col_len, None)):
         j = i + data_col_len
         name, _, uuid_ = col[0].rpartition(' ')
-        columns[0][j] = name or uuid_
+        name = name or uuid_
 
         try:
             analysis = analyses.get(pk=col[1])
 
+            tf = analysis.tf
+            if tf.name:
+                name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id} ({0.name})".format(tf), name, re.I)
+            columns[0][j] = name
             columns[1][j] = get_tech(analysis)
             columns[2][j] = get_analysis_method(analysis)
 
