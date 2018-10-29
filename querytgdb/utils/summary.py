@@ -20,7 +20,9 @@ def get_summary(cache_path):
 
     df = data_to_edges(df, analyses)
 
-    chart = (df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
+    df = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
+
+    chart = (df.reindex_axis(df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, axis=1, level=0)
              .rename(columns=col_names, level=1)
              .to_dict(into=OrderedDict))
 
