@@ -12,6 +12,7 @@ urlpatterns = [
     url(r'^list_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})/$', views.ListEnrichmentTableView.as_view()),
     url(r'^list_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})/legend/$',
         views.ListEnrichmentLegendView.as_view()),
+    url(r'^motif_enrichment/cluster_info.csv$', views.MotifEnrichmentInfo.as_view()),
     url(r'^motif_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})?/$', views.MotifEnrichmentJSONView.as_view()),
     url(r'^motif_enrichment/(?P<request_id>\d{4}-\d{2}-\d{2}T\d{9}Z\d{3})?/heatmap\.svg$',
         views.MotifEnrichmentHeatmapView.as_view()),

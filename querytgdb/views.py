@@ -3,12 +3,14 @@ import shutil
 import time
 from io import BytesIO, TextIOWrapper
 from threading import Lock
+import gzip
 
 import matplotlib
 import pandas as pd
 from django.conf import settings
-from django.core.files.storage import FileSystemStorage, SuspiciousFileOperation
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
+from django.core.exceptions import SuspiciousFileOperation
+from django.core.files.storage import FileSystemStorage
+from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -173,11 +175,10 @@ class FileExportView(View):
                 shutil.make_archive(out_folder, 'zip', out_folder)  # create a zip file for output directory
                 shutil.rmtree(out_folder, ignore_errors=True)  # delete the output directory after creating zip file
 
-            with open(out_file, 'rb') as f:
-                response = HttpResponse(f, content_type='application/zip')
-                response['Content-Disposition'] = 'attachment; filename="query.zip"'
-
-                return response
+            return FileResponse(open(out_file, 'rb'),
+                                content_type='application/zip',
+                                as_attachment=True,
+                                filename='query.zip')
 
         except FileNotFoundError as e:
             return HttpResponseNotFound(content_type='application/zip')
@@ -192,7 +193,6 @@ class ListEnrichmentSVGView(View):
             cache_path = static_storage.path("{}_pickle".format(request_id))
 
             buff = BytesIO()
-            response = HttpResponse(content_type='image/svg+xml')
 
             gene_list_enrichment(
                 cache_path,
@@ -204,9 +204,8 @@ class ListEnrichmentSVGView(View):
             buff.seek(0)
             svg_font_adder(buff)
             buff.seek(0)
-            shutil.copyfileobj(buff, response)
 
-            return response
+            return FileResponse(buff, content_type='image/svg+xml')
         except (FileNotFoundError, ValueError) as e:
             return HttpResponseNotFound(content_type='image/svg+xml')
 
@@ -305,10 +304,7 @@ class MotifEnrichmentHeatmapView(View):
                     body=body == '1'
                 )
 
-                response = HttpResponse(content_type='image/svg+xml')
-                shutil.copyfileobj(buff, response)
-
-                return response
+                return FileResponse(buff, content_type='image/svg+xml')
             except (FileNotFoundError, NoEnrichedMotif):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
@@ -335,6 +331,17 @@ class MotifEnrichmentHeatmapTableView(View):
             )
         except FileNotFoundError:
             raise Http404
+
+
+class MotifEnrichmentInfo(View):
+    def get(self, request):
+        g = gzip.open(settings.MOTIF_CLUSTER)
+        g.name = None  # Skip Content-Length checking. Code is problematic.
+
+        return FileResponse(g,
+                            content_type="text/csv",
+                            filename="cluster_info.csv",
+                            as_attachment=True)
 
 
 class AnalysisEnrichmentView(View):

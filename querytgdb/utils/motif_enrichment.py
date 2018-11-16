@@ -16,6 +16,7 @@ import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
@@ -208,7 +209,7 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
         pass
 
     tfs, analysis_ids = zip(*res.keys())
-    analyses = Analysis.objects.filter(pk__in=analysis_ids)
+    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=analysis_ids)
 
     columns = []
 
@@ -218,10 +219,13 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
         data = OrderedDict([('name', name), ('filter', criterion)])
         try:
             analysis = analyses.get(pk=analysis_id)
-            data.update(analysis.analysisdata_set.values_list('key__name', 'value'))
-        except Analysis.DoesNotExist:
+            data['gene_name'] = analysis.tf.name
+            data.update(analysis.meta_dict)
+        except ObjectDoesNotExist:
             if (tf, analysis_id) == ('Target Gene List', None):
                 data['genes'] = ", ".join(value)
+            else:
+                raise
 
         columns.append(data)
 
@@ -229,15 +233,6 @@ def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, bo
 
     if df.empty:
         raise NoEnrichedMotif
-
-    # rows, cols = df.shape
-    # if rows > 1:
-    #     z = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
-    #     df = df.iloc[hierarchy.leaves_list(z), :]
-    #
-    # if cols > 1:
-    #     z = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
-    #     df = df.iloc[:, hierarchy.leaves_list(z)]
 
     df = df.where(pd.notnull(df), None)
 

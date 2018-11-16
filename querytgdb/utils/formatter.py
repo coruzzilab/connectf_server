@@ -67,7 +67,7 @@ def get_col_type(s: Union[Tuple, str]) -> str:
 
 @lru_cache()
 def get_tech(a: Analysis) -> str:
-    return 'Data: ' + a.tech + ' ({})'.format(a.pk)
+    return 'Data: {0.tech} (ID: {0.pk})'.format(a)
 
 
 @lru_cache()
@@ -82,7 +82,7 @@ def get_edge(a: Analysis) -> str:
     return 'Edges: {0[EDGE_TYPE]} {{}}'.format(d)
 
 
-def format_data(df: pd.DataFrame, stats: Optional[Dict] = None) -> Tuple[List, List, List]:
+def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
     data_cols = get_data_columns(df)
 
     df = df.reset_index()
@@ -134,7 +134,7 @@ def format_data(df: pd.DataFrame, stats: Optional[Dict] = None) -> Tuple[List, L
 
             tf = analysis.tf
             if tf.name:
-                name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id} ({0.name})".format(tf), name, re.I)
+                name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id}<br/>({0.name})<br/>".format(tf), name, re.I)
             columns[0][j] = name
             columns[1][j] = get_tech(analysis)
             columns[2][j] = get_analysis_method(analysis)

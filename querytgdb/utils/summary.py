@@ -6,6 +6,12 @@ import pandas as pd
 from ..models import Analysis
 from ..utils import data_to_edges
 
+COLORS = [
+    '#e41a1c',
+    '#377eb8',
+    '#4daf4a'
+]
+
 
 def get_summary(cache_path):
     df = pd.read_pickle(cache_path)
@@ -22,7 +28,7 @@ def get_summary(cache_path):
 
     df = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
 
-    chart = (df.reindex_axis(df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, axis=1, level=0)
+    chart = (df.reindex(columns=df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, level=0)
              .rename(columns=col_names, level=1)
              .to_dict(into=OrderedDict))
 

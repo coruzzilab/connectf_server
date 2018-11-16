@@ -50,6 +50,20 @@ GAP = 10
 TF_GAP = 50
 G_GAP = 40
 
+COLOR = {
+    'INDUCED': '#4daf4a',
+    'REPRESSED': '#e41a1c',
+    'BOUND': '#377eb8'
+}
+
+
+def simplify_edge(edge: str) -> str:
+    if edge.endswith("INDUCED"):
+        return "INDUCED"
+    elif edge.endswith("REPRESSED"):
+        return "REPRESSED"
+    return "BOUND"
+
 
 def make_nodes(df: pd.DataFrame, pos, show_label: bool = False) -> Generator[Dict[str, Any], None, None]:
     for (idx, name, t), (y, x) in zip(df.itertuples(name=None), pos):
@@ -145,7 +159,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
         'source': s,
         'target': t,
         'name': e,
-        'color': edge_colors[e]
+        'color': COLOR[simplify_edge(e)]
     }} for t, s, e in tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
 
     group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
@@ -169,7 +183,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
             'source': s,
             'target': t,
             'name': e,
-            'color': edge_colors[e],
+            'color': COLOR[simplify_edge(e)],
             'weight': w
         }} for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 

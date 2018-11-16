@@ -19,7 +19,7 @@ class Analysis(models.Model):
 
     @property
     def name(self) -> str:
-        return self.tech + '_' + self.analysis_method + '_{}'.format(self.pk)
+        return '{0.tech}_{0.analysis_method}_{0.pk}'.format(self)
 
     @property
     def tech(self) -> str:
@@ -72,6 +72,10 @@ class Annotation(models.Model):
 
     def __str__(self):
         return self.name or self.gene_id
+
+    @property
+    def gene_name_symbol(self) -> str:
+        return self.gene_id + f" ({self.name})" if self.name else ""
 
 
 class EdgeData(models.Model):

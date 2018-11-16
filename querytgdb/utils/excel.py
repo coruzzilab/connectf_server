@@ -114,6 +114,10 @@ def create_sifs(result: pd.DataFrame, output):
     df = data_to_edges(result).stack([0, 1])
     result = result.stack([0, 1])
     result["EDGE"] = df
+    if "Log2FC" not in result:
+        result["Log2FC"] = np.nan
+    if "Pvalue" not in result:
+        result["Pvalue"] = np.nan
     result = result.unstack([1, 2]).reorder_levels([1, 2, 0], axis=1)
 
     res_group = result.groupby(**group_opt)

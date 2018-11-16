@@ -250,6 +250,64 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
         return query
 
 
+def add_edges(df: pd.DataFrame, edges: List[str], query: Optional[str] = None) -> pd.DataFrame:
+    """
+    Add additional edge data of query to result dataframe
+    :param df:
+    :param edges:
+    :param query:
+    :return:
+    """
+    anno = ANNOTATIONS['id'].reset_index()
+
+    edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
+                              columns=['edge_id', 'edge'])
+
+    if query:
+        tf_ids = anno.loc[anno['TARGET'].str.contains(query, case=False, regex=False), 'id']
+    else:
+        tf_ids = anno.loc[anno['TARGET'].isin(df['TF'].unique()), 'id']
+
+    target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'id']
+
+    edge_data = pd.DataFrame(
+        EdgeData.objects.filter(
+            tf_id__in=tf_ids,
+            target_id__in=target_ids
+        ).values_list('tf_id', 'target_id', 'type_id').iterator(),
+        columns=['source', 'target', 'edge_id']
+    )
+
+    edge_data = (edge_data
+                 .merge(edge_types, on='edge_id')
+                 .drop('edge_id', axis=1)
+                 .set_index(['source', 'target']))
+
+    if not edge_data.empty:
+        edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
+
+        row_num, col_num = edge_data.shape
+
+        if col_num > 1:
+            edge_data = edge_data.iloc[:, 0].str.cat(
+                edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
+        else:
+            edge_data = edge_data.fillna('')
+
+        edge_data = edge_data.reset_index()
+
+        edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
+                                                                                 right_on='id')
+        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
+        edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
+
+        if 'TF' in df:
+            return df.merge(edge_data, on=['TF', 'TARGET'], how='left')
+        return df.merge(edge_data.drop('TF', axis=1), on='TARGET', how='left')
+
+    raise ValueError("No Edge Data")
+
+
 def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     """
     Get data for single TF
@@ -270,52 +328,18 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
                 'analysis_id', 'target__gene_id', 'p_value', 'foldchange').iterator(),
             columns=['ANALYSIS', 'TARGET', 'Pvalue', 'Log2FC'])
 
+        df.insert(2, 'EDGE', '+')
+
         if not reg.empty:
             # reg['Log2FC'] = reg['Log2FC'].fillna(np.finfo(reg['Log2FC'].dtype).max)
             df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
-        else:
-            df.insert(0, 'EDGE', '+')
+            df.loc[df['ANALYSIS'].isin(reg['ANALYSIS']), 'EDGE'] = np.nan
 
         if edges:
-            anno = ANNOTATIONS['id'].reset_index()
-
-            edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
-                                      columns=['edge_id', 'edge'])
-            tf_ids = anno.loc[anno['TARGET'].str.contains(query, case=False, regex=False), 'id']
-            target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'id']
-
-            edge_data = pd.DataFrame(
-                EdgeData.objects.filter(
-                    tf_id__in=tf_ids,
-                    target_id__in=target_ids
-                ).values_list('tf_id', 'target_id', 'type_id').iterator(),
-                columns=['source', 'target', 'edge_id']
-            )
-
-            edge_data = (edge_data
-                         .merge(edge_types, on='edge_id')
-                         .drop('edge_id', axis=1)
-                         .set_index(['source', 'target']))
-
-            if not edge_data.empty:
-                edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
-
-                row_num, col_num = edge_data.shape
-
-                if col_num > 1:
-                    edge_data = edge_data.iloc[:, 0].str.cat(
-                        edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
-                else:
-                    edge_data = edge_data.fillna('')
-
-                edge_data = edge_data.reset_index()
-
-                edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
-                                                                                         right_on='id')
-                edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
-                edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
-
-                df = df.merge(edge_data.drop('TF', axis=1), on='TARGET', how='left')
+            try:
+                df = add_edges(df, edges, query)
+            except ValueError:
+                pass
 
         df = (df.pivot(index='TARGET', columns='ANALYSIS')
               .swaplevel(0, 1, axis=1)
@@ -337,10 +361,19 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     :param edges:
     :return:
     """
-    df = TargetFrame(
-        Interaction.objects.values_list(
-            'target__gene_id', 'analysis_id').iterator(),
-        columns=['TARGET', 'ANALYSIS'])
+    qs = Interaction.objects.values_list('target__gene_id', 'analysis_id')
+
+    # Additional restrictions here
+    if query == "multitype":
+        a = pd.DataFrame(Analysis.objects.filter(
+            analysisdata__key__name__iexact="EXPERIMENT_TYPE"
+        ).values_list('id', 'tf_id', 'analysisdata__value', named=True).iterator())
+
+        a = a.groupby('tf_id').filter(lambda x: x['analysisdata__value'].nunique() > 1)
+
+        qs = qs.filter(analysis_id__in=a['id'])
+
+    df = TargetFrame(qs.iterator(), columns=['TARGET', 'ANALYSIS'])
 
     analyses = TargetFrame(
         Analysis.objects.values_list('id', 'tf__gene_id').iterator(),
@@ -362,44 +395,10 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     no_fc = df.groupby(by='ANALYSIS').apply(lambda x: pd.isna(x['Log2FC']).all())
 
     if edges:
-        anno = ANNOTATIONS['id'].reset_index()
-        edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
-                                  columns=['edge_id', 'edge'])
-        tf_ids = anno.loc[anno['TARGET'].isin(df['TF'].unique()), 'id']
-        target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'id']
-
-        edge_data = pd.DataFrame(
-            EdgeData.objects.filter(
-                tf_id__in=tf_ids,
-                target_id__in=target_ids
-            ).values_list('tf_id', 'target_id', 'type_id').iterator(),
-            columns=['source', 'target', 'edge_id']
-        )
-
-        edge_data = (edge_data
-                     .merge(edge_types, on='edge_id')
-                     .drop('edge_id', axis=1)
-                     .set_index(['source', 'target']))
-
-        if not edge_data.empty:
-            edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
-
-            row_num, col_num = edge_data.shape
-
-            if col_num > 1:
-                edge_data = edge_data.iloc[:, 0].str.cat(
-                    edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
-            else:
-                edge_data = edge_data.fillna('')
-
-            edge_data = edge_data.reset_index()
-
-            edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
-                                                                                     right_on='id')
-            edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
-            edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
-
-            df = df.merge(edge_data, on=['TF', 'TARGET'], how='left')
+        try:
+            df = add_edges(df, edges)
+        except ValueError:
+            pass
 
     df.insert(3, 'EDGE', np.nan)
     df['EDGE'] = df['EDGE'].mask(df['ANALYSIS'].isin(no_fc.index[no_fc]), '+')
@@ -410,13 +409,11 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
           .sort_index(axis=1, level=[0, 1], sort_remaining=False)
           .dropna(how='all', axis=1))
 
-    if query == 'oralltfs':
-        df.filter_string += 'oralltfs'
-    elif query == 'andalltfs':
+    df.filter_string += query
+
+    # additional restrictions here as well
+    if query == 'andalltfs':
         df = df[df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().all(axis=1)]
-        df.filter_string += 'andalltfs'
-    else:
-        raise ValueError('invalid query')
 
     return df
 
@@ -505,8 +502,8 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
-        if query in {'andalltfs', 'oralltfs'}:
-            return get_all_tf(query, edges)
+        if query.lower() in {'andalltfs', 'oralltfs', 'multitype'}:
+            return get_all_tf(query.lower(), edges)
 
         return get_tf_data(query, edges)
 
@@ -522,19 +519,27 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     tf_order = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(
         axis=1, level=0).sum().sort_values(ascending=False)
 
-    df = (df.reindex(labels=analysis_order.index, axis=1, level=1)
-          .reindex(labels=tf_order.index, axis=1, level=0))
-    return df
+    return (df.reindex(labels=analysis_order.index, axis=1, level=1)
+            .reindex(labels=tf_order.index, axis=1, level=0))
 
 
 def get_metadata(ids: Sequence) -> TargetFrame:
-    analyses = Analysis.objects.filter(pk__in=ids)
-    df = TargetFrame(
+    analyses = Analysis.objects.filter(pk__in=ids).prefetch_related('analysisdata_set', 'tf')
+    df = pd.DataFrame(
         analyses.values_list(
             'id',
             'analysisdata__key__name',
             'analysisdata__value').iterator(),
         columns=['ANALYSIS', 'KEY', 'VALUE'])
+
+    gene_names = pd.DataFrame(
+        analyses.values_list('id', 'tf__gene_id', 'tf__name').iterator(),
+        columns=['ANALYSIS', 'GENE_ID', 'GENE_NAME']
+    ).set_index('ANALYSIS').unstack().reset_index()
+
+    gene_names.columns = ['KEY', 'ANALYSIS', 'VALUE']
+
+    df = pd.concat([df, gene_names], sort=False, ignore_index=True)
 
     df = df.dropna(how='all', subset=['KEY', 'VALUE'])
     df = df.set_index(['ANALYSIS', 'KEY'])
@@ -582,7 +587,7 @@ def parse_query(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     if result.empty or not result.include:
         raise ValueError('empty query')
 
-    return result
+    return reorder_data(result)
 
 
 def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
@@ -626,8 +631,6 @@ def get_query_result(query: Optional[str] = None,
             user_lists = read_cached_result(cache_path + '/target_genes.pickle.gz')
         except FileNotFoundError:
             pass
-
-    result = reorder_data(result)
 
     counts = get_tf_count(result)
 

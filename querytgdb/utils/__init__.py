@@ -9,6 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 from uuid import UUID
+from operator import methodcaller
 
 import numpy as np
 import pandas as pd
@@ -75,7 +76,7 @@ def convert_float(s) -> Optional[float]:
 
 
 def metadata_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
-    df.reset_index(inplace=True)
+    df = df.rename(columns=lambda x: f"ID: {x}").reset_index()
     meta_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
 
     df = df.where(df.notna(), None)
@@ -131,7 +132,7 @@ def split_name(name: str) -> Tuple[str, str]:
     m = NAME_REGEX.match(name)
 
     if m:
-        name, criterion = m.groups('')
+        name, criterion = map(methodcaller('strip'), m.groups(''))
     else:
         criterion = ''
 

@@ -1,4 +1,5 @@
-from itertools import combinations, islice
+from collections import OrderedDict
+from itertools import combinations
 from typing import Dict, Tuple
 
 import pandas as pd
@@ -17,7 +18,11 @@ class AnalysisEnrichmentError(ValueError):
 def split_col_name(col_name: Tuple[str, int]) -> Tuple[str, str, int]:
     name, analysis_id = col_name
 
-    return (*split_name(name), analysis_id)
+    return split_name(name) + (analysis_id,)
+
+
+def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, str, int]:
+    return (analysis.tf.gene_name_symbol, *split_col_name(col_name)[1:])
 
 
 def analysis_enrichment(cache_path) -> Dict:
@@ -37,15 +42,21 @@ def analysis_enrichment(cache_path) -> Dict:
 
     analysis_ids = df.columns.get_level_values(1)
 
-    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set')
+    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set', 'tf')
 
     for col_name in df.columns:
         analysis = analyses.get(pk=col_name[1])
-        info.append((split_col_name(col_name), dict(analysis.analysisdata_set.values_list('key__name', 'value'))))
+        d = OrderedDict(Count=df[col_name].count())
+        d.update(analysis.meta_dict)
+
+        info.append((make_col_tuple(col_name, analysis), d))
 
     for (name1, col1), (name2, col2) in combinations(((name, col.index[col.notna()])
                                                       for name, col in df.iteritems()), 2):
-        columns.append((split_col_name(name1), split_col_name(name2)))
+        columns.append((
+            make_col_tuple(name1, analyses.get(pk=name1[1])),
+            make_col_tuple(name2, analyses.get(pk=name2[1]))
+        ))
 
         common = col1.intersection(col2).sort_values()
 

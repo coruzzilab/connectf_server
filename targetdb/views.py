@@ -31,7 +31,9 @@ class TFView(views.APIView):
 
         if all_genes == '1':
             queryset = [OrderedDict([('gene_id', 'oralltfs')]),
-                        OrderedDict([('gene_id', 'andalltfs')])]
+                        # remove andalltfs because it is not use beyond a handfull of datasets
+                        # OrderedDict([('gene_id', 'andalltfs')]),
+                        OrderedDict([('gene_id', 'multitype')])]
         else:
             queryset = []
 
