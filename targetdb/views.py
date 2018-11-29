@@ -70,7 +70,7 @@ class KeyView(views.APIView):
     def get(self, request):
         tfs = set(request.GET.getlist('tf'))
 
-        if tfs & {'oralltfs', 'andalltfs'}:
+        if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
 
         queryset = ['has_column']
@@ -100,7 +100,7 @@ class ValueView(views.APIView):
     def get(self, request, key: str) -> Response:
         tfs = set(request.GET.getlist('tf'))
 
-        if tfs & {'oralltfs', 'andalltfs'}:
+        if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
 
         key = key.upper()

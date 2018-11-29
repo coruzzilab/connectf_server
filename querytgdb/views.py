@@ -1,9 +1,10 @@
+import gzip
 import os
 import shutil
 import time
+from functools import partial
 from io import BytesIO, TextIOWrapper
 from threading import Lock
-import gzip
 
 import matplotlib
 import pandas as pd
@@ -17,9 +18,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from pyparsing import ParseException
 
-from querytgdb.models import Analysis
 from querytgdb.utils.excel import create_export_zip
-from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, convert_float, metadata_to_dict, \
+from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, metadata_to_dict, \
     svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.cytoscape import get_cytoscape_json
@@ -37,7 +37,7 @@ plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 
-from querytgdb.utils.gene_list_enrichment import gene_list_enrichment
+from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
     get_motif_enrichment_heatmap_table
 
@@ -49,6 +49,27 @@ common_genes_storage = FileSystemStorage(settings.GENE_LISTS)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class QueryView(View):
+    def get(self, request, request_id):
+        try:
+            output = static_storage.path(f'{request_id}_pickle')
+
+            result, metadata, stats = get_query_result(cache_path=output)
+
+            columns, merged_cells, result_list = format_data(result, stats)
+
+            res = [
+                {
+                    'data': result_list,
+                    'mergeCells': merged_cells,
+                    'columns': columns
+                },
+                metadata_to_dict(metadata)
+            ]
+
+            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+        except FileNotFoundError as e:
+            raise Http404('Query not available') from e
+
     def post(self, request, *args, **kwargs):
         try:
             request_id = request.POST['requestId']
@@ -105,29 +126,6 @@ class QueryView(View):
             return HttpResponseBadRequest("Propblem with query.")
 
 
-class QueryIdView(View):
-    def get(self, request, request_id):
-        try:
-            output = static_storage.path(request_id + '_pickle')
-
-            result, metadata, stats = get_query_result(cache_path=output)
-
-            columns, merged_cells, result_list = format_data(result, stats)
-
-            res = [
-                {
-                    'data': result_list,
-                    'mergeCells': merged_cells,
-                    'columns': columns
-                },
-                metadata_to_dict(metadata)
-            ]
-
-            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
-        except FileNotFoundError as e:
-            raise Http404('Query not available') from e
-
-
 class StatsView(View):
     def get(self, request, request_id):
         try:
@@ -147,13 +145,17 @@ class StatsView(View):
 class CytoscapeJSONView(View):
     def get(self, request, request_id):
         try:
-            cache_dir = static_storage.path(request_id + '_pickle')
-            df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
-            return JsonResponse(get_cytoscape_json(df), safe=False, encoder=CytoscapeJSONEncoder)
-        except ValueError as e:
-            return HttpResponseBadRequest("Network too large")
-        except FileNotFoundError as e:
-            raise Http404 from e
+            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
+            cy_cache_dir = static_storage.path(f'{request_id}_pickle/cytoscape.json.gz')
+            df = pd.read_pickle(cache_dir)
+
+            result = cache_view(partial(get_cytoscape_json, df), cy_cache_dir)
+
+            return JsonResponse(result, safe=False, encoder=CytoscapeJSONEncoder)
+        except ValueError:
+            return HttpResponseBadRequest("Network too large", content_type="application/json")
+        except FileNotFoundError:
+            return HttpResponseNotFound(content_type="application/json")
 
 
 class FileExportView(View):
@@ -214,10 +216,12 @@ class ListEnrichmentLegendView(View):
     def get(self, request, request_id):
         try:
             cache_path = static_storage.path("{}_pickle".format(request_id))
-            return JsonResponse(gene_list_enrichment(
-                cache_path,
-                legend=True
-            ), safe=False, encoder=PandasJSONEncoder)
+
+            result = cache_view(
+                partial(gene_list_enrichment, cache_path, legend=True),
+                cache_path + '/list_enrichment_legend.pickle.gz'
+            )
+            return JsonResponse(result, safe=False, encoder=PandasJSONEncoder)
         except FileNotFoundError as e:
             raise Http404 from e
 
@@ -225,29 +229,14 @@ class ListEnrichmentLegendView(View):
 class ListEnrichmentTableView(View):
     def get(self, request, request_id):
         try:
-            df = gene_list_enrichment(
-                static_storage.path("{}_pickle".format(request_id)),
-                draw=False
+            pickledir = static_storage.path("{}_pickle".format(request_id))
+
+            result = cache_view(
+                partial(gene_list_enrichment_json, pickledir),
+                pickledir + '/list_enrichment.pickle.gz'
             )
-            names, criteria, analysis_ids, ls, uids = zip(*df.index)
-            analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set',
-                                                                                     'analysisdata_set__key')
 
-            def get_rows():
-                for (name, criterion, analysis_id, l, uid), *row in df.itertuples(name=None):
-                    info = {'name': name, 'filter': criterion, 'targets': l}
-                    try:
-                        analysis = analyses.get(pk=analysis_id)
-                        info.update(analysis.analysisdata_set.values_list('key__name', 'value'))
-                    except Analysis.DoesNotExist:
-                        pass
-
-                    yield [info] + row
-
-            return JsonResponse({
-                'columns': df.columns,
-                'result': list(get_rows())
-            }, encoder=PandasJSONEncoder)
+            return JsonResponse(result, encoder=PandasJSONEncoder)
         except (FileNotFoundError, ValueError) as e:
             raise Http404 from e
 
@@ -316,7 +305,8 @@ class MotifEnrichmentHeatmapTableView(View):
         if not request_id:
             raise Http404
 
-        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
+        target_genes = static_storage.path(f"{request_id}_pickle/target_genes.pickle.gz")
 
         if not os.path.exists(cache_path):
             time.sleep(3)
@@ -325,7 +315,7 @@ class MotifEnrichmentHeatmapTableView(View):
             return JsonResponse(
                 list(get_motif_enrichment_heatmap_table(
                     cache_path,
-                    static_storage.path("{}_pickle/target_genes.pickle.gz".format(request_id))
+                    target_genes
                 )),
                 safe=False
             )
@@ -347,10 +337,12 @@ class MotifEnrichmentInfo(View):
 class AnalysisEnrichmentView(View):
     def get(self, request, request_id):
         cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+        analysis_cache = static_storage.path("{}_pickle/analysis_enrichment.pickle.gz".format(request_id))
 
         try:
-            return JsonResponse(analysis_enrichment(cache_path), encoder=PandasJSONEncoder)
+            result = cache_view(partial(analysis_enrichment, cache_path), analysis_cache)
 
+            return JsonResponse(result, encoder=PandasJSONEncoder)
         except FileNotFoundError:
             return HttpResponseNotFound("Please make a new query")
         except AnalysisEnrichmentError as e:

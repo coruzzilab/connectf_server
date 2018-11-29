@@ -8,7 +8,7 @@ from io import BytesIO
 from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
 from operator import or_
-from typing import Dict, Iterable, Tuple, Union
+from typing import Dict, Generator, Iterable, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -324,7 +324,10 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
     return buff
 
 
-def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None):
+TableRow = Tuple[Dict, str, str, str, str, str]
+
+
+def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None) -> Generator[TableRow, None, None]:
     df = pd.read_pickle(cache_path)
     df = clear_data(df)
     res = df.columns.tolist()

@@ -69,6 +69,9 @@ def insert_data(data_file, metadata_file, sep=','):
     if not metadata.index.contains('EDGE_TYPE'):
         raise ValueError('Please assign an EDGE_TYPE to the metadata.')
 
+    if not metadata.index.contains('EXPERIMENT_TYPE'):
+        raise ValueError('Please assign an EXPERIMENT_TYPE to the metadata. Typically Expression or Binding.')
+
     # Insert Analysis
     analysis = Analysis(tf=tf)
     analysis.save()

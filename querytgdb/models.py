@@ -1,3 +1,4 @@
+import re
 import sys
 from collections import defaultdict
 from typing import DefaultDict
@@ -31,7 +32,7 @@ class Analysis(models.Model):
     def analysis_method(self) -> str:
         d = self.meta_dict
 
-        return d['ANALYSIS_METHOD'] + '_' + d['ANALYSIS_CUTOFF'].replace(' ', '')
+        return d['ANALYSIS_METHOD'] + '_' + re.sub(r'\s+', '', d['ANALYSIS_CUTOFF'])
 
     class Meta:
         verbose_name_plural = "analyses"
@@ -75,7 +76,7 @@ class Annotation(models.Model):
 
     @property
     def gene_name_symbol(self) -> str:
-        return self.gene_id + f" ({self.name})" if self.name else ""
+        return self.gene_id + (f" ({self.name})" if self.name else "")
 
 
 class EdgeData(models.Model):

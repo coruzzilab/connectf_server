@@ -6,10 +6,10 @@ import os.path as path
 import pickle
 import re
 from contextlib import closing
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
-from uuid import UUID
 from operator import methodcaller
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+from uuid import UUID
 
 import numpy as np
 import pandas as pd
@@ -46,10 +46,16 @@ class CytoscapeJSONEncoder(DjangoJSONEncoder):
         return super().default(o)
 
 
-def cache_result(obj, cache_name: Union[str, Path]):
+def cache_result(obj, cache_name: Union[str, Path], *args, **kwargs) -> Any:
+    """
+    Caches object as gzipped picked
+    :param obj:
+    :param cache_name:
+    :return:
+    """
     encoding = mimetypes.guess_type(cache_name)[1]
     if encoding == 'gzip':
-        cache = gzip.open(cache_name, 'wb')
+        cache = gzip.open(cache_name, 'wb', *args, **kwargs)
     else:
         cache = open(cache_name, 'wb')
 
@@ -57,7 +63,12 @@ def cache_result(obj, cache_name: Union[str, Path]):
         pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def read_cached_result(cache_name: Union[str, Path]):
+def read_cached_result(cache_name: Union[str, Path]) -> Any:
+    """
+    Read cached pickle
+    :param cache_name:
+    :return:
+    """
     encoding = mimetypes.guess_type(cache_name)[1]
     if encoding == 'gzip':
         cache = gzip.open(cache_name, 'rb')
@@ -66,6 +77,22 @@ def read_cached_result(cache_name: Union[str, Path]):
 
     with closing(cache) as c:
         return pickle.load(c)
+
+
+def cache_view(func: Callable, cache_path) -> Any:
+    """
+    read results from cache if possible
+    :param func:
+    :param cache_path:
+    :return:
+    """
+    try:
+        result = read_cached_result(cache_path)
+    except FileNotFoundError:
+        result = func()
+        cache_result(result, cache_path)
+
+    return result
 
 
 def convert_float(s) -> Optional[float]:

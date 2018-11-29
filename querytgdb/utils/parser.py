@@ -419,7 +419,7 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
 
 
 def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
-    return ' "' + prec.filter_string + '" ' + str(uuid4()), ' "' + succ.filter_string + '" ' + str(uuid4())
+    return f' "{prec.filter_string}" {uuid4()}', f' "{succ.filter_string}" {uuid4()}'
 
 
 def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List[str]] = None) -> TargetFrame:

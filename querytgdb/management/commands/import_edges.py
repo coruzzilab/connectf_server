@@ -12,36 +12,37 @@ class Command(BaseCommand):
     help = "Adds edge properties to annotate gene interactions in the database, DAP, DAP_amp, etc."
 
     def add_arguments(self, parser: ArgumentParser):
-        parser.add_argument('file', help='edge property file')
+        parser.add_argument('file', help='edge property file', nargs='?')
         parser.add_argument('--clear', help='clear current edges', action='store_true')
 
     def handle(self, *args, **options):
         with atomic():
-            df = pd.read_csv(options['file'])
-            df.columns = ['source', 'target', 'edge']
-
             if options['clear']:
                 EdgeData.objects.all().delete()
                 EdgeType.objects.all().delete()
 
-            edges = pd.DataFrame.from_records(map(attrgetter('id', 'name'),
-                                                  map(itemgetter(0),
-                                                      (EdgeType.objects.get_or_create(name=e) for e in
-                                                       df['edge'].unique()))),
-                                              columns=['edge_id', 'edge'])
+            if 'file' in options:
+                df = pd.read_csv(options['file'])
+                df.columns = ['source', 'target', 'edge']
 
-            anno = pd.DataFrame(Annotation.objects.values_list('id', 'gene_id', named=True).iterator())
+                edges = pd.DataFrame.from_records(map(attrgetter('id', 'name'),
+                                                      map(itemgetter(0),
+                                                          (EdgeType.objects.get_or_create(name=e) for e in
+                                                           df['edge'].unique()))),
+                                                  columns=['edge_id', 'edge'])
 
-            df = (df
-                  .merge(edges, on='edge')
-                  .merge(anno, left_on='source', right_on='gene_id')
-                  .merge(anno, left_on='target', right_on='gene_id'))
+                anno = pd.DataFrame(Annotation.objects.values_list('id', 'gene_id', named=True).iterator())
 
-            EdgeData.objects.bulk_create(
-                (EdgeData(
-                    type_id=e,
-                    tf_id=s,
-                    target_id=t
-                ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
-                batch_size=1000
-            )
+                df = (df
+                      .merge(edges, on='edge')
+                      .merge(anno, left_on='source', right_on='gene_id')
+                      .merge(anno, left_on='target', right_on='gene_id'))
+
+                EdgeData.objects.bulk_create(
+                    (EdgeData(
+                        type_id=e,
+                        tf_id=s,
+                        target_id=t
+                    ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
+                    batch_size=1000
+                )

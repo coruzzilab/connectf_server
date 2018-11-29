@@ -1,7 +1,7 @@
 import sys
 from itertools import count, product
 from operator import itemgetter
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ import seaborn as sns
 from scipy.stats import fisher_exact
 
 from ..models import Analysis
-from ..utils import column_string, split_name, clear_data
+from ..utils import clear_data, column_string, split_name
 from ..utils.parser import ANNOTATIONS
 
 
@@ -78,7 +78,9 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
     query_result = clear_data(query_result)
 
-    analyses = Analysis.objects.filter(pk__in=map(itemgetter(1), query_result.columns))
+    analyses = Analysis.objects.filter(
+        pk__in=map(itemgetter(1), query_result.columns)
+    ).distinct().prefetch_related('tf')
 
     # save targets for each TF into a dict
     targets = {}
@@ -114,7 +116,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
         for (name, criterion, analysis_id, l, uid), col_name in orig_index:
             tf = analyses.get(pk=analysis_id).tf
-            indices.append('{2} — {0}{1} ({3})'.format(tf.gene_id, ' ' + tf.name if tf.name else '', col_name, l))
+            indices.append('{} — {}{} ({})'.format(col_name, tf.gene_id, ' ' + tf.name if tf.name else '', l))
 
         list_enrichment_pvals.index = indices
 
@@ -159,3 +161,32 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
         #     list_enrichment_pvals = list_enrichment_pvals.iloc[:, hierarchy.leaves_list(z)]
 
         return list_enrichment_pvals
+
+
+def gene_list_enrichment_json(pickledir) -> Dict[str, Any]:
+    df = gene_list_enrichment(
+        pickledir,
+        draw=False
+    )
+    names, criteria, analysis_ids, ls, uids = zip(*df.index)
+    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set',
+                                                                             'analysisdata_set__key',
+                                                                             'tf')
+
+    result = []
+
+    for (name, criterion, analysis_id, l, uid), *row in df.itertuples(name=None):
+        info = {'filter': criterion, 'targets': l}
+        try:
+            analysis = analyses.get(pk=analysis_id)
+            info['name'] = analysis.tf.gene_name_symbol
+            info.update(analysis.meta_dict)
+        except Analysis.DoesNotExist:
+            pass
+
+        result.append([info] + row)
+
+    return {
+        'columns': df.columns,
+        'result': result
+    }
