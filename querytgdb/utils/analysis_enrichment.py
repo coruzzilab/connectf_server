@@ -1,8 +1,10 @@
+import warnings
 from collections import OrderedDict
 from itertools import combinations
 from typing import Dict, Tuple
 
 import pandas as pd
+from scipy.special import comb
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
@@ -12,6 +14,10 @@ from ..utils.parser import ANNOTATIONS
 
 
 class AnalysisEnrichmentError(ValueError):
+    pass
+
+
+class AnalysisEnrichmentWarning(AnalysisEnrichmentError, UserWarning):
     pass
 
 
@@ -25,7 +31,7 @@ def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, 
     return (analysis.tf.gene_name_symbol, *split_col_name(col_name)[1:])
 
 
-def analysis_enrichment(cache_path) -> Dict:
+def analysis_enrichment(cache_path, size_limit: int = 100, raise_warning: bool = False) -> Dict:
     df = pd.read_pickle(cache_path)
 
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
@@ -33,6 +39,13 @@ def analysis_enrichment(cache_path) -> Dict:
 
     if df.shape[1] < 2:
         raise AnalysisEnrichmentError('Analysis enrichment requires more than 1 queried analysis')
+
+    if comb(df.shape[1], 2) > size_limit:
+        e = AnalysisEnrichmentWarning('Data size too large.')
+        if raise_warning:
+            raise e
+        else:
+            warnings.warn(e)
 
     columns = []
     data = []

@@ -1,8 +1,8 @@
+import re
 from functools import lru_cache
 from itertools import groupby, islice, takewhile, zip_longest
 from operator import itemgetter
-from typing import Dict, Iterable, List, Optional, Tuple, Union
-import re
+from typing import Any, Dict, Iterable, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -30,7 +30,7 @@ def get_data_columns(df: pd.DataFrame) -> List[str]:
     return list(takewhile(is_data_column, df.columns))
 
 
-def get_merge_cells(columns: List[Iterable]) -> List:
+def get_merge_cells(columns: List[Iterable]) -> List[Dict[str, Any]]:
     """
     Get merge cells for Handsontable. Highly customized don't copy paste.
     :param columns:
@@ -40,13 +40,15 @@ def get_merge_cells(columns: List[Iterable]) -> List:
 
     merged_cells = [{'row': 0, 'col': i, 'colspan': 1, 'rowspan': 6} for i in range(8)]
 
-    for i in range(6):
+    for i in range(1, 6):
         index = 8
-        for label, group in groupby(columns[8:], key=itemgetter(slice(0, i + 1))):
+        for label, group in groupby(columns[8:], key=itemgetter(slice(1, i + 1))):
             size = sum(1 for _ in group)
 
             if size > 1:
                 merged_cells.append({'row': i, 'col': index, 'colspan': size, 'rowspan': 1})
+                if i == 1:
+                    merged_cells.append({'row': 0, 'col': index, 'colspan': size, 'rowspan': 1})
 
             index += size
 

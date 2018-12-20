@@ -1,14 +1,18 @@
 import base64
 import gzip
+import logging
 import math
 import mimetypes
-import os.path as path
+import os.path
 import pickle
 import re
+import shutil
+import sys
 from contextlib import closing
+from functools import wraps
 from operator import methodcaller
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, IO, Optional, Sized, Tuple, Union
 from uuid import UUID
 
 import numpy as np
@@ -17,9 +21,12 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import QuerySet
+from django.http import FileResponse
 from lxml import etree
 
 from ..models import Analysis
+
+logger = logging.getLogger(__name__)
 
 
 class PandasJSONEncoder(DjangoJSONEncoder):
@@ -39,47 +46,76 @@ class PandasJSONEncoder(DjangoJSONEncoder):
         return super().default(o)
 
 
-class CytoscapeJSONEncoder(DjangoJSONEncoder):
+class NetworkJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
         if isinstance(o, UUID):
             return str(o)
         return super().default(o)
 
 
-def cache_result(obj, cache_name: Union[str, Path], *args, **kwargs) -> Any:
+class GzipFileResponse(FileResponse):
+    """
+    Handles gzip files correctly
+
+    Does not compress files
+    """
+
+    def set_headers(self, filelike):
+        if isinstance(filelike, gzip.GzipFile) and hasattr(filelike, 'name'):
+            filelike.name = None
+
+        return super().set_headers(filelike)
+
+
+def open_file(path, mode: str) -> IO:
+    encoding = mimetypes.guess_type(path)[1]
+    if encoding == 'gzip':
+        cache = gzip.open(path, mode)
+    else:
+        cache = open(path, mode)
+
+    return cache
+
+
+def cache_result(obj: Any, cache_name: Union[str, Path], mode: str = 'wb') -> Union[str, Path]:
     """
     Caches object as gzipped picked
     :param obj:
     :param cache_name:
+    :param mode:
     :return:
     """
-    encoding = mimetypes.guess_type(cache_name)[1]
-    if encoding == 'gzip':
-        cache = gzip.open(cache_name, 'wb', *args, **kwargs)
-    else:
-        cache = open(cache_name, 'wb')
+    cache = open_file(cache_name, mode)
 
     with closing(cache) as c:
-        pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
+        try:
+            shutil.copyfileobj(obj, c)
+            obj.seek(0)
+        except AttributeError:
+            pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return cache_name
 
 
-def read_cached_result(cache_name: Union[str, Path]) -> Any:
+def read_cached_result(cache_name: Union[str, Path], mode: str = 'rb') -> Union[IO, Any]:
     """
     Read cached pickle
     :param cache_name:
+    :param mode:
     :return:
     """
-    encoding = mimetypes.guess_type(cache_name)[1]
-    if encoding == 'gzip':
-        cache = gzip.open(cache_name, 'rb')
-    else:
-        cache = open(cache_name, 'rb')
+    cache = open_file(cache_name, mode)
 
     with closing(cache) as c:
-        return pickle.load(c)
+        try:
+            return pickle.load(c)
+        except pickle.UnpicklingError:
+            pass
+
+    return open_file(cache_name, mode)
 
 
-def cache_view(func: Callable, cache_path) -> Any:
+def cache_view(func: Callable, cache_path: Union[str, Path]) -> Any:
     """
     read results from cache if possible
     :param func:
@@ -140,7 +176,7 @@ def svg_font_adder(buff):
     tree = etree.parse(buff)
     style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
 
-    with open(path.join(settings.BASE_DIR, 'tgdbbackend/static/fonts/DejaVuSans.woff'), 'rb') as font_file:
+    with open(os.path.join(settings.BASE_DIR, 'tgdbbackend/static/fonts/DejaVuSans.woff'), 'rb') as font_file:
         font_str = base64.b64encode(font_file.read()).decode()
 
     style.text += '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
@@ -211,3 +247,22 @@ def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: b
         df.columns = df.columns.droplevel(2)
 
     return df
+
+
+def get_size(func: Callable[..., Sized]) -> Callable[..., Sized]:
+    """
+    Get size of function out put
+
+    :param func:
+    :return:
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+
+        logger.info(f"{func.__name__} len: {len(result)} size: {sys.getsizeof(result)}")
+
+        return result
+
+    return wrapper

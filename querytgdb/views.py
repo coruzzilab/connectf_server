@@ -3,13 +3,12 @@ import os
 import shutil
 import time
 from functools import partial
-from io import BytesIO, TextIOWrapper
+from io import BytesIO
 from threading import Lock
 
 import matplotlib
 import pandas as pd
 from django.conf import settings
-from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
@@ -19,13 +18,13 @@ from django.views.generic import View
 from pyparsing import ParseException
 
 from querytgdb.utils.excel import create_export_zip
-from .utils import CytoscapeJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, metadata_to_dict, \
-    svg_font_adder
+from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, \
+    metadata_to_dict, read_cached_result, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
-from .utils.cytoscape import get_cytoscape_json
-from .utils.file import get_gene_lists
+from .utils.file import get_file, get_gene_lists, get_genes, get_network, merge_network_lists, network_to_filter_tfs, \
+    network_to_lists
 from .utils.formatter import format_data
-from .utils.parser import get_query_result
+from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
 
 # matplotlib import order issues
@@ -40,6 +39,7 @@ plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
     get_motif_enrichment_heatmap_table
+from .utils.network import get_auc, get_network_json
 
 lock = Lock()
 
@@ -74,20 +74,51 @@ class QueryView(View):
         try:
             request_id = request.POST['requestId']
 
-            output = static_storage.path(request_id + '_pickle')
+            output = static_storage.path(f'{request_id}_pickle')
             os.makedirs(output, exist_ok=True)
 
-            targetgenes_file = None
+            file_opts = {}
 
-            if 'targetgenes' in request.POST:
+            targetgenes_file = get_file(request, "targetgenes", common_genes_storage)
+            filter_tfs_file = get_file(request, "filtertfs")
+            target_networks = get_file(request, "targetnetworks", common_genes_storage)
+
+            if targetgenes_file:
+                user_lists = get_gene_lists(targetgenes_file)
+
+                if not target_networks:
+                    cache_result(user_lists, f'{output}/target_genes.pickle.gz')  # cache the user list here
+
+                file_opts["user_lists"] = user_lists
+
+            if filter_tfs_file:
+                file_opts["tf_filter_list"] = get_genes(filter_tfs_file)
+
+            if target_networks:
+                graphs = get_network(target_networks)
+
                 try:
-                    targetgenes_file = common_genes_storage.open("{}.txt".format(request.POST['targetgenes']), 'r')
-                except (FileNotFoundError, SuspiciousFileOperation):
-                    pass
+                    user_lists = file_opts["user_lists"]
+                    # merge network with current user_lists
+                    user_lists = merge_network_lists(user_lists, graphs)
+                except KeyError:
+                    user_lists = network_to_lists(graphs)
 
-            if request.FILES:
-                if "targetgenes" in request.FILES:
-                    targetgenes_file = TextIOWrapper(request.FILES["targetgenes"])
+                file_opts["user_lists"] = user_lists
+
+                graph_filter_list = network_to_filter_tfs(graphs)
+
+                try:
+                    tf_filter_list = file_opts["tf_filter_list"]
+                    tf_filter_list = tf_filter_list.append(graph_filter_list)
+                except KeyError:
+                    tf_filter_list = graph_filter_list
+
+                if not graph_filter_list.empty:
+                    file_opts["tf_filter_list"] = tf_filter_list.drop_duplicates().sort_values()
+
+                cache_result(graphs, f'{output}/target_network.pickle.gz')
+                cache_result(user_lists, f'{output}/target_genes.pickle.gz')
 
             edges = request.POST.getlist('edges')
 
@@ -95,16 +126,11 @@ class QueryView(View):
             with open(output + '/query.txt', 'w') as f:
                 f.write(request.POST['query'].strip() + '\n')
 
-            if targetgenes_file:
-                user_lists = get_gene_lists(targetgenes_file)
-                result, metadata, stats = get_query_result(request.POST['query'],
-                                                           user_lists=user_lists,
-                                                           edges=edges,
-                                                           cache_path=output)
-            else:
-                result, metadata, stats = get_query_result(request.POST['query'],
-                                                           edges=edges,
-                                                           cache_path=output)
+            result, metadata, stats = get_query_result(query=request.POST['query'],
+                                                       edges=edges,
+                                                       cache_path=output,
+                                                       size_limit=100000000,
+                                                       **file_opts)
 
             columns, merged_cells, result_list = format_data(result, stats)
 
@@ -120,17 +146,35 @@ class QueryView(View):
             ]
 
             return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+        except QueryError:
+            return HttpResponseBadRequest("Result data size too large.")
         except ValueError as e:
             raise Http404('Query not available') from e
         except (MultiValueDictKeyError, ParseException):
-            return HttpResponseBadRequest("Propblem with query.")
+            return HttpResponseBadRequest("Problem with query.")
+
+
+class NetworkAuprView(View):
+    def get(self, request, request_id):
+        cache_dir = static_storage.path(f'{request_id}_pickle')
+
+        try:
+            graph = read_cached_result(f'{cache_dir}/target_network.pickle.gz')
+            df = read_cached_result(f'{cache_dir}/tabular_output_unfiltered.pickle.gz')
+
+            # result = cache_view(partial(get_auc, graph, df), f'{cache_dir}/auc.svg.gz')
+            result = partial(get_auc, graph, df)()
+
+            return GzipFileResponse(result, content_type="image/svg+xml")
+        except FileNotFoundError:
+            raise Http404
 
 
 class StatsView(View):
     def get(self, request, request_id):
         try:
-            cache_dir = static_storage.path(request_id + '_pickle')
-            df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
+            cache_dir = static_storage.path(request_id + '_pickle/tabular_output.pickle.gz')
+            df = pd.read_pickle(cache_dir)
 
             info = {
                 'num_edges': df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count().sum(),
@@ -142,16 +186,16 @@ class StatsView(View):
             raise Http404
 
 
-class CytoscapeJSONView(View):
+class NetworkJSONView(View):
     def get(self, request, request_id):
         try:
             cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
-            cy_cache_dir = static_storage.path(f'{request_id}_pickle/cytoscape.json.gz')
+            network_cache_dir = static_storage.path(f'{request_id}_pickle/network.json.gz')
             df = pd.read_pickle(cache_dir)
 
-            result = cache_view(partial(get_cytoscape_json, df), cy_cache_dir)
+            result = cache_view(partial(get_network_json, df), network_cache_dir)
 
-            return JsonResponse(result, safe=False, encoder=CytoscapeJSONEncoder)
+            return JsonResponse(result, safe=False, encoder=NetworkJSONEncoder)
         except ValueError:
             return HttpResponseBadRequest("Network too large", content_type="application/json")
         except FileNotFoundError:
@@ -202,6 +246,7 @@ class ListEnrichmentSVGView(View):
                 lower=lower,
                 upper=upper
             ).savefig(buff)
+            plt.close()
 
             buff.seek(0)
             svg_font_adder(buff)
@@ -326,18 +371,17 @@ class MotifEnrichmentHeatmapTableView(View):
 class MotifEnrichmentInfo(View):
     def get(self, request):
         g = gzip.open(settings.MOTIF_CLUSTER)
-        g.name = None  # Skip Content-Length checking. Code is problematic.
 
-        return FileResponse(g,
-                            content_type="text/csv",
-                            filename="cluster_info.csv",
-                            as_attachment=True)
+        return GzipFileResponse(g,
+                                content_type="text/csv",
+                                filename="cluster_info.csv",
+                                as_attachment=True)
 
 
 class AnalysisEnrichmentView(View):
     def get(self, request, request_id):
-        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
-        analysis_cache = static_storage.path("{}_pickle/analysis_enrichment.pickle.gz".format(request_id))
+        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
+        analysis_cache = static_storage.path(f"{request_id}_pickle/analysis_enrichment.pickle.gz")
 
         try:
             result = cache_view(partial(analysis_enrichment, cache_path), analysis_cache)

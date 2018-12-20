@@ -1,3 +1,4 @@
+import logging
 import re
 import warnings
 from collections import deque
@@ -14,9 +15,15 @@ from django.db.models import Q
 from django.db.utils import DatabaseError
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
-from ..utils import cache_result, read_cached_result
+from ..utils import read_cached_result
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
+
+logger = logging.getLogger(__name__)
+
+
+class QueryError(ValueError):
+    pass
 
 
 class DatabaseWarning(UserWarning):
@@ -308,19 +315,27 @@ def add_edges(df: pd.DataFrame, edges: List[str], query: Optional[str] = None) -
     raise ValueError("No Edge Data")
 
 
-def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
+def get_tf_data(query: str,
+                edges: Optional[List[str]] = None,
+                tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Get data for single TF
     :param query:
     :param edges:
+    :param tf_filter_list:
     :return:
     """
-    analyses = Analysis.objects.filter(tf__gene_id__iexact=query)
+    if (tf_filter_list is not None and tf_filter_list.str.contains(rf'^{re.escape(query)}$', flags=re.I).any()) \
+            or tf_filter_list is None:
+        analyses = Analysis.objects.filter(tf__gene_id__iexact=query)
 
-    df = TargetFrame(
-        interactions.filter(analysis__in=analyses).values_list(
-            'target__gene_id', 'analysis_id').iterator(),
-        columns=['TARGET', 'ANALYSIS'])
+        df = TargetFrame(
+            interactions.filter(analysis__in=analyses).values_list(
+                'target__gene_id', 'analysis_id').iterator(),
+            columns=['TARGET', 'ANALYSIS'])
+    else:
+        analyses = []
+        df = TargetFrame(columns=['TARGET', 'ANALYSIS'])
 
     if not df.empty:
         reg = TargetFrame(
@@ -354,11 +369,14 @@ def get_tf_data(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
     return df
 
 
-def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
+def get_all_tf(query: str,
+               edges: Optional[List[str]] = None,
+               tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Get data for all TFs at once
     :param query:
     :param edges:
+    :param tf_filter_list:
     :return:
     """
     qs = Interaction.objects.values_list('target__gene_id', 'analysis_id')
@@ -372,6 +390,9 @@ def get_all_tf(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
         a = a.groupby('tf_id').filter(lambda x: x['analysisdata__value'].nunique() > 1)
 
         qs = qs.filter(analysis_id__in=a['id'])
+
+    if tf_filter_list is not None:
+        qs = qs.filter(analysis__tf__gene_id__in=tf_filter_list)
 
     df = TargetFrame(qs.iterator(), columns=['TARGET', 'ANALYSIS'])
 
@@ -422,11 +443,14 @@ def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
     return f' "{prec.filter_string}" {uuid4()}', f' "{succ.filter_string}" {uuid4()}'
 
 
-def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List[str]] = None) -> TargetFrame:
+def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
+           edges: Optional[List[str]] = None,
+           tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Query TF DataFrame according to query
     :param query:
     :param edges:
+    :param tf_filter_list:
     :return:
     """
     if isinstance(query, pp.ParseResults):
@@ -437,7 +461,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List
             while True:
                 curr = next(it)
                 if curr in ('and', 'or'):
-                    prec, succ = get_tf(stack.pop(), edges), get_tf(next(it), edges)
+                    prec, succ = get_tf(stack.pop(), edges, tf_filter_list), get_tf(next(it), edges, tf_filter_list)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
@@ -481,12 +505,12 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List
                     stack.append(df)
 
                 elif curr == 'not':
-                    succ = get_tf(next(it), edges)
+                    succ = get_tf(next(it), edges, tf_filter_list)
                     succ.include = not succ.include
                     succ.filter_string = 'not ' + succ.filter_string
                     stack.append(succ)
                 elif is_modifier(curr):
-                    prec = get_tf(stack.pop(), edges)
+                    prec = get_tf(stack.pop(), edges, tf_filter_list)
                     mod = get_mod(prec, curr)
                     prec = prec[mod].dropna(how='all')
 
@@ -498,14 +522,14 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame], edges: Optional[List
                 else:
                     stack.append(curr)
         except StopIteration:
-            return get_tf(stack.pop(), edges)
+            return get_tf(stack.pop(), edges, tf_filter_list)
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
         if query.lower() in {'andalltfs', 'oralltfs', 'multitype'}:
-            return get_all_tf(query.lower(), edges)
+            return get_all_tf(query.lower(), edges, tf_filter_list)
 
-        return get_tf_data(query, edges)
+        return get_tf_data(query, edges, tf_filter_list)
 
 
 def reorder_data(df: TargetFrame) -> TargetFrame:
@@ -579,10 +603,12 @@ def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) ->
     return df
 
 
-def parse_query(query: str, edges: Optional[List[str]] = None) -> TargetFrame:
+def parse_query(query: str,
+                edges: Optional[List[str]] = None,
+                tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     parse = expr.parseString(query, parseAll=True)
 
-    result = get_tf(parse.get('query'), edges)
+    result = get_tf(parse.get('query'), edges, tf_filter_list)
 
     if result.empty or not result.include:
         raise ValueError('empty query')
@@ -599,13 +625,26 @@ def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
 
 def get_query_result(query: Optional[str] = None,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
+                     tf_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
-                     cache_path: Optional[Union[str, Path]] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+                     cache_path: Optional[Union[str, Path]] = None,
+                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+    """
+    Get query result from query string or cache
+
+    :param query:
+    :param user_lists:
+    :param tf_filter_list:
+    :param edges:
+    :param cache_path:
+    :param size_limit:
+    :return:
+    """
     if query is None and cache_path is None:
         raise ValueError("Need query or cache_path")
 
     if query is not None:
-        result = parse_query(query, edges)
+        result = parse_query(query, edges, tf_filter_list)
         metadata = get_metadata(result.columns.get_level_values(1))
 
         stats = get_stats(result)
@@ -613,15 +652,15 @@ def get_query_result(query: Optional[str] = None,
         if cache_path:
             result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
 
-        if user_lists:
+        if user_lists is not None:
             result = result[result.index.isin(user_lists[0].index)]
 
-        if cache_path:  # cache here
+        if result.empty:
+            raise ValueError("Empty result (user list too restrictive).")
+
+        if cache_path is not None:  # cache here
             result.to_pickle(cache_path + '/tabular_output.pickle.gz')
             metadata.to_pickle(cache_path + '/metadata.pickle.gz')
-
-            if user_lists:
-                cache_result(user_lists, cache_path + '/target_genes.pickle.gz')
     else:
         result = pd.read_pickle(cache_path + '/tabular_output.pickle.gz')
         metadata = pd.read_pickle(cache_path + '/metadata.pickle.gz')
@@ -631,6 +670,11 @@ def get_query_result(query: Optional[str] = None,
             user_lists = read_cached_result(cache_path + '/target_genes.pickle.gz')
         except FileNotFoundError:
             pass
+
+    logger.info(f"Unfiltered Dataframe size: {result.size}")
+
+    if size_limit is not None and result.size > size_limit:
+        raise QueryError("Result too large.")
 
     counts = get_tf_count(result)
 
@@ -648,6 +692,8 @@ def get_query_result(query: Optional[str] = None,
     result = ANNOTATIONS.drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
 
     result = result.sort_values('TF Count', ascending=False, kind='mergesort')
+
+    logger.info(f"Dataframe size: {result.size}")
 
     # return statistics here as well
     return result, metadata, stats

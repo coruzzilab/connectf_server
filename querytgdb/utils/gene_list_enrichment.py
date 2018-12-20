@@ -147,6 +147,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
             if save_file:
                 sns_heatmap.savefig(pickledir + '/heatmap.svg')
+                plt.close()
 
             return sns_heatmap
 

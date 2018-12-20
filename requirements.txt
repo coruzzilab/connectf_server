@@ -7,7 +7,7 @@ certifi==2018.4.16
 chardet==3.0.4
 coverage==4.3.4
 cycler==0.10.0
-decorator==4.0.11
+decorator==4.3.0
 defusedxml==0.5.0
 Django==2.1.2
 django-autoslug==1.9.3
@@ -28,6 +28,7 @@ factory-boy==2.8.1
 fake-factory==9999.9.9
 Faker==0.7.11
 fastcluster==1.1.23
+gunicorn==19.9.0
 hsluv==0.0.2
 idna==2.7
 imagesize==0.7.1
@@ -42,8 +43,9 @@ lark-parser==0.5.6
 lxml==4.2.4
 MarkupSafe==1.0
 matplotlib==2.2.2
-mysqlclient==1.3.12
-numpy==1.15.1
+mysqlclient==1.3.13
+networkx==2.2
+numpy==1.15.3
 oauthlib==2.0.2
 olefile==0.44
 openpyxl==2.4.8
@@ -58,7 +60,7 @@ prompt-toolkit==1.0.15
 ptyprocess==0.5.1
 py==1.4.33
 Pygments==2.2.0
-pyparsing==2.2.0
+pyparsing==2.2.2
 pytest==3.0.7
 pytest-django==3.1.2
 pytest-sugar==0.8.0
@@ -67,6 +69,7 @@ python3-openid==3.1.0
 pytz==2018.4
 requests==2.19.1
 requests-oauthlib==0.8.0
+scikit-learn==0.20.1
 scipy==1.1.0
 seaborn==0.9.0
 simplegeneric==0.8.1

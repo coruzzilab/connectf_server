@@ -17,11 +17,11 @@ def clear_query_cache():
     now = datetime.datetime.now()
 
     for d in filterfalse(methodcaller('startswith', '.'), dirs):
-        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(d))) > datetime.timedelta(minutes=60):
+        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(d))) > datetime.timedelta(minutes=360):
             shutil.rmtree(storage.path(d), ignore_errors=True)
 
     for f in filterfalse(methodcaller('startswith', '.'), files):
-        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(f))) > datetime.timedelta(minutes=60):
+        if now - datetime.datetime.fromtimestamp(os.path.getmtime(storage.path(f))) > datetime.timedelta(minutes=360):
             os.remove(storage.path(f))
 
 

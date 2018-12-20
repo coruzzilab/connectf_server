@@ -1,15 +1,22 @@
 import math
 import re
 from collections import UserDict
-from typing import Any, Dict, Generator, List
+from io import BytesIO
+from operator import methodcaller
+from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Union
 from uuid import uuid4
 
 import hsluv
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import auc
 
+from querytgdb.utils import get_size
+from ..models import Analysis
 from ..utils import data_to_edges
 from ..utils.parser import ANNOTATIONS
+from ..utils.file import Graphs
 
 
 class Shape(UserDict):
@@ -95,7 +102,7 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
     return n * size + (n - 1) * gap
 
 
-def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
+def get_network_json(df: pd.DataFrame, graphs: Graphs = None) -> List[Dict[str, Any]]:
     network_table = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
 
     network_table = data_to_edges(network_table)
@@ -111,7 +118,7 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
         tf_nodes = network_table.loc[uniq_tfs, :]
     except KeyError:
         tf_nodes = pd.DataFrame(index=uniq_tfs, columns=network_table.columns)
-    tf_nodes = tf_nodes.loc[tf_nodes.count(axis=1).sort_values(ascending=False).index, :]
+    tf_nodes = tf_nodes.reindex(index=tf_nodes.count(axis=1).sort_values(ascending=False).index)
 
     # having duplicate names is a no-no so clear all names
     tf_nodes.columns.name = None
@@ -122,8 +129,6 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
     tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
         (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
-
-    edge_colors = get_edge_colors(network_table)
 
     edge_node_stack = edge_nodes.stack()
     # edge building and positioning
@@ -188,3 +193,99 @@ def get_cytoscape_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
         }} for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
     return data
+
+
+@get_size
+def get_points(recall: Iterable[float], precision: Iterable[float]) -> List[Dict[str, float]]:
+    """
+    Format data points for the json output
+    :param recall:
+    :param precision:
+    :return:
+    """
+    return [{'x': r, 'y': p} for r, p in zip(recall, precision)]
+
+
+def get_auc(graphs: Graphs, df: pd.DataFrame) -> Union[BinaryIO, Dict]:
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df.columns = df.columns.droplevel(2)
+    df = df.notna()
+
+    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
+
+    def get_tf(pk):
+        return analyses.get(pk=pk).tf.gene_id
+
+    df = df.groupby(get_tf, axis=1, level=1).apply(methodcaller('any', axis=1))
+    df.columns = df.columns.str.upper()
+    df.index = df.index.str.upper()
+    df[~df] = np.nan  # query data matrix
+    df = df.stack().reset_index()
+    df.columns = ['TARGET', 'ANALYSIS', 0]
+
+    # result = {}
+
+    buff = BytesIO()
+
+    plt.xlabel("recall")
+    plt.xlim(-0.05, 1.05)
+    plt.ylabel("precision")
+    plt.ylim(-0.05, 1.05)
+
+    for name, graph in graphs.items():
+        g = pd.DataFrame(iter(graph.edges.data('rank')))
+        d = df.loc[df['TARGET'].isin(g[1]) & df['ANALYSIS'].isin(g[0]), :]
+        g = g.loc[g[0].isin(d['ANALYSIS']), :]  # filtering predictions
+        g = g.merge(d, how='left', left_on=[0, 1], right_on=['ANALYSIS', 'TARGET']).sort_values(2)
+        g['0_y'] = g['0_y'].fillna(0).astype(int)
+
+        r = (np.arange(g.shape[0]) + 1)
+        recall = g['0_y'].cumsum() / g['0_y'].sum()
+        precision = g['0_y'].cumsum() / r
+
+        # max_loc = g.index.get_loc((precision > 0.7).iloc[::-1].idxmax())
+
+        # g.iloc[:max_loc + 1, :]
+
+        pred_auc = auc(recall, precision)
+
+        plt.plot(recall, precision, label=f'{name}  auc: {pred_auc:.4f}', zorder=3)
+
+        rand_aucs = []
+
+        h = g['0_y']
+
+        min_auc = (1, [], [])
+        max_auc = (0, [], [])
+
+        for i in range(1000):
+            h = h.sample(frac=1)  # shuffle
+            c = h.cumsum()
+            curr_prec = c / r
+            curr_recall = c / h.sum()
+            curr_auc = auc(curr_recall, curr_prec)
+            rand_aucs.append(curr_auc)
+
+            if curr_auc <= min_auc[0]:
+                min_auc = (curr_auc, curr_recall, curr_prec)
+
+            if curr_auc >= max_auc[0]:
+                max_auc = (curr_auc, curr_recall, curr_prec)
+
+        # result[name] = {
+        #     'auc': pred_auc,
+        #     'data': get_points(recall, precision),
+        #     'min_auc': (min_auc[0], get_points(*min_auc[1:])),
+        #     'max_auc': (max_auc[0], get_points(*max_auc[1:])),
+        #     'p_value': (np.array(rand_aucs) > pred_auc).mean()
+        # }
+
+        plt.plot(max_auc[1], max_auc[2], label=f'{name} max random auc: {max_auc[0]:.4f}', linestyle='--', zorder=1)
+        plt.plot(min_auc[1], min_auc[2], label=f'{name} min random auc: {min_auc[0]:.4f}', linestyle=':', zorder=2)
+
+    plt.legend()
+    plt.savefig(buff)
+    plt.close()
+    buff.seek(0)
+
+    return buff
