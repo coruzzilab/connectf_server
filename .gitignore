@@ -68,3 +68,5 @@ tgdbbackend/static/queryBuilder/*.zip
 venv/
 
 nohup.out
+
+.mypy_cache/

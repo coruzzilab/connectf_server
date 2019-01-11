@@ -317,9 +317,9 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
 
     buff = BytesIO()
     heatmap_graph.savefig(buff)
+    plt.close()
     buff.seek(0)
     svg_font_adder(buff)
-    buff.seek(0)
 
     return buff
 

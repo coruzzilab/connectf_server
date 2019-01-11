@@ -151,17 +151,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
             return sns_heatmap
 
-    else:
-        # row_num, col_num = list_enrichment_pvals.shape
-        # if row_num > 1:
-        #     z = hierarchy.linkage(list_enrichment_pvals.values, method='average', optimal_ordering=True)
-        #     list_enrichment_pvals = list_enrichment_pvals.iloc[hierarchy.leaves_list(z), :]
-        #
-        # if col_num > 1:
-        #     z = hierarchy.linkage(list_enrichment_pvals.values.T, method='average', optimal_ordering=True)
-        #     list_enrichment_pvals = list_enrichment_pvals.iloc[:, hierarchy.leaves_list(z)]
-
-        return list_enrichment_pvals
+    return list_enrichment_pvals
 
 
 def gene_list_enrichment_json(pickledir) -> Dict[str, Any]:

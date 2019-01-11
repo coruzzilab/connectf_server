@@ -12,13 +12,13 @@ from contextlib import closing
 from functools import wraps
 from operator import methodcaller
 from pathlib import Path
-from typing import Any, Callable, Dict, IO, Optional, Sized, Tuple, Union
+from typing import Any, BinaryIO, Callable, Dict, IO, Optional, Sized, Tuple, TypeVar, Union
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import QuerySet
 from django.http import FileResponse
@@ -27,6 +27,8 @@ from lxml import etree
 from ..models import Analysis
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
 
 
 class PandasJSONEncoder(DjangoJSONEncoder):
@@ -97,7 +99,7 @@ def cache_result(obj: Any, cache_name: Union[str, Path], mode: str = 'wb') -> Un
     return cache_name
 
 
-def read_cached_result(cache_name: Union[str, Path], mode: str = 'rb') -> Union[IO, Any]:
+def read_cached_result(cache_name: Union[str, Path], mode: str = 'rb') -> Union[IO, T]:
     """
     Read cached pickle
     :param cache_name:
@@ -115,18 +117,20 @@ def read_cached_result(cache_name: Union[str, Path], mode: str = 'rb') -> Union[
     return open_file(cache_name, mode)
 
 
-def cache_view(func: Callable, cache_path: Union[str, Path]) -> Any:
+def cache_view(func: Callable[..., T], cache_path: Union[str, Path], dummy_cache: bool = False) -> T:
     """
     read results from cache if possible
     :param func:
     :param cache_path:
+    :param dummy_cache:
     :return:
     """
     try:
         result = read_cached_result(cache_path)
     except FileNotFoundError:
         result = func()
-        cache_result(result, cache_path)
+        if not dummy_cache:
+            cache_result(result, cache_path)
 
     return result
 
@@ -165,7 +169,7 @@ def column_string(n: int) -> str:
     return s
 
 
-def svg_font_adder(buff):
+def svg_font_adder(buff: BinaryIO) -> BinaryIO:
     """
     Adds font file as a base64 encoded string to an SVG
 
@@ -184,6 +188,7 @@ def svg_font_adder(buff):
 
     buff.truncate(0)
     tree.write(buff)
+    buff.seek(0)
 
     return buff
 
@@ -232,7 +237,7 @@ def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: b
     for name, column in df.iteritems():
         try:
             edge_type = analyses.get(pk=name[1]).analysisdata_set.get(key__name='EDGE_TYPE').value
-        except ObjectDoesNotExist:
+        except (ObjectDoesNotExist, MultipleObjectsReturned):
             edge_type = 'edge'
 
         if name[2] == 'Log2FC':
@@ -264,5 +269,20 @@ def get_size(func: Callable[..., Sized]) -> Callable[..., Sized]:
         logger.info(f"{func.__name__} len: {len(result)} size: {sys.getsizeof(result)}")
 
         return result
+
+    return wrapper
+
+
+def read_from_cache(func: Callable[..., T]) -> Callable[..., T]:
+    """
+    read argument from cache file and pass as parameter
+
+    :param func:
+    :return:
+    """
+
+    @wraps(func)
+    def wrapper(*args: Union[str, Path], **kwargs):
+        return func(*map(read_cached_result, args), **kwargs)
 
     return wrapper

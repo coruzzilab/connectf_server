@@ -104,6 +104,8 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
     fc_cols = col_types == 'Log2FC'
     induce_repress = df.loc[:, fc_cols].apply(induce_repress_count)
 
+    empty_cols = df.isnull().all(axis=0)
+
     # for JSON response, can't have NaN or Inf
     df.loc[:, num_cols] = df.loc[:, num_cols].mask(np.isinf(df.loc[:, num_cols]), None)
     df = df.where(pd.notna(df), None)
@@ -168,7 +170,7 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
 
     # Column formatting for Handsontable
     column_formats = []
-    for i, (num, p, fc, col) in enumerate(zip(num_cols, p_values, fc_cols, zip(*columns))):
+    for i, (num, p, fc, empty, col) in enumerate(zip(num_cols, p_values, fc_cols, empty_cols, zip(*columns))):
         opt = {}
         if num:
             if p:
@@ -188,6 +190,9 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
 
             if col[-1] == 'EDGE':
                 opt['className'] = 'htCenter'
+
+        if empty:
+            opt['width'] = 1
 
         column_formats.append(opt)
 

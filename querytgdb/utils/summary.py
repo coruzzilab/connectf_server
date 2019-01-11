@@ -1,5 +1,6 @@
 import re
 from collections import OrderedDict
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -12,9 +13,7 @@ def rename_tf(name, anno: Annotation) -> str:
     return re.sub(r'^' + re.escape(anno.gene_id), anno.gene_name_symbol, name, flags=re.I)
 
 
-def get_summary(cache_path):
-    df = pd.read_pickle(cache_path)
-
+def get_summary(df: pd.DataFrame) -> Dict[str, Any]:
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
 
     analyses = Analysis.objects.filter(

@@ -7,7 +7,6 @@ from io import BytesIO
 from threading import Lock
 
 import matplotlib
-import pandas as pd
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
@@ -19,7 +18,7 @@ from pyparsing import ParseException
 
 from querytgdb.utils.excel import create_export_zip
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, \
-    metadata_to_dict, read_cached_result, svg_font_adder
+    metadata_to_dict, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import get_file, get_gene_lists, get_genes, get_network, merge_network_lists, network_to_filter_tfs, \
     network_to_lists
@@ -39,7 +38,7 @@ plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
     get_motif_enrichment_heatmap_table
-from .utils.network import get_auc, get_network_json
+from .utils.network import get_auc, get_network_json, get_network_stats
 
 lock = Lock()
 
@@ -95,18 +94,18 @@ class QueryView(View):
                 file_opts["tf_filter_list"] = get_genes(filter_tfs_file)
 
             if target_networks:
-                graphs = get_network(target_networks)
+                network = get_network(target_networks)
 
                 try:
                     user_lists = file_opts["user_lists"]
                     # merge network with current user_lists
-                    user_lists = merge_network_lists(user_lists, graphs)
+                    user_lists = merge_network_lists(user_lists, network)
                 except KeyError:
-                    user_lists = network_to_lists(graphs)
+                    user_lists = network_to_lists(network)
 
                 file_opts["user_lists"] = user_lists
 
-                graph_filter_list = network_to_filter_tfs(graphs)
+                graph_filter_list = network_to_filter_tfs(network)
 
                 try:
                     tf_filter_list = file_opts["tf_filter_list"]
@@ -117,7 +116,7 @@ class QueryView(View):
                 if not graph_filter_list.empty:
                     file_opts["tf_filter_list"] = tf_filter_list.drop_duplicates().sort_values()
 
-                cache_result(graphs, f'{output}/target_network.pickle.gz')
+                cache_result(network, f'{output}/target_network.pickle.gz')
                 cache_result(user_lists, f'{output}/target_genes.pickle.gz')
 
             edges = request.POST.getlist('edges')
@@ -158,14 +157,17 @@ class NetworkAuprView(View):
     def get(self, request, request_id):
         cache_dir = static_storage.path(f'{request_id}_pickle')
 
+        precision = convert_float(request.GET.get('precision'))
+
         try:
-            graph = read_cached_result(f'{cache_dir}/target_network.pickle.gz')
-            df = read_cached_result(f'{cache_dir}/tabular_output_unfiltered.pickle.gz')
+            with lock:
+                result = read_from_cache(get_auc)(
+                    os.path.join(cache_dir, 'target_network.pickle.gz'),
+                    os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'),
+                    precision_cutoff=precision,
+                    cache_path=cache_dir)
 
-            # result = cache_view(partial(get_auc, graph, df), f'{cache_dir}/auc.svg.gz')
-            result = partial(get_auc, graph, df)()
-
-            return GzipFileResponse(result, content_type="image/svg+xml")
+                return GzipFileResponse(result, content_type="image/svg+xml")
         except FileNotFoundError:
             raise Http404
 
@@ -173,13 +175,10 @@ class NetworkAuprView(View):
 class StatsView(View):
     def get(self, request, request_id):
         try:
-            cache_dir = static_storage.path(request_id + '_pickle/tabular_output.pickle.gz')
-            df = pd.read_pickle(cache_dir)
+            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
+            stats_cache = static_storage.path(f'{request_id}_pickle/stats.pickle.gz')
 
-            info = {
-                'num_edges': df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count().sum(),
-                'num_targets': df.shape[0]
-            }
+            info = cache_view(partial(read_from_cache(get_network_stats), cache_dir), stats_cache)
 
             return JsonResponse(info, encoder=PandasJSONEncoder)
         except FileNotFoundError:
@@ -189,11 +188,15 @@ class StatsView(View):
 class NetworkJSONView(View):
     def get(self, request, request_id):
         try:
-            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
-            network_cache_dir = static_storage.path(f'{request_id}_pickle/network.json.gz')
-            df = pd.read_pickle(cache_dir)
+            edges = request.GET.getlist('edges')
 
-            result = cache_view(partial(get_network_json, df), network_cache_dir)
+            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
+            network_cache_dir = static_storage.path(f'{request_id}_pickle/network.pickle.gz')
+
+            result = cache_view(
+                partial(read_from_cache(get_network_json),
+                        cache_dir),
+                network_cache_dir, dummy_cache=True)
 
             return JsonResponse(result, safe=False, encoder=NetworkJSONEncoder)
         except ValueError:
@@ -250,7 +253,6 @@ class ListEnrichmentSVGView(View):
 
             buff.seek(0)
             svg_font_adder(buff)
-            buff.seek(0)
 
             return FileResponse(buff, content_type='image/svg+xml')
         except (FileNotFoundError, ValueError) as e:
@@ -324,7 +326,7 @@ class MotifEnrichmentHeatmapView(View):
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
 
-                cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+                cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
 
                 if not os.path.exists(cache_path):
                     time.sleep(3)
@@ -395,10 +397,11 @@ class AnalysisEnrichmentView(View):
 
 class SummaryView(View):
     def get(self, request, request_id):
-        cache_path = static_storage.path("{}_pickle/tabular_output.pickle.gz".format(request_id))
+        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
+        summary_cache = static_storage.path(f"{request_id}_pickle/summary.pickle.gz")
 
         try:
-            result = get_summary(cache_path)
+            result = cache_view(partial(read_from_cache(get_summary), cache_path), summary_cache)
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
         except FileNotFoundError:

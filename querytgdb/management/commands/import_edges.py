@@ -5,7 +5,8 @@ import pandas as pd
 from django.core.management.base import BaseCommand
 from django.db.transaction import atomic
 
-from querytgdb.models import Annotation, EdgeType, EdgeData
+from querytgdb.models import Annotation, EdgeData, EdgeType
+from ...utils.sif import get_network
 
 
 class Command(BaseCommand):
@@ -22,8 +23,11 @@ class Command(BaseCommand):
                 EdgeType.objects.all().delete()
 
             if 'file' in options:
-                df = pd.read_csv(options['file'])
+                with open(options["file"]) as f:
+                    g = get_network(f)
+                df = pd.DataFrame(iter(g.edges(keys=True)))
                 df.columns = ['source', 'target', 'edge']
+                df = df.drop_duplicates()
 
                 edges = pd.DataFrame.from_records(map(attrgetter('id', 'name'),
                                                       map(itemgetter(0),

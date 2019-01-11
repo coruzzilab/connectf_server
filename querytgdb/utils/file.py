@@ -1,20 +1,13 @@
-import re
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from contextlib import closing
 from io import TextIOWrapper
-from itertools import chain, groupby
-from operator import itemgetter, methodcaller
-from typing import DefaultDict, Dict, Generator, Hashable, Iterable, Iterator, List, Optional, Set, TextIO, Tuple, Union
+from typing import Dict, Hashable, Optional, Set, TextIO, Tuple
 
-import networkx as nx
+import numpy as np
 import pandas as pd
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.storage import Storage
 from django.http.request import HttpRequest
-
-Graphs = DefaultDict[str, nx.DiGraph]
-
-WS = re.compile(r' +')
 
 
 def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Optional[TextIO]:
@@ -76,88 +69,45 @@ def get_genes(f: TextIO) -> pd.Series:
     return s
 
 
-def split_sif_lines(f: TextIO) -> Iterator[List[str]]:
-    with closing(f) as g:
-        text = g.read()
-
-    if '\t' in text:
-        func = methodcaller('split', '\t')
-    else:
-        func = WS.split
-
-    return map(func, filter(None, text.splitlines()))
-
-
-Edge = Tuple[str, str, str, int]
-
-
-def build_edge(lines: Iterable[List[str]]) -> Generator[Union[Edge, str], None, None]:
+def get_network(f: TextIO) -> Tuple[str, pd.DataFrame]:
     """
-    Yields source, target, edge, rank tuple
-
-    Discards all lines with out edges
-
-    :param lines:
-    :return:
-    """
-    i = 1
-    for line in lines:
-        if len(line) > 3:
-            for e in line[:2]:
-                yield (line[0], e, line[1], i)
-                i += 1
-        elif len(line) == 3:
-            yield (line[0], line[2], line[1], i)
-            i += 1
-
-
-def build_node(lines: List[List[str]]) -> Iterable[str]:
-    """
-    Return node name from sif file for nodes with no edges
-
-    :param lines:
-    :return:
-    """
-    return map(itemgetter(0), filter(lambda l: len(l) < 3, lines))
-
-
-def get_network(f: TextIO) -> Graphs:
-    """
-    Parse uploaded file into Graphs
+    Parse uploaded file into dataframe
     :param f:
     :return:
     """
-    graphs = defaultdict(nx.DiGraph)
+    df = pd.read_csv(f, delim_whitespace=True)
 
-    lines = list(split_sif_lines(f))
+    if df.shape[1] == 3:
+        df.columns = ['source', 'edge', 'target']
+        df['rank'] = np.arange(1, df.shape[0] + 1)
+    elif df.shape[1] == 4:
+        df.columns = ['source', 'edge', 'target', 'score']
+        df['rank'] = df['score'].rank(method='max', ascending=False)
+        df = df.sort_values('rank')
+    else:
+        raise ValueError(
+            "Network must have source, edge, target columns. Can have an additional forth column of scores.")
 
-    edges = groupby(sorted(build_edge(filter(lambda l: len(l) > 2, lines)), key=itemgetter(2, 3), reverse=True),
-                    key=itemgetter(2))
-    nodes = list(build_node(lines))
-
-    for name, group in edges:
-        graphs[name].add_edges_from((e[0], e[1], {'name': name, 'rank': e[3]}) for e in group)
-        graphs[name].add_nodes_from(nodes)
-
-    if not graphs:
-        graphs[f"default_graph"].add_nodes_from(nodes)
-
-    return graphs
+    return getattr(f, 'name', 'default'), df
 
 
-def network_to_lists(graphs: Graphs) -> Tuple[pd.DataFrame, OrderedDict]:
+def network_to_lists(network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, OrderedDict]:
     """
-    Makes graphs into user_lists format
-    :param graphs:
+    Makes network into user_lists format
+    :param network:
     :return:
     """
+    name, data = network
+
     gene_to_name = OrderedDict()
     name_to_gene = OrderedDict()
 
-    for name, graph in graphs.items():
-        name_to_gene[name] = set(graph.nodes)
-        for n in graph.nodes:
-            gene_to_name.setdefault(n, set()).add(name)
+    genes = data[['source', 'target']].stack().unique()
+
+    for g in genes:
+        gene_to_name.setdefault(g, set()).add(name)
+
+    name_to_gene[name] = set(genes)
 
     df = gene_list_to_df(gene_to_name)
 
@@ -165,14 +115,14 @@ def network_to_lists(graphs: Graphs) -> Tuple[pd.DataFrame, OrderedDict]:
 
 
 def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
-                        graphs: Graphs) -> Tuple[pd.DataFrame, OrderedDict]:
+                        network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, OrderedDict]:
     """
     Make graphs into user_lists format and merging with user_lists
     :param user_lists:
-    :param graphs:
+    :param network:
     :return:
     """
-    graph_lists = network_to_lists(graphs)
+    graph_lists = network_to_lists(network)
 
     name_to_gene = graph_lists[1]
 
@@ -189,16 +139,11 @@ def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
     return df, name_to_gene
 
 
-def network_to_filter_tfs(graphs: Graphs) -> pd.Series:
+def network_to_filter_tfs(network: Tuple[str, pd.DataFrame]) -> pd.Series:
     """
     Use source nodes (and isolated nodes) as filter tfs for dataframe
 
-    :param graphs:
+    :param network:
     :return:
     """
-    return pd.Series(list(
-        chain(
-            chain.from_iterable((n for n, o in g.out_degree if o > 0) for g in graphs.values()),
-            chain.from_iterable((n for n, d in g.degree if d == 0) for g in graphs.values())
-        )
-    ))
+    return pd.Series(network[1]['source'].unique())

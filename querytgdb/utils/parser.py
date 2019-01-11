@@ -58,6 +58,11 @@ class TargetSeries(pd.Series):
 
 
 def get_annotations() -> pd.DataFrame:
+    """
+    Loads annotations from the database into memory.
+
+    :return:
+    """
     try:
         anno = pd.DataFrame(
             Annotation.objects.values_list(
@@ -685,7 +690,7 @@ def get_query_result(query: Optional[str] = None,
         result = result.sort_values(['User List Count', 'User List'])
     else:
         result = pd.concat([
-            TargetFrame(np.nan, columns=['User List', 'User List Count'], index=result.index),
+            pd.DataFrame(np.nan, columns=['User List', 'User List Count'], index=result.index),
             result
         ], axis=1)
 
