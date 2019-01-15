@@ -5,6 +5,7 @@ import time
 from functools import partial
 from io import BytesIO
 from threading import Lock
+from uuid import uuid4
 
 import matplotlib
 from django.conf import settings
@@ -56,22 +57,23 @@ class QueryView(View):
 
             columns, merged_cells, result_list = format_data(result, stats)
 
-            res = [
-                {
+            res = {
+                'result': {
                     'data': result_list,
                     'mergeCells': merged_cells,
-                    'columns': columns
+                    'columns': columns,
                 },
-                metadata_to_dict(metadata)
-            ]
+                'metadata': metadata_to_dict(metadata),
+                'request_id': request_id
+            }
 
-            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+            return JsonResponse(res, encoder=PandasJSONEncoder)
         except FileNotFoundError as e:
             raise Http404('Query not available') from e
 
     def post(self, request, *args, **kwargs):
         try:
-            request_id = request.POST['requestId']
+            request_id = str(uuid4())
 
             output = static_storage.path(f'{request_id}_pickle')
             os.makedirs(output, exist_ok=True)
@@ -135,16 +137,17 @@ class QueryView(View):
 
             cache_result(result_list, output + '/formatted_tabular_output.pickle.gz')
 
-            res = [
-                {
+            res = {
+                'result': {
                     'data': result_list,
                     'mergeCells': merged_cells,
                     'columns': columns
                 },
-                metadata_to_dict(metadata)
-            ]
+                'metadata': metadata_to_dict(metadata),
+                'request_id': request_id
+            }
 
-            return JsonResponse(res, safe=False, encoder=PandasJSONEncoder)
+            return JsonResponse(res, encoder=PandasJSONEncoder)
         except QueryError:
             return HttpResponseBadRequest("Result data size too large.")
         except ValueError as e:
