@@ -29,9 +29,9 @@ def simplify_edge(edge: str) -> str:
 class Color(UserDict):
     def __init__(self):
         super().__init__({
-            'INDUCED': '#4daf4a',
-            'REPRESSED': '#e41a1c',
-            'BOUND': '#377eb8'
+            'INDUCED': {'color': '#4daf4a', 'shape': 'triangle'},
+            'REPRESSED': {'color': '#e41a1c', 'shape': 'tee'},
+            'BOUND': {'color': '#377eb8', 'shape': 'triangle'}
         })
 
     def __getitem__(self, item):

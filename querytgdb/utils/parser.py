@@ -100,10 +100,7 @@ opers = [
     (or_, 2, pp.opAssoc.LEFT)
 ]
 
-quote_word = pp.Word(pp.alphanums + '-_. :')
-single_quote = pp.Suppress(pp.Literal("'"))
-double_quote = pp.Suppress(pp.Literal('"'))
-quoted_name = double_quote + quote_word + double_quote | single_quote + quote_word + single_quote
+quoted_name = pp.QuotedString('"', escChar='\\') | pp.QuotedString("'", escChar='\\')
 
 modname = pp.Group((name | quoted_name)('key') + pp.oneOf('< = > >= <= !=')('oper') + (name | quoted_name)('value'))(
     'mod')

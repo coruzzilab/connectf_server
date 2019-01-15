@@ -2,7 +2,7 @@ import math
 import os
 from io import BytesIO
 from operator import methodcaller
-from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional, Sized, Tuple
+from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
 from uuid import uuid4
 
 import matplotlib.pyplot as plt
@@ -133,7 +133,7 @@ def get_network_json(df: pd.DataFrame, edges: Optional[List[str]] = None) -> Lis
                         'source': s,
                         'target': t,
                         'name': e,
-                        'color': COLOR[e]
+                        **COLOR[e]
                     }
                 } for t, s, e in tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
 
@@ -160,8 +160,8 @@ def get_network_json(df: pd.DataFrame, edges: Optional[List[str]] = None) -> Lis
                             'source': s,
                             'target': t,
                             'name': e,
-                            'color': COLOR[e],
-                            'weight': w
+                            'weight': w,
+                            **COLOR[e]
                         }
                     } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
@@ -203,7 +203,160 @@ def fix_tied(dup: np.ndarray, s: pd.Series) -> pd.Series:
     return s.mask(dup).fillna(method='bfill')
 
 
+def get_precision_recall(data: pd.Series, ties: Optional[np.ndarray] = None) -> Tuple[pd.Series, pd.Series]:
+    r = np.arange(1, data.shape[0] + 1)
+    c = data.cumsum()
+
+    if ties is not None:
+        return fix_tied(ties, c / r), fix_tied(ties, c / data.sum())
+
+    return (c / r), (c / data.sum())
+
+
+def get_cutoff_info(merged: pd.DataFrame,
+                    precision: pd.Series,
+                    recall: pd.Series,
+                    cutoff: float) -> Tuple[SupportsInt, float, float, Union[float, None]]:
+    """
+    Get rank, precision, recall at precision cutoff
+
+    Assumes merged, precision, recall have the same index
+    :param merged:
+    :param precision:
+    :param recall:
+    :param cutoff:
+    :return:
+    """
+    if not (0 <= cutoff <= 1):
+        raise ValueError('Cutoff should be between 0 and 1')
+
+    cutoff_loc: pd.Series = (precision >= cutoff)
+
+    if cutoff_loc.any():
+        max_idx = cutoff_loc.iloc[::-1].idxmax()
+
+        try:
+            score = merged.at[max_idx, "score"]
+        except KeyError:
+            score = None
+
+        return merged.at[max_idx, "rank"], precision[max_idx], recall[max_idx], score
+
+    raise ValueError(f'Precision cutoff not in range of provided precisions')
+
+
+def query_to_network(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Get validated edged from query
+    :param df:
+    :return:
+    """
+    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df.columns = df.columns.droplevel(2)
+    df = df.notna()
+
+    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
+
+    def get_tf(pk):
+        return analyses.get(pk=pk).tf.gene_id
+
+    df = df.groupby(get_tf, axis=1, level=1).apply(methodcaller('any', axis=1))
+    df.columns = df.columns.str.upper()
+    df.index = df.index.str.upper()
+    df = df.where(df)  # query data matrix
+    df = df.stack().reset_index()
+    df.columns = ['TARGET', 'ANALYSIS', 0]
+
+    return df
+
+
+def validate_network(predicted: pd.DataFrame, validated: pd.DataFrame) -> pd.DataFrame:
+    """
+    merge predicted and validated network
+    :param predicted:
+    :param validated:
+    :return:
+    """
+    d = validated.loc[
+        validated['TARGET'].isin(predicted['target']) & validated['ANALYSIS'].isin(predicted['source']), :]
+    g = predicted.loc[predicted['source'].isin(d['ANALYSIS']), :]  # filtering predictions
+    g = g.merge(d, how='left', left_on=['source', 'target'], right_on=['ANALYSIS', 'TARGET']).sort_values('rank')
+    g[0] = g[0].fillna(0).astype(int)
+
+    return g
+
+
 AucData = Tuple[float, Sized, Sized]
+
+
+def randomized_aucs(predictions,
+                    ties: Optional[np.ndarray] = None,
+                    iterations: int = 1000) -> Tuple[List[float], AucData, AucData]:
+    rand_aucs = []
+
+    h = predictions
+
+    min_auc: AucData = (1, [], [])
+    max_auc: AucData = (0, [], [])
+
+    r = np.arange(1, predictions.shape[0] + 1)
+
+    for i in range(iterations):
+        h = h.sample(frac=1)  # shuffle
+        c = h.cumsum()
+
+        if ties is not None:
+            curr_prec = fix_tied(ties, c / r)
+            curr_recall = fix_tied(ties, c / h.sum())
+        else:
+            curr_prec = c / r
+            curr_recall = c / h.sum()
+
+        curr_auc = auc(curr_recall, curr_prec)
+        rand_aucs.append(curr_auc)
+
+        if curr_auc <= min_auc[0]:
+            min_auc = (curr_auc, curr_recall, curr_prec)
+
+        if curr_auc >= max_auc[0]:
+            max_auc = (curr_auc, curr_recall, curr_prec)
+
+    return rand_aucs, min_auc, max_auc
+
+
+def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bool = False):
+    df = query_to_network(df)
+
+    g = validate_network(predicted, df)
+
+    dup = g['rank'].duplicated(keep='last').values  # use ndarray to disregard indices
+
+    precision, recall = get_precision_recall(g[0], dup)
+
+    aupr = auc(recall, precision)
+
+    if randomize:
+        return aupr, recall, precision, g, randomized_aucs(g[0], dup)
+
+    return aupr, recall, precision, g
+
+
+def get_pruned_network(cache_dir: str, cutoff: float) -> pd.DataFrame:
+    name, data = read_cached_result(f"{cache_dir}/target_network.pickle.gz")
+    data = data.sort_values('rank')
+
+    try:
+        data_cache = os.path.join(cache_dir, 'figure_data.pickle.gz')
+        recall, precision, g = read_cached_result(data_cache)
+    except (FileNotFoundError, TypeError):
+        df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
+        pred_auc, recall, precision, g = get_prediction_data(df, data)
+
+    rank = get_cutoff_info(g, precision, recall, cutoff)[0]
+
+    return data[data["rank"] <= rank]
+
+
 row_labels = [
     'AUPR',
     'AUPR Random',
@@ -216,8 +369,8 @@ row_labels = [
 ]
 
 
-def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutoff: Optional[float] = None,
-            cache_path: Optional[str] = None) -> BinaryIO:
+def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutoff: Optional[float] = None,
+                   cache_path: Optional[str] = None) -> BinaryIO:
     """
     Get AUPR of uploaded predicted network
 
@@ -239,27 +392,15 @@ def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutof
     data = data.sort_values('rank')
 
     try:
-        cache_file = os.path.join(cache_path, 'figure.pickle.gz')
+        figure_cache = os.path.join(cache_path, 'figure.pickle.gz')
+        data_cache = os.path.join(cache_path, 'figure_data.pickle.gz')
 
-        fig, gs, recall, precision, g, cell_text = read_cached_result(cache_file)
+        fig, gs, cell_text = read_cached_result(figure_cache)
+        recall, precision, g = read_cached_result(data_cache)
         plt.figure(fig.number)
 
     except (TypeError, FileNotFoundError) as e:
-        df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
-        df.columns = df.columns.droplevel(2)
-        df = df.notna()
-
-        analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
-
-        def get_tf(pk):
-            return analyses.get(pk=pk).tf.gene_id
-
-        df = df.groupby(get_tf, axis=1, level=1).apply(methodcaller('any', axis=1))
-        df.columns = df.columns.str.upper()
-        df.index = df.index.str.upper()
-        df[~df] = np.nan  # query data matrix
-        df = df.stack().reset_index()
-        df.columns = ['TARGET', 'ANALYSIS', 0]
+        pred_auc, recall, precision, g, (rand_aucs, min_auc, max_auc) = get_prediction_data(df, data, True)
 
         cell_text = [[''] for i in range(8)]
 
@@ -272,41 +413,6 @@ def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutof
         plt.xlim(-0.05, 1.05)
         plt.ylabel("precision")
         plt.ylim(-0.05, 1.05)
-
-        d = df.loc[df['TARGET'].isin(data['target']) & df['ANALYSIS'].isin(data['source']), :]
-        g = data.loc[data['source'].isin(d['ANALYSIS']), :]  # filtering predictions
-        g = g.merge(d, how='left', left_on=['source', 'target'], right_on=['ANALYSIS', 'TARGET']).sort_values('rank')
-        g[0] = g[0].fillna(0).astype(int)
-
-        dup = g['rank'].duplicated(keep='last').values  # use ndarray to disregard indices
-
-        r = np.arange(1, g.shape[0] + 1)
-        c = g[0].cumsum()
-        recall = fix_tied(dup, c / g[0].sum())
-        precision = fix_tied(dup, c / r)
-
-        pred_auc = auc(recall, precision)
-
-        rand_aucs = []
-
-        h = g[0]
-
-        min_auc: AucData = (1, [], [])
-        max_auc: AucData = (0, [], [])
-
-        for i in range(1000):
-            h = h.sample(frac=1)  # shuffle
-            c = h.cumsum()
-            curr_prec = fix_tied(dup, c / r)
-            curr_recall = fix_tied(dup, c / h.sum())
-            curr_auc = auc(curr_recall, curr_prec)
-            rand_aucs.append(curr_auc)
-
-            if curr_auc <= min_auc[0]:
-                min_auc = (curr_auc, curr_recall, curr_prec)
-
-            if curr_auc >= max_auc[0]:
-                max_auc = (curr_auc, curr_recall, curr_prec)
 
         p_value = (np.array(rand_aucs) >= pred_auc).mean()
 
@@ -329,7 +435,8 @@ def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutof
         ]
 
         try:
-            cache_result((fig, gs, recall, precision, g, cell_text), cache_file)
+            cache_result((fig, gs, cell_text), figure_cache)
+            cache_result((recall, precision, g), data_cache)
         except NameError:
             pass
 
@@ -340,17 +447,12 @@ def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutof
         plt.axhline(y=precision_cutoff, color='red', label=f"precision cutoff: {precision_cutoff}", linestyle='--')
         # plt.annotate(precision_cutoff, (1, precision_cutoff), color='red')
 
-        cutoff_loc: pd.Series = (precision >= precision_cutoff)
-
-        if cutoff_loc.any():
-            max_idx = cutoff_loc.iloc[::-1].idxmax()
-            max_loc = g.index.get_loc(max_idx)
-
-            xy = recall.iloc[max_loc], precision.iloc[max_loc]
+        try:
+            rank, y, x, score = get_cutoff_info(g, precision, recall, precision_cutoff)
+            xy = x, y
 
             plt.plot(*xy, 'ro', fillstyle='none')
 
-            rank = g.at[max_idx, "rank"]
             rank_loc = data["rank"] <= rank
 
             cell_text[5:] = [
@@ -361,16 +463,13 @@ def get_auc(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutof
 
             s = f'precision: {xy[1]:.04}\nrecall: {xy[0]:0.4}'
 
-            try:
-                score = format(g.at[max_idx, "score"], '.4f')
-                cell_text[4][0] = score
-                s += f'\nscore: {score}'
-            except KeyError:
-                pass
+            if score is not None:
+                cell_text[4][0] = format(score, '.4f')
+                s += f'\nscore: {score:.4f}'
 
             plt.annotate(s, xy, xytext=(3, 3), textcoords='offset pixels', color='red')
 
-        else:
+        except ValueError:
             cell_text[5:] = [
                 ["0/{:,}".format(data.shape[0])],
                 ["0/{:,}".format(data["source"].nunique())],

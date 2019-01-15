@@ -10,7 +10,7 @@ from uuid import uuid4
 import matplotlib
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
-from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
+from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse, HttpResponse
 from django.utils.datastructures import MultiValueDictKeyError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -39,7 +39,7 @@ plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
     get_motif_enrichment_heatmap_table
-from .utils.network import get_auc, get_network_json, get_network_stats
+from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
 
 lock = Lock()
 
@@ -164,7 +164,7 @@ class NetworkAuprView(View):
 
         try:
             with lock:
-                result = read_from_cache(get_auc)(
+                result = read_from_cache(get_auc_figure)(
                     os.path.join(cache_dir, 'target_network.pickle.gz'),
                     os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'),
                     precision_cutoff=precision,
@@ -173,6 +173,26 @@ class NetworkAuprView(View):
                 return GzipFileResponse(result, content_type="image/svg+xml")
         except FileNotFoundError:
             raise Http404
+
+
+class NetworkPrunedView(View):
+    def get(self, request, request_id, cutoff):
+        try:
+            cache_dir = static_storage.path(f'{request_id}_pickle')
+            precision_cutoff = float(cutoff)
+
+            pruned = get_pruned_network(cache_dir, precision_cutoff)
+
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = 'attachment; filename="pruned_network.csv"'
+
+            pruned.to_csv(response, index=False)
+
+            return response
+        except (ValueError, TypeError):
+            return HttpResponseBadRequest("Invalid precision cutoff")
+        except FileNotFoundError:
+            return HttpResponseNotFound(content_type='text/csv')
 
 
 class StatsView(View):
@@ -199,7 +219,7 @@ class NetworkJSONView(View):
             result = cache_view(
                 partial(read_from_cache(get_network_json),
                         cache_dir),
-                network_cache_dir, dummy_cache=True)
+                network_cache_dir)
 
             return JsonResponse(result, safe=False, encoder=NetworkJSONEncoder)
         except ValueError:

@@ -69,7 +69,10 @@ def get_genes(f: TextIO) -> pd.Series:
     return s
 
 
-def get_network(f: TextIO) -> Tuple[str, pd.DataFrame]:
+Network = Tuple[str, pd.DataFrame]
+
+
+def get_network(f: TextIO) -> Network:
     """
     Parse uploaded file into dataframe
     :param f:

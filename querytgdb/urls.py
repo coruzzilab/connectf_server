@@ -23,5 +23,6 @@ urlpatterns = [
     re_path(r'^analysis_enrichment/(?P<request_id>[a-f0-9\-]+)/$',
             views.AnalysisEnrichmentView.as_view()),
     re_path(r'^summary/(?P<request_id>[a-f0-9\-]+)/$', views.SummaryView.as_view()),
-    re_path(r'^aupr/(?P<request_id>[a-f0-9\-]+)/$', views.NetworkAuprView.as_view())
+    re_path(r'^aupr/(?P<request_id>[a-f0-9\-]+)/$', views.NetworkAuprView.as_view()),
+    re_path(r'^aupr/(?P<request_id>[a-f0-9\-]+)/pruned/(?P<cutoff>[+\-0-9eE.]+)/$', views.NetworkPrunedView.as_view())
 ]

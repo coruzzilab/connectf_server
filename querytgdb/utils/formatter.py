@@ -190,6 +190,7 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
 
             if col[-1] == 'EDGE':
                 opt['className'] = 'htCenter'
+                opt['renderer'] = 'renderEdge'
 
         if empty:
             opt['width'] = 1
