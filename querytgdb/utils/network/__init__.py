@@ -5,6 +5,7 @@ from operator import methodcaller
 from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
 from uuid import uuid4
 
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -405,7 +406,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
         cell_text = [[''] for i in range(8)]
 
         fig = plt.figure(figsize=(9.6, 4.8))
-        gs = plt.GridSpec(1, 2, width_ratios=[1, 2])
+        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 2], figure=fig)
 
         plt.subplot(gs[1])
 
@@ -481,6 +482,9 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
             ["{:,}".format(data["source"].nunique())],
             ["{:,}".format(data["target"].nunique())]
         ]
+
+    if not hasattr(gs, '_layoutbox'):
+        gs._layoutbox = None
 
     plt.subplot(gs[0])
     plt.table(
