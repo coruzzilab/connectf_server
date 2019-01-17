@@ -382,7 +382,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
     :return:
     """
     fig: plt.Figure
-    gs: plt.GridSpec
+    gs: gridspec.GridSpec
     recall: pd.Series
     precision: pd.Series
     g: pd.DataFrame

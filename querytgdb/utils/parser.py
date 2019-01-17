@@ -80,7 +80,7 @@ def get_annotations() -> pd.DataFrame:
 
 ANNOTATIONS = get_annotations()
 
-name = pp.Word(pp.alphanums + '-_.:')
+name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:')
 
 point = pp.Literal('.')
 e = pp.CaselessLiteral('e')
@@ -259,23 +259,23 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
         return query
 
 
-def add_edges(df: pd.DataFrame, edges: List[str], query: Optional[str] = None) -> pd.DataFrame:
+def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
     """
     Add additional edge data of query to result dataframe
     :param df:
     :param edges:
-    :param query:
     :return:
     """
     anno = ANNOTATIONS['id'].reset_index()
 
-    edge_types = pd.DataFrame(EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
-                              columns=['edge_id', 'edge'])
+    edge_types = pd.DataFrame(
+        EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
+        columns=['edge_id', 'edge', 'directional'])
 
-    if query:
-        tf_ids = anno.loc[anno['TARGET'].str.contains(query, case=False, regex=False), 'id']
-    else:
+    try:
         tf_ids = anno.loc[anno['TARGET'].isin(df['TF'].unique()), 'id']
+    except KeyError:
+        tf_ids = Annotation.objects.filter(analysis__in=df['ANALYSIS'].unique()).values_list('pk', flat=True)
 
     target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'id']
 
@@ -288,7 +288,7 @@ def add_edges(df: pd.DataFrame, edges: List[str], query: Optional[str] = None) -
     )
 
     edge_data = (edge_data
-                 .merge(edge_types, on='edge_id')
+                 .merge(edge_types[['edge_id', 'edge']], on='edge_id')
                  .drop('edge_id', axis=1)
                  .set_index(['source', 'target']))
 
@@ -319,12 +319,14 @@ def add_edges(df: pd.DataFrame, edges: List[str], query: Optional[str] = None) -
 
 def get_tf_data(query: str,
                 edges: Optional[List[str]] = None,
-                tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
+                tf_filter_list: Optional[pd.Series] = None,
+                target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Get data for single TF
     :param query:
     :param edges:
     :param tf_filter_list:
+    :param target_filter_list:
     :return:
     """
     if (tf_filter_list is not None and tf_filter_list.str.contains(rf'^{re.escape(query)}$', flags=re.I).any()) \
@@ -335,6 +337,8 @@ def get_tf_data(query: str,
             interactions.filter(analysis__in=analyses).values_list(
                 'target__gene_id', 'analysis_id').iterator(),
             columns=['TARGET', 'ANALYSIS'])
+        if target_filter_list is not None:
+            df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
     else:
         analyses = []
         df = TargetFrame(columns=['TARGET', 'ANALYSIS'])
@@ -354,7 +358,7 @@ def get_tf_data(query: str,
 
         if edges:
             try:
-                df = add_edges(df, edges, query)
+                df = add_edges(df, edges)
             except ValueError:
                 pass
 
@@ -373,12 +377,14 @@ def get_tf_data(query: str,
 
 def get_all_tf(query: str,
                edges: Optional[List[str]] = None,
-               tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
+               tf_filter_list: Optional[pd.Series] = None,
+               target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Get data for all TFs at once
     :param query:
     :param edges:
     :param tf_filter_list:
+    :param target_filter_list:
     :return:
     """
     qs = Interaction.objects.values_list('target__gene_id', 'analysis_id')
@@ -397,6 +403,9 @@ def get_all_tf(query: str,
         qs = qs.filter(analysis__tf__gene_id__in=tf_filter_list)
 
     df = TargetFrame(qs.iterator(), columns=['TARGET', 'ANALYSIS'])
+
+    if target_filter_list is not None:
+        df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
 
     analyses = TargetFrame(
         Analysis.objects.values_list('id', 'tf__gene_id').iterator(),
@@ -447,12 +456,14 @@ def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
 
 def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
            edges: Optional[List[str]] = None,
-           tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
+           tf_filter_list: Optional[pd.Series] = None,
+           target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     """
     Query TF DataFrame according to query
     :param query:
     :param edges:
     :param tf_filter_list:
+    :param target_filter_list:
     :return:
     """
     if isinstance(query, pp.ParseResults):
@@ -463,7 +474,8 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
             while True:
                 curr = next(it)
                 if curr in ('and', 'or'):
-                    prec, succ = get_tf(stack.pop(), edges, tf_filter_list), get_tf(next(it), edges, tf_filter_list)
+                    prec, succ = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list), \
+                                 get_tf(next(it), edges, tf_filter_list, target_filter_list)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
@@ -507,12 +519,12 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     stack.append(df)
 
                 elif curr == 'not':
-                    succ = get_tf(next(it), edges, tf_filter_list)
+                    succ = get_tf(next(it), edges, tf_filter_list, target_filter_list)
                     succ.include = not succ.include
                     succ.filter_string = 'not ' + succ.filter_string
                     stack.append(succ)
                 elif is_modifier(curr):
-                    prec = get_tf(stack.pop(), edges, tf_filter_list)
+                    prec = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list)
                     mod = get_mod(prec, curr)
                     prec = prec[mod].dropna(how='all')
 
@@ -524,14 +536,14 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                 else:
                     stack.append(curr)
         except StopIteration:
-            return get_tf(stack.pop(), edges, tf_filter_list)
+            return get_tf(stack.pop(), edges, tf_filter_list, target_filter_list)
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     else:
         if query.lower() in {'andalltfs', 'oralltfs', 'multitype'}:
-            return get_all_tf(query.lower(), edges, tf_filter_list)
+            return get_all_tf(query.lower(), edges, tf_filter_list, target_filter_list)
 
-        return get_tf_data(query, edges, tf_filter_list)
+        return get_tf_data(query, edges, tf_filter_list, target_filter_list)
 
 
 def reorder_data(df: TargetFrame) -> TargetFrame:
@@ -607,10 +619,11 @@ def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) ->
 
 def parse_query(query: str,
                 edges: Optional[List[str]] = None,
-                tf_filter_list: Optional[pd.Series] = None) -> TargetFrame:
+                tf_filter_list: Optional[pd.Series] = None,
+                target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     parse = expr.parseString(query, parseAll=True)
 
-    result = get_tf(parse.get('query'), edges, tf_filter_list)
+    result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
 
     if result.empty or not result.include:
         raise ValueError('empty query')
@@ -646,16 +659,16 @@ def get_query_result(query: Optional[str] = None,
         raise ValueError("Need query or cache_path")
 
     if query is not None:
-        result = parse_query(query, edges, tf_filter_list)
+        if user_lists is not None:
+            result = parse_query(query, edges, tf_filter_list, user_lists[0].index.to_series())
+        else:
+            result = parse_query(query, edges, tf_filter_list)
         metadata = get_metadata(result.columns.get_level_values(1))
 
         stats = get_stats(result)
 
         if cache_path:
             result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
-
-        if user_lists is not None:
-            result = result[result.index.isin(user_lists[0].index)]
 
         if result.empty:
             raise ValueError("Empty result (user list too restrictive).")
