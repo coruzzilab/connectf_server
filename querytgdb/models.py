@@ -96,6 +96,7 @@ class EdgeType(models.Model):
     Extra edge property types (DAP, DAPamp, etc.)
     """
     name = models.CharField(max_length=100, unique=True)
+    directional = models.BooleanField(default=True)
 
 
 class Interaction(models.Model):
