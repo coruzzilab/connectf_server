@@ -339,7 +339,7 @@ def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bo
     if randomize:
         return aupr, recall, precision, g, randomized_aucs(g[0], dup)
 
-    return aupr, recall, precision, g
+    return aupr, recall, precision, g, None
 
 
 def get_pruned_network(cache_dir: str, cutoff: float) -> pd.DataFrame:
@@ -351,7 +351,7 @@ def get_pruned_network(cache_dir: str, cutoff: float) -> pd.DataFrame:
         recall, precision, g = read_cached_result(data_cache)
     except (FileNotFoundError, TypeError):
         df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
-        pred_auc, recall, precision, g = get_prediction_data(df, data)
+        pred_auc, recall, precision, g = get_prediction_data(df, data)[:-1]
 
     rank = get_cutoff_info(g, precision, recall, cutoff)[0]
 

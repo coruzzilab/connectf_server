@@ -10,7 +10,7 @@ from uuid import uuid4
 import matplotlib
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
-from django.http import FileResponse, Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt

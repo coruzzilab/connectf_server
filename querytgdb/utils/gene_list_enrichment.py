@@ -67,8 +67,9 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
         raise FileNotFoundError('No target genes uploaded') from e
 
     if background is None:
-        background = ANNOTATIONS.shape[0]
-        if not background:
+        if not ANNOTATIONS.empty:
+            background = ANNOTATIONS.shape[0]
+        else:
             background = 28775
 
     query_result = pd.read_pickle(pickledir + '/tabular_output_unfiltered.pickle.gz')
@@ -79,7 +80,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
     query_result = clear_data(query_result)
 
     analyses = Analysis.objects.filter(
-        pk__in=map(itemgetter(1), query_result.columns)
+        pk__in=query_result.columns.get_level_values(1)
     ).distinct().prefetch_related('tf')
 
     # save targets for each TF into a dict

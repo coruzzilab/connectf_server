@@ -4,13 +4,13 @@ import warnings
 from collections import deque
 from functools import partial
 from operator import itemgetter
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pyparsing as pp
+from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
 from django.db.utils import DatabaseError
 
@@ -200,15 +200,20 @@ def apply_has_column(df: TargetFrame, value) -> pd.DataFrame:
     return pd.DataFrame(False, columns=df.columns, index=df.index)
 
 
-def apply_has_add_edges(df: TargetFrame, value) -> pd.DataFrame:
+def apply_has_add_edges(df: TargetFrame, analyses, anno_ids, value) -> pd.DataFrame:
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
-    target_ids = EdgeData.objects.filter(
-        type__name__iexact=value,
-        tf_id=Analysis.objects.get(pk=df.name[1]).tf_id,
-        target_id__in=ANNOTATIONS.loc[df.index[df.notna().any(axis=1)], 'id']
-    ).values_list('target_id', flat=True)
+    try:
+        edge_type = EdgeType.objects.get(name__iexact=value)
+        target_ids = set(EdgeData.objects.filter(
+            type=edge_type,
+            tf_id=analyses.get(pk=df.name[1]).tf_id
+        ).values_list('target_id', flat=True).iterator())
 
-    mask.loc[~df.index.isin(ANNOTATIONS.index[ANNOTATIONS['id'].isin(target_ids)]), :] = False
+        target_ids &= set(anno_ids.loc[df.index[df.notna().any(axis=1)]].unique())
+
+        mask.loc[~df.index.isin(anno_ids.index[anno_ids.isin(target_ids)]), :] = False
+    except (ObjectDoesNotExist, MultipleObjectsReturned):
+        mask.loc[:, :] = False
 
     return mask
 
@@ -219,44 +224,49 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
 
     Careful not to modify original df
     """
-    if isinstance(query, pp.ParseResults) and 'key' not in query:
-        it = iter(query)
-        stack = deque()
+    if isinstance(query, pp.ParseResults):
+        if 'key' not in query:
+            it = iter(query)
+            stack = deque()
 
-        try:
-            while True:
-                curr = next(it)
-                if curr in ('and', 'or'):
-                    prec, succ = get_mod(df, stack.pop()), get_mod(df, next(it))
-                    if curr == 'and':
-                        stack.append(prec & succ)
+            try:
+                while True:
+                    curr = next(it)
+                    if curr in ('and', 'or'):
+                        prec, succ = get_mod(df, stack.pop()), get_mod(df, next(it))
+                        if curr == 'and':
+                            stack.append(prec & succ)
+                        else:
+                            stack.append(prec | succ)
+                    elif curr == 'not':
+                        succ = get_mod(df, next(it))
+                        stack.append(~succ)
                     else:
-                        stack.append(prec | succ)
-                elif curr == 'not':
-                    succ = get_mod(df, next(it))
-                    stack.append(~succ)
-                else:
-                    stack.append(curr)
-        except StopIteration:
-            return get_mod(df, stack.pop())
-    elif isinstance(query, pp.ParseResults) and 'key' in query:
-        key = query['key']
-        oper = query['oper']
-        value = query['value']
-
-        if re.match(r'^pvalue$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
-        elif re.match(r'^fc$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
-        elif re.match(r'^additional_edge$', key, flags=re.I):
-            return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges, value=value)
-        elif re.match(r'^has_column$', key, flags=re.I):
-            value = value.upper()
-            return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
+                        stack.append(curr)
+            except StopIteration:
+                return get_mod(df, stack.pop())
         else:
-            return query_metadata(df, key, value)
-    else:
-        return query
+            key = query['key']
+            oper = query['oper']
+            value = query['value']
+
+            if re.match(r'^pvalue$', key, flags=re.I):
+                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
+            elif re.match(r'^fc$', key, flags=re.I):
+                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
+            elif re.match(r'^additional_edge$', key, flags=re.I):
+                analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
+                anno_ids = ANNOTATIONS.loc[df.index, 'id']
+                return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges,
+                                                              analyses=analyses,
+                                                              anno_ids=anno_ids,
+                                                              value=value)
+            elif re.match(r'^has_column$', key, flags=re.I):
+                value = value.upper()
+                return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
+            else:
+                return query_metadata(df, key, value)
+    return query
 
 
 def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
@@ -281,11 +291,12 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
 
     edge_data = pd.DataFrame(
         EdgeData.objects.filter(
-            tf_id__in=tf_ids,
-            target_id__in=target_ids
+            tf_id__in=tf_ids
         ).values_list('tf_id', 'target_id', 'type_id').iterator(),
         columns=['source', 'target', 'edge_id']
     )
+
+    edge_data = edge_data.loc[edge_data['target'].isin(target_ids), :]
 
     edge_data = (edge_data
                  .merge(edge_types[['edge_id', 'edge']], on='edge_id')
@@ -299,7 +310,8 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
 
         if col_num > 1:
             edge_data = edge_data.iloc[:, 0].str.cat(
-                edge_data.iloc[:, 1:], sep=',', na_rep='').str.strip(',')
+                map(itemgetter(1), edge_data.iloc[:, 1:].iteritems()),
+                sep=',', na_rep='', join='inner').str.strip(',')
         else:
             edge_data = edge_data.fillna('')
 
@@ -642,7 +654,7 @@ def get_query_result(query: Optional[str] = None,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
-                     cache_path: Optional[Union[str, Path]] = None,
+                     cache_path: Optional[str] = None,
                      size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
     """
     Get query result from query string or cache
@@ -659,16 +671,16 @@ def get_query_result(query: Optional[str] = None,
         raise ValueError("Need query or cache_path")
 
     if query is not None:
-        if user_lists is not None:
-            result = parse_query(query, edges, tf_filter_list, user_lists[0].index.to_series())
-        else:
-            result = parse_query(query, edges, tf_filter_list)
+        result = parse_query(query, edges, tf_filter_list)
         metadata = get_metadata(result.columns.get_level_values(1))
 
         stats = get_stats(result)
 
         if cache_path:
             result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
+
+        if user_lists is not None:
+            result = result[result.index.isin(user_lists[0].index)]
 
         if result.empty:
             raise ValueError("Empty result (user list too restrictive).")
