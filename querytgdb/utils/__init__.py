@@ -12,13 +12,13 @@ from contextlib import closing
 from functools import wraps
 from operator import methodcaller
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Dict, IO, Optional, Sized, Tuple, TypeVar, Union
+from typing import Any, BinaryIO, Callable, Dict, IO, List, Optional, Sized, Tuple, TypeVar, Union
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import QuerySet
 from django.http import FileResponse
@@ -99,25 +99,34 @@ def cache_result(obj: Any, cache_name: Union[str, Path], mode: str = 'wb') -> Un
     return cache_name
 
 
-def read_cached_result(cache_name: Union[str, Path], mode: str = 'rb') -> Union[IO, T]:
+def read_cached_result(cache_name: Union[str, List[str]], mode: str = 'rb') -> Union[T, IO]:
     """
-    Read cached pickle
+    Read cached file
+
+    Returns pickled object if possible.
     :param cache_name:
     :param mode:
     :return:
     """
-    cache = open_file(cache_name, mode)
+    try:
+        cache = open_file(cache_name, mode)
 
-    with closing(cache) as c:
         try:
-            return pickle.load(c)
+            with closing(cache) as c:
+                return pickle.load(c)
         except pickle.UnpicklingError:
-            pass
+            return open_file(cache_name, mode)
+    except TypeError:
+        for p in cache_name:
+            try:
+                return read_cached_result(p, mode)
+            except FileNotFoundError:
+                pass
 
-    return open_file(cache_name, mode)
+        raise FileNotFoundError(f"file not in paths: {', '.join(cache_name)}")
 
 
-def cache_view(func: Callable[..., T], cache_path: Union[str, Path], dummy_cache: bool = False) -> T:
+def cache_view(func: Callable[..., T], cache_path: str, dummy_cache: bool = False) -> T:
     """
     read results from cache if possible
     :param func:
@@ -282,7 +291,7 @@ def read_from_cache(func: Callable[..., T]) -> Callable[..., T]:
     """
 
     @wraps(func)
-    def wrapper(*args: Union[str, Path], **kwargs):
+    def wrapper(*args: str, **kwargs):
         return func(*map(read_cached_result, args), **kwargs)
 
     return wrapper
