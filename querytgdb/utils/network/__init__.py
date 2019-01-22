@@ -7,11 +7,12 @@ from uuid import uuid4
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pandas as pd
 from sklearn.metrics import auc
 
-from ...models import Analysis, Annotation
+from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import cache_result, data_to_edges, get_size, read_cached_result
 from ...utils.network.utils import COLOR, COLOR_SHAPE
 from ...utils.parser import ANNOTATIONS
@@ -54,105 +55,84 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
     return n * size + (n - 1) * gap
 
 
-def get_network_json(df: pd.DataFrame, edges: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def get_network_json(cache_dir: str,
+                     edges: Optional[List[str]] = None,
+                     precision_cutoff: Optional[float] = None) -> List[Dict[str, Any]]:
     """
     Get cytoscape network from queried data.
 
-    :param df:
+    :param cache_dir:
     :param edges:
+    :param precision_cutoff:
     :return:
     """
-    network_table = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    network_cache_file = os.path.join(cache_dir, 'network.pickle.gz')
+
+    df = read_cached_result(os.path.join(cache_dir, 'tabular_output.pickle.gz'))
 
     analyses = Analysis.objects.filter(
         pk__in=df.columns.get_level_values(1)
     ).prefetch_related('analysisdata_set', 'analysisdata_set__key', 'tf')
 
-    network_table = data_to_edges(network_table, analyses)
-
-    def get_tf(idx):
-        return analyses.get(pk=idx).tf.gene_id
-
-    network_table = network_table.rename(columns=get_tf, level=1)
-    network_table.columns = network_table.columns.droplevel(0)
-
-    # add additional edges here
-
-    edge_nodes = network_table.reindex(index=network_table.index.difference(network_table.columns))
-
-    uniq_tfs = network_table.columns.unique()
-
     try:
-        tf_nodes = network_table.reindex(index=uniq_tfs)
-    except KeyError:
-        tf_nodes = pd.DataFrame(index=uniq_tfs, columns=network_table.columns)
-    tf_nodes = tf_nodes.reindex(index=tf_nodes.count(axis=1).sort_values(ascending=False).index)
+        data, network_table = read_cached_result(network_cache_file)
+    except FileNotFoundError:
+        network_table = data_to_edges(df, analyses)
 
-    # having duplicate names is a no-no so clear all names
-    tf_nodes.columns.name = None
-    tf_nodes.index.name = None
+        def get_tf(idx):
+            return analyses.get(pk=idx).tf.gene_id
 
-    s_tfs = math.ceil(math.sqrt(tf_nodes.shape[0]))
-    e_tfs = group_edge_len(s_tfs, gap=TF_GAP)
+        network_table = network_table.rename(columns=get_tf, level=1)
+        network_table.columns = network_table.columns.droplevel(0)
 
-    tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
-        (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
+        edge_nodes = network_table.reindex(index=network_table.index.difference(network_table.columns))
 
-    edge_node_stack = edge_nodes.stack()
-    # edge building and positioning
+        uniq_tfs = network_table.columns.unique()
 
-    edge_counts = (edge_node_stack
-                   .groupby(level=[0, 1])
-                   .value_counts())
-    # scale edge weights here
-    edge_counts = edge_counts - edge_counts.min() + 1
+        try:
+            tf_nodes = network_table.reindex(index=uniq_tfs)
+        except KeyError:
+            tf_nodes = pd.DataFrame(index=uniq_tfs, columns=network_table.columns)
+        tf_nodes = tf_nodes.reindex(index=tf_nodes.count(axis=1).sort_values(ascending=False).index)
 
-    edge_group = (edge_counts
-                  .reset_index(level=[1, 2])
-                  .groupby(edge_node_stack
-                           .reset_index(level=1)
-                           .groupby(level=0)
-                           .apply(lambda x: x.iloc[:, 0].nunique())))
+        # having duplicate names is a no-no so clear all names
+        tf_nodes.columns.name = None
+        tf_nodes.index.name = None
 
-    max_group_num = edge_group.apply(lambda x: x.index.nunique()).max()
+        s_tfs = math.ceil(math.sqrt(tf_nodes.shape[0]))
+        e_tfs = group_edge_len(s_tfs, gap=TF_GAP)
 
-    num_targets = len(edge_group)
-    s_target = math.ceil(math.sqrt(num_targets))
+        tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
+            (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
 
-    num_group = math.ceil(math.sqrt(max_group_num))
-    group_bbox = group_edge_len(num_group)  # square edge length of largest number of tfs
+        edge_node_stack = edge_nodes.stack()
+        # edge building and positioning
 
-    groups_edge_len = group_edge_len(s_target, group_bbox, G_GAP)
+        edge_counts = (edge_node_stack
+                       .groupby(level=[0, 1])
+                       .value_counts())
+        # scale edge weights here
+        edge_counts = edge_counts - edge_counts.min() + 1
 
-    tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
-    data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, True))
+        edge_group = (edge_counts
+                      .reset_index(level=[1, 2])
+                      .groupby(edge_node_stack
+                               .reset_index(level=1)
+                               .groupby(level=0)
+                               .apply(lambda x: x.iloc[:, 0].nunique())))
 
-    data.extend({
-                    'group': 'edges',
-                    'data': {
-                        'id': uuid4(),
-                        'source': s,
-                        'target': t,
-                        'name': e,
-                        **COLOR[e]
-                    }
-                } for t, s, e in tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
+        max_group_num = edge_group.apply(lambda x: x.index.nunique()).max()
 
-    group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
-        (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
+        num_targets = len(edge_group)
+        s_target = math.ceil(math.sqrt(num_targets))
 
-    for (num, e_group), g_ij in zip(edge_group, group_grid):
-        e_group = e_group.sort_values(by=e_group.columns.tolist())
-        s_group = math.ceil(math.sqrt(e_group.index.nunique()))
+        num_group = math.ceil(math.sqrt(max_group_num))
+        group_bbox = group_edge_len(num_group)  # square edge length of largest number of tfs
 
-        e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'), dtype=np.float64).reshape(
-            (2, -1), order='C').T * (SIZE + GAP)
-        e_grid += g_ij - np.mean(e_grid, axis=0)  # add offset
+        groups_edge_len = group_edge_len(s_target, group_bbox, G_GAP)
 
-        data.extend(
-            make_nodes(
-                GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
-                e_grid))
+        tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
+        data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, True))
 
         data.extend({
                         'group': 'edges',
@@ -161,10 +141,127 @@ def get_network_json(df: pd.DataFrame, edges: Optional[List[str]] = None) -> Lis
                             'source': s,
                             'target': t,
                             'name': e,
-                            'weight': w,
                             **COLOR[e]
                         }
-                    } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
+                    } for t, s, e in
+                    tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
+
+        group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
+            (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
+
+        for (num, e_group), g_ij in zip(edge_group, group_grid):
+            e_group = e_group.sort_values(by=e_group.columns.tolist())
+            s_group = math.ceil(math.sqrt(e_group.index.nunique()))
+
+            e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'),
+                              dtype=np.float64).reshape(
+                (2, -1), order='C').T * (SIZE + GAP)
+            e_grid += g_ij - np.mean(e_grid, axis=0)  # add offset
+
+            data.extend(
+                make_nodes(
+                    GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
+                    e_grid))
+
+            data.extend({
+                            'group': 'edges',
+                            'data': {
+                                'id': uuid4(),
+                                'source': s,
+                                'target': t,
+                                'name': e,
+                                'weight': w,
+                                **COLOR[e]
+                            }
+                        } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
+
+        cache_result((data, network_table), network_cache_file)
+
+    # additional edges
+    if edges:
+        anno = ANNOTATIONS['id'].reset_index()
+        edge_types = pd.DataFrame(
+            EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
+            columns=['edge_id', 'edge', 'directional'])
+        tf_ids = set(analyses.values_list('tf_id', flat=True))
+        edge_data = pd.DataFrame(
+            EdgeData.objects.filter(
+                type_id__in=edge_types['edge_id'],
+                tf_id__in=tf_ids
+            ).values_list('tf_id', 'target_id', 'type_id').iterator(),
+            columns=['source', 'target', 'edge_id']
+        )
+        edge_data = (edge_data
+                     .merge(edge_types, on='edge_id')
+                     .drop('edge_id', axis=1))
+        edge_data = (edge_data
+                     .merge(anno, left_on='source', right_on='id')
+                     .merge(anno, left_on='target', right_on='id'))
+        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge', 'directional']]
+        edge_data.columns = ['TF', 'TARGET', 'EDGE', 'DIRECTIONAL']
+
+        edge_data = edge_data.loc[edge_data['TARGET'].isin(network_table.index), :]
+
+        data.extend({
+                        'group': 'edges',
+                        'data': {
+                            'id': uuid4(),
+                            'source': s,
+                            'target': t,
+                            'name': e,
+                            'color': '#984ea3',
+                            'shape': 'triangle'
+                        }
+                    } for s, t, e in
+                    edge_data.loc[edge_data['DIRECTIONAL'], ['TF', 'TARGET', 'EDGE']].itertuples(name=None,
+                                                                                                 index=False))
+
+        undirected = edge_data.loc[~edge_data['DIRECTIONAL'], :]
+
+        for name, group in undirected.groupby('EDGE'):
+            g = nx.Graph()
+            g.add_edges_from(group[['TF', 'TARGET']].itertuples(name=None, index=False))
+            data.extend({
+                            'group': 'edges',
+                            'data': {
+                                'id': uuid4(),
+                                'source': s,
+                                'target': t,
+                                'name': name,
+                                'color': '#984ea3',
+                                'shape': 'none'
+                            }
+                        } for s, t in g.edges)
+
+    if precision_cutoff is not None:
+        try:
+            try:
+                data_cache = os.path.join(cache_dir, 'figure_data.pickle.gz')
+                recall, precision, g = read_cached_result(data_cache)
+            except (FileNotFoundError, TypeError):
+                name, network_data = read_cached_result(f"{cache_dir}/target_network.pickle.gz")
+                network_data = network_data.sort_values('rank')
+                df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
+                pred_auc, recall, precision, g = get_prediction_data(df, network_data)[:-1]
+
+            rank = get_cutoff_info(g, precision, recall, precision_cutoff)[0]
+
+            g = g[g["rank"] <= rank]
+
+            data.extend({
+                            'group': 'edges',
+                            'data': {
+                                'id': uuid4(),
+                                'source': s,
+                                'target': t,
+                                'name': e,
+                                'color': '#ff7f00',
+                                'shape': 'triangle'
+                            }
+                        } for s, e, t in
+                        g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None, index=False))
+        except (ValueError, FileNotFoundError):
+            pass
 
     return data
 

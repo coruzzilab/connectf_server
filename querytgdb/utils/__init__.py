@@ -243,19 +243,21 @@ def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: b
             pk__in=df.columns.get_level_values(1)
         ).prefetch_related('analysisdata_set', 'analysisdata_set__key')
 
-    for name, column in df.iteritems():
+    def set_edge_name(s):
         try:
-            edge_type = analyses.get(pk=name[1]).analysisdata_set.get(key__name='EDGE_TYPE').value
+            edge_type = analyses.get(pk=s.name[1]).analysisdata_set.get(key__name='EDGE_TYPE').value
         except (ObjectDoesNotExist, MultipleObjectsReturned):
             edge_type = 'edge'
 
-        if name[2] == 'Log2FC':
-            c = column.mask(column >= 0, edge_type + ':INDUCED')
-            c = c.mask(column < 0, edge_type + ':REPRESSED')
+        if s.name[2] == 'Log2FC':
+            c = s.mask(s >= 0, edge_type + ':INDUCED')
+            c = c.mask(s < 0, edge_type + ':REPRESSED')
 
-            df.loc[:, name] = c
+            return c
         else:
-            df.loc[:, name] = column.mask(column.notna(), edge_type)
+            return s.mask(s.notna(), edge_type)
+
+    df = df.apply(set_edge_name)
 
     if drop:
         df.columns = df.columns.droplevel(2)

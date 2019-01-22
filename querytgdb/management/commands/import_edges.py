@@ -55,6 +55,14 @@ class Command(BaseCommand):
                       .merge(anno, left_on='source', right_on='gene_id')
                       .merge(anno, left_on='target', right_on='gene_id'))
 
+                df = df[['edge_id', 'id_x', 'id_y']]
+
+                if options['undirected']:
+                    und_df = df.copy()
+                    und_df[['id_x', 'id_y']] = und_df[['id_y', 'id_x']]
+                    df = pd.concat([df, und_df])
+                    df = df.drop_duplicates()
+
                 EdgeData.objects.bulk_create(
                     (EdgeData(
                         type_id=e,

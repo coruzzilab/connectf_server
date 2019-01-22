@@ -174,6 +174,13 @@ class NetworkAuprView(View):
         except FileNotFoundError:
             raise Http404
 
+    def head(self, request, request_id):
+        cache_dir = static_storage.path(f'{request_id}_pickle')
+
+        if os.path.exists(os.path.join(cache_dir, 'target_network.pickle.gz')):
+            return HttpResponse()
+        raise Http404
+
 
 class NetworkPrunedView(View):
     def get(self, request, request_id, cutoff):
@@ -212,14 +219,11 @@ class NetworkJSONView(View):
     def get(self, request, request_id):
         try:
             edges = request.GET.getlist('edges')
+            precision = convert_float(request.GET.get('precision'))
 
-            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
-            network_cache_dir = static_storage.path(f'{request_id}_pickle/network.pickle.gz')
+            cache_dir = static_storage.path(f'{request_id}_pickle/')
 
-            result = cache_view(
-                partial(read_from_cache(get_network_json),
-                        cache_dir),
-                network_cache_dir)
+            result = get_network_json(cache_dir, edges=edges, precision_cutoff=precision)
 
             return JsonResponse(result, safe=False, encoder=NetworkJSONEncoder)
         except ValueError:
