@@ -238,7 +238,7 @@ def get_network_json(cache_dir: str,
             try:
                 data_cache = os.path.join(cache_dir, 'figure_data.pickle.gz')
                 recall, precision, g = read_cached_result(data_cache)
-            except (FileNotFoundError, TypeError):
+            except FileNotFoundError:
                 name, network_data = read_cached_result(f"{cache_dir}/target_network.pickle.gz")
                 network_data = network_data.sort_values('rank')
                 df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
@@ -259,7 +259,8 @@ def get_network_json(cache_dir: str,
                                 'shape': 'triangle'
                             }
                         } for s, e, t in
-                        g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None, index=False))
+                        g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None,
+                                                                                                   index=False))
         except (ValueError, FileNotFoundError):
             pass
 

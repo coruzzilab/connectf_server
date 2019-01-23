@@ -2,6 +2,7 @@ import gzip
 import os
 import shutil
 import time
+import warnings
 from functools import partial
 from io import BytesIO
 from threading import Lock
@@ -163,7 +164,9 @@ class NetworkAuprView(View):
         precision = convert_float(request.GET.get('precision'))
 
         try:
-            with lock:
+            with lock, warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning,
+                                        module="matplotlib.figure")
                 result = read_from_cache(get_auc_figure)(
                     os.path.join(cache_dir, 'target_network.pickle.gz'),
                     os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'),
