@@ -50,7 +50,6 @@ urlpatterns = [
 if settings.DEBUG:
     # This allows the error pages to be debugged during development, just visit
     # these url in browser to see how these error pages look like.
-    import debug_toolbar
 
     urlpatterns += [
         url(r'^400/$', default_views.bad_request,
@@ -59,6 +58,5 @@ if settings.DEBUG:
             kwargs={'exception': Exception('Permission Denied')}),
         url(r'^404/$', default_views.page_not_found,
             kwargs={'exception': Exception('Page not Found')}),
-        url(r'^500/$', default_views.server_error),
-        url(r'__debug__', include(debug_toolbar.urls))
+        url(r'^500/$', default_views.server_error)
     ]

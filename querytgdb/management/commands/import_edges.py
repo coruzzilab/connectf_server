@@ -1,19 +1,16 @@
 import os
-from argparse import ArgumentParser
-from operator import attrgetter, itemgetter
 
-import pandas as pd
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandParser
 from django.db.transaction import atomic
 
-from querytgdb.models import Annotation, EdgeData, EdgeType
-from ...utils.sif import get_network
+from querytgdb.models import EdgeData, EdgeType
+from querytgdb.utils.insert_data import import_additional_edges
 
 
 class Command(BaseCommand):
     help = "Adds edge properties to annotate gene interactions in the database, DAP, DAP_amp, etc."
 
-    def add_arguments(self, parser: ArgumentParser):
+    def add_arguments(self, parser: CommandParser):
         parser.add_argument('file', help='edge property file', nargs='?')
         parser.add_argument('-f', '--format', help='file format', type=str)
         parser.add_argument('-U', '--undirected', help='treat edges as undirected', action='store_true')
@@ -28,46 +25,4 @@ class Command(BaseCommand):
             if 'file' in options:
                 name, ext = os.path.splitext(options['file'])
 
-                if ext == '.sif':
-                    with open(options["file"]) as f:
-                        g = get_network(f)
-                    df = pd.DataFrame(iter(g.edges(keys=True)))
-                else:
-                    df = pd.read_csv(options['file'])
-                    df = df.dropna(axis=0, how='all').dropna(axis=1, how='all')
-
-                df.columns = ['source', 'target', 'edge']
-                df = df.drop_duplicates()
-
-                edges = pd.DataFrame.from_records(map(attrgetter('id', 'name'),
-                                                      map(itemgetter(0),
-                                                          (EdgeType.objects.get_or_create(
-                                                              name=e,
-                                                              directional=(not options['undirected'])
-                                                          ) for e in
-                                                              df['edge'].unique()))),
-                                                  columns=['edge_id', 'edge'])
-
-                anno = pd.DataFrame(Annotation.objects.values_list('id', 'gene_id', named=True).iterator())
-
-                df = (df
-                      .merge(edges, on='edge')
-                      .merge(anno, left_on='source', right_on='gene_id')
-                      .merge(anno, left_on='target', right_on='gene_id'))
-
-                df = df[['edge_id', 'id_x', 'id_y']]
-
-                if options['undirected']:
-                    und_df = df.copy()
-                    und_df[['id_x', 'id_y']] = und_df[['id_y', 'id_x']]
-                    df = pd.concat([df, und_df])
-                    df = df.drop_duplicates()
-
-                EdgeData.objects.bulk_create(
-                    (EdgeData(
-                        type_id=e,
-                        tf_id=s,
-                        target_id=t
-                    ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
-                    batch_size=1000
-                )
+                import_additional_edges(options["file"], sif=(ext == '.sif'), directional=(not options['undirected']))
