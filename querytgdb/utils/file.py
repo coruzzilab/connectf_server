@@ -8,6 +8,11 @@ import pandas as pd
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.storage import Storage
 from django.http.request import HttpRequest
+from pandas.errors import ParserError
+
+
+class BadNetwork(ValueError):
+    pass
 
 
 def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Optional[TextIO]:
@@ -71,6 +76,8 @@ def get_genes(f: TextIO) -> pd.Series:
 
 Network = Tuple[str, pd.DataFrame]
 
+NETWORK_MSG = "Network must have source, edge, target columns. Can have an additional forth column of scores."
+
 
 def get_network(f: TextIO) -> Network:
     """
@@ -78,20 +85,36 @@ def get_network(f: TextIO) -> Network:
     :param f:
     :return:
     """
-    df = pd.read_csv(f, delim_whitespace=True)
+    try:
+        df = pd.read_csv(f, delim_whitespace=True, header='infer')
+    except (ParserError, UnicodeDecodeError) as e:
+        raise BadNetwork(NETWORK_MSG) from e
+    name = getattr(f, 'name', 'default')
 
-    if df.shape[1] == 3:
-        df.columns = ['source', 'edge', 'target']
-        df['rank'] = np.arange(1, df.shape[0] + 1)
-    elif df.shape[1] == 4:
+    rows, cols = df.shape
+
+    if cols == 2:
+        df.columns = ['source', 'target']
+    elif cols == 3:
+        if np.issubdtype(df.dtypes[2], np.number):  # use last column as score if number
+            df.columns = ['source', 'target', 'score']
+        else:
+            df.columns = ['source', 'edge', 'target']
+    elif cols == 4:
         df.columns = ['source', 'edge', 'target', 'score']
+    else:
+        raise BadNetwork(NETWORK_MSG)
+
+    if 'score' in df:
         df['rank'] = df['score'].rank(method='max', ascending=False)
         df = df.sort_values('rank')
     else:
-        raise ValueError(
-            "Network must have source, edge, target columns. Can have an additional forth column of scores.")
+        df['rank'] = np.arange(1, df.shape[0] + 1)
 
-    return getattr(f, 'name', 'default'), df
+    if 'edge' not in df:
+        df.insert(1, 'edge', name)
+
+    return name, df
 
 
 def network_to_lists(network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, OrderedDict]:

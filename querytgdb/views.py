@@ -16,14 +16,13 @@ from django.utils.datastructures import MultiValueDictKeyError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
-from pyparsing import ParseException
 
 from querytgdb.utils.excel import create_export_zip
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, \
     metadata_to_dict, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
-from .utils.file import get_file, get_gene_lists, get_genes, get_network, merge_network_lists, network_to_filter_tfs, \
-    network_to_lists
+from .utils.file import BadNetwork, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
+    network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
@@ -123,12 +122,13 @@ class QueryView(View):
                 cache_result(user_lists, f'{output}/target_genes.pickle.gz')
 
             edges = request.POST.getlist('edges')
+            query = request.POST['query']
 
             # save the query
             with open(output + '/query.txt', 'w') as f:
-                f.write(request.POST['query'].strip() + '\n')
+                f.write(query.strip() + '\n')
 
-            result, metadata, stats = get_query_result(query=request.POST['query'],
+            result, metadata, stats = get_query_result(query=query,
                                                        edges=edges,
                                                        cache_path=output,
                                                        size_limit=100000000,
@@ -149,11 +149,11 @@ class QueryView(View):
             }
 
             return JsonResponse(res, encoder=PandasJSONEncoder)
-        except QueryError:
-            return HttpResponseBadRequest("Result data size too large.")
+        except (QueryError, BadNetwork) as e:
+            return HttpResponseBadRequest(e)
         except ValueError as e:
             raise Http404('Query not available') from e
-        except (MultiValueDictKeyError, ParseException):
+        except MultiValueDictKeyError:
             return HttpResponseBadRequest("Problem with query.")
 
 

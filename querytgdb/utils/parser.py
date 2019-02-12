@@ -633,14 +633,17 @@ def parse_query(query: str,
                 edges: Optional[List[str]] = None,
                 tf_filter_list: Optional[pd.Series] = None,
                 target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
-    parse = expr.parseString(query, parseAll=True)
+    try:
+        parse = expr.parseString(query, parseAll=True)
 
-    result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
+        result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
 
-    if result.empty or not result.include:
-        raise ValueError('empty query')
+        if result.empty or not result.include:
+            raise QueryError('empty query')
 
-    return reorder_data(result)
+        return reorder_data(result)
+    except pp.ParseException as e:
+        raise QueryError("Could not parse query") from e
 
 
 def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
@@ -667,9 +670,6 @@ def get_query_result(query: Optional[str] = None,
     :param size_limit:
     :return:
     """
-    if query is None and cache_path is None:
-        raise ValueError("Need query or cache_path")
-
     if query is not None:
         result = parse_query(query, edges, tf_filter_list)
         metadata = get_metadata(result.columns.get_level_values(1))
@@ -683,12 +683,12 @@ def get_query_result(query: Optional[str] = None,
             result = result[result.index.isin(user_lists[0].index)]
 
         if result.empty:
-            raise ValueError("Empty result (user list too restrictive).")
+            raise QueryError("Empty result (user list too restrictive).")
 
         if cache_path is not None:  # cache here
             result.to_pickle(cache_path + '/tabular_output.pickle.gz')
             metadata.to_pickle(cache_path + '/metadata.pickle.gz')
-    else:
+    elif cache_path is not None:
         result = pd.read_pickle(cache_path + '/tabular_output.pickle.gz')
         metadata = pd.read_pickle(cache_path + '/metadata.pickle.gz')
         stats = get_stats(pd.read_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz'))
@@ -697,6 +697,8 @@ def get_query_result(query: Optional[str] = None,
             user_lists = read_cached_result(cache_path + '/target_genes.pickle.gz')
         except FileNotFoundError:
             pass
+    else:
+        raise ValueError("Need query or cache_path")
 
     logger.info(f"Unfiltered Dataframe size: {result.size}")
 

@@ -30,8 +30,11 @@ def process_meta_file(f) -> pd.Series:
 
     metadata.index = metadata.index.str.upper().str.replace(' ', '_')
 
-    metadata[metadata.index.str.contains(r'_?DATE$')] = pd.to_datetime(
-        metadata[metadata.index.str.contains(r'_?DATE$')], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
+    date_rows = metadata.index.str.contains(r'_?DATE$')
+
+    if date_rows.any():
+        metadata[date_rows] = pd.to_datetime(
+            metadata[date_rows], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
 
     return metadata
 
