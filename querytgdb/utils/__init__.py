@@ -2,8 +2,8 @@ import base64
 import gzip
 import logging
 import mimetypes
-import os.path
 import pickle
+import pkgutil
 import re
 import shutil
 import sys
@@ -16,7 +16,6 @@ from uuid import UUID
 
 import numpy as np
 import pandas as pd
-from django.conf import settings
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import QuerySet
@@ -179,11 +178,10 @@ def svg_font_adder(buff: BinaryIO) -> BinaryIO:
     tree = etree.parse(buff)
     style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
 
-    with open(os.path.join(settings.BASE_DIR, 'tgdbbackend/static/fonts/DejaVuSans.woff'), 'rb') as font_file:
-        font_str = base64.b64encode(font_file.read()).decode()
+    font_str = base64.standard_b64encode(pkgutil.get_data('matplotlib', 'mpl-data/fonts/ttf/DejaVuSans.ttf')).decode()
 
     style.text += '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
-                  'url({}) format("woff");}}'.format('data:font/woff;base64,' + font_str)
+                  'url({}) format("truetype");}}'.format('data:font/ttf;base64,' + font_str)
 
     buff.truncate(0)
     tree.write(buff)
