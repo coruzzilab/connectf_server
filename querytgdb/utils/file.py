@@ -1,17 +1,21 @@
 from collections import OrderedDict
 from contextlib import closing
 from io import TextIOWrapper
-from typing import Dict, Hashable, Optional, Set, TextIO, Tuple
+from typing import Dict, Hashable, IO, Optional, Set, TextIO, Tuple
 
 import numpy as np
 import pandas as pd
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.storage import Storage
 from django.http.request import HttpRequest
-from pandas.errors import ParserError
+from pandas.errors import EmptyDataError, ParserError
 
 
-class BadNetwork(ValueError):
+class BadFile(ValueError):
+    pass
+
+
+class BadNetwork(BadFile):
     pass
 
 
@@ -79,7 +83,7 @@ Network = Tuple[str, pd.DataFrame]
 NETWORK_MSG = "Network must have source, edge, target columns. Can have an additional forth column of scores."
 
 
-def get_network(f: TextIO) -> Network:
+def get_network(f: IO) -> Network:
     """
     Parse uploaded file into dataframe
     :param f:
@@ -87,8 +91,9 @@ def get_network(f: TextIO) -> Network:
     """
     try:
         df = pd.read_csv(f, delim_whitespace=True, header='infer')
-    except (ParserError, UnicodeDecodeError) as e:
+    except (ParserError, UnicodeDecodeError, EmptyDataError) as e:
         raise BadNetwork(NETWORK_MSG) from e
+
     name = getattr(f, 'name', 'default')
 
     rows, cols = df.shape

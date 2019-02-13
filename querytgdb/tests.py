@@ -1,6 +1,8 @@
 import gzip
+import io
 import json
 import os
+import secrets
 import shutil
 from glob import iglob
 
@@ -11,11 +13,12 @@ from django.core.files.storage import FileSystemStorage
 from django.test import TestCase
 from django.urls import reverse
 
-from querytgdb.utils.insert_data import import_additional_edges, import_annotations, insert_data, read_annotation_file
+from querytgdb.utils.insert_data import import_additional_edges, import_annotations, insert_data, \
+    read_annotation_file
 from .models import Analysis, Annotation, EdgeData, EdgeType
+from .utils.file import BadNetwork, get_network
 
 
-# Create your tests here.
 class TestImportData(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -86,6 +89,10 @@ class TestQuery(TestCase):
         pass
 
     def test_basic_query(self):
+        """
+        Check if all cache files exist with basic query
+        :return:
+        """
         response = self.client.post(reverse("queryapp:queryapp"), data={
             "query": "AT5G65210"
         })
@@ -112,6 +119,10 @@ class TestQuery(TestCase):
         shutil.rmtree(cache_path)
 
     def test_cached_query(self):
+        """
+        Test if cached query is used
+        :return:
+        """
         response = self.client.post(reverse("queryapp:queryapp"), data={
             "query": "AT5G65210"
         })
@@ -123,3 +134,27 @@ class TestQuery(TestCase):
         self.assertEqual(response.status_code, 200)
 
         shutil.rmtree(static_storage.path(f"{request_id}_pickle"))
+
+
+class TestNetworkParsing(TestCase):
+    def test_good_file(self):
+        buff = io.StringIO("source	DFG_Prediction	dest	score\n"
+                           "AT4G25210	DFG_Prediction	AT4G13940	54.252\n"
+                           "AT4G36540	DFG_Prediction	AT4G13940	44.818")
+        name, data = get_network(buff)
+
+        self.assertEqual(name, "default", "Should have default name")
+        self.assertIsInstance(data, pd.DataFrame, "Should be dataframe")
+        self.assertEqual(data.shape, (2, 5), "should have 2 rows 5 columns")
+
+    def test_bad_file(self):
+        buff = io.BytesIO(secrets.token_bytes(1024))  # if this turns out to be a valid network, go buy a lottery ticket
+
+        with self.assertRaises(BadNetwork):
+            get_network(buff)
+
+    def test_empty_file(self):
+        buff = io.BytesIO()
+
+        with self.assertRaises(BadNetwork):
+            get_network(buff)

@@ -1,8 +1,9 @@
 import logging
 import re
 import sys
+import warnings
 from operator import attrgetter, itemgetter
-from typing import Tuple
+from typing import TextIO, Tuple
 
 import numpy as np
 import pandas as pd
@@ -11,12 +12,18 @@ from django.db.transaction import atomic
 from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeType, Interaction, MetaKey, Regulation
 from querytgdb.utils.sif import get_network
 
+logger = logging.getLogger(__name__)
+
 nan_regex = re.compile(r'^n/?an?$', flags=re.I)
 searchable = ['TRANSCRIPTION_FACTOR_ID', 'EXPERIMENT_TYPE', 'EXPERIMENTER', 'DATE', 'TECHNOLOGY', 'ANALYSIS_METHOD',
               'ANALYSIS_CUTOFF', 'EDGE_TYPE', 'GENOTYPE', 'DATA_SOURCE', 'TREATMENTS', 'CONTROL', 'TISSUE/SAMPLE']
 
 
-def process_meta_file(f) -> pd.Series:
+class UnkownGeneWarning(Warning):
+    pass
+
+
+def process_meta_file(f: TextIO) -> pd.Series:
     metadata = pd.Series(f.readlines())
 
     metadata = (metadata
@@ -101,7 +108,15 @@ def insert_data(data_file, metadata_file, sep=','):
         gene_id__in=data.iloc[:, 0]
     ).values_list('gene_id', 'id', named=True).iterator())
 
-    data = data.merge(anno, on='gene_id')
+    # check for invalid ids
+    data = data.merge(anno, on='gene_id', how='left')
+
+    unknown_genes = data['id'].isnull()
+
+    if unknown_genes.any():
+        warnings.warn("Unkown gene ids: {}".format(", ".join(data.loc[unknown_genes, 'gene_id'].unique())),
+                      UnkownGeneWarning)
+        data = data[~unknown_genes]
 
     Interaction.objects.bulk_create(
         Interaction(
@@ -119,9 +134,6 @@ def insert_data(data_file, metadata_file, sep=','):
                 target_id=row.id
             ) for row in data.itertuples(index=False)
         )
-
-
-logger = logging.getLogger(__name__)
 
 
 def read_annotation_file(annotation_file: str) -> pd.DataFrame:
@@ -203,8 +215,23 @@ def import_additional_edges(edge_file: str, sif: bool = False, directional: bool
 
     df = (df
           .merge(edges, on='edge')
-          .merge(anno, left_on='source', right_on='gene_id')
-          .merge(anno, left_on='target', right_on='gene_id'))
+          .merge(anno, left_on='source', right_on='gene_id', how='left')
+          .merge(anno, left_on='target', right_on='gene_id', how='left'))
+
+    # warn of unknown genes
+    unknown_source = df['id_x'].isnull()
+    unknown_target = df['id_y'].isnull()
+
+    unknown_edges = unknown_source | unknown_target
+
+    if unknown_edges.any():
+        warnings.warn(
+            "Unknown genes: {}".format(
+                ", ".join(pd.concat([df.loc[unknown_source, 'source'], df.loc[unknown_target, 'target']]).unique())
+            ),
+            UnkownGeneWarning
+        )
+        df = df[~unknown_edges]
 
     df = df[['edge_id', 'id_x', 'id_y']]
 
