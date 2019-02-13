@@ -10,17 +10,7 @@ cycler==0.10.0
 decorator==4.3.0
 defusedxml==0.5.0
 Django==2.1.2
-django-autoslug==1.9.3
-django-braces==1.11.0
 django-cors-headers==2.4.0
-django-coverage-plugin==1.5.0
-django-crispy-forms==1.7.2
-django-debug-toolbar==1.7
-django-environ==0.4.2
-django-extensions==1.7.8
-django-floppyforms==1.7.0
-django-model-utils==3.0.0
-django-test-plus==1.0.17
 djangorestframework==3.8.2
 docutils==0.13.1
 et-xmlfile==1.0.1

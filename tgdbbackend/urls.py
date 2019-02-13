@@ -20,31 +20,12 @@ from django.contrib import admin
 from django.views import defaults as default_views
 
 urlpatterns = [
-                  # url(r'^$',
-                  #     TemplateView.as_view(template_name='pages/home.html'),
-                  #     name='home'),
-                  # url(r'^about/$',
-                  #     TemplateView.as_view(template_name='pages/about.html'),
-                  #     name='about'),
-
-                  # Django Admin, use {% url 'admin:index' %}
                   url(r'^admin/', admin.site.urls),
 
-                  # User management
-                  # url(r'^users/',
-                  #     include('tgdbbackend.users.urls', namespace='users')),
-                  # url(r'^accounts/', include('allauth.urls')),
-
-                  # restful API
                   url(r"^api/", include(('targetdb.urls', 'targetdb'),
                                         namespace='targetdb')),
-                  url(r'^api-auth/', include('rest_framework.urls',
-                                             namespace='rest_framework')),
-
-                  # Your stuff: custom urls includes go here
                   url(r'^queryapp/', include(('querytgdb.urls', 'queryapp'),
-                                             namespace='queryapp')),
-                  url(r'^upload/', include('upload.urls'))
+                                             namespace='queryapp'))
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 if settings.DEBUG:
