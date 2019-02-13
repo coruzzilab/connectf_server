@@ -1,6 +1,6 @@
+import io
 import sys
 from itertools import count, product
-from operator import itemgetter
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -46,7 +46,7 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
     return sns_heatmap
 
 
-def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True, legend=False, save_file=False,
+def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True, legend=False,
                          upper=None, lower=None):
     """
     Draws gene list enrichment heatmap from cached query
@@ -55,7 +55,6 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
     :param background:
     :param draw:
     :param legend:
-    :param save_file:
     :param upper:
     :param lower:
     :return:
@@ -146,11 +145,14 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
             scaled_pvals = scale_df(list_enrichment_pvals)
             sns_heatmap = draw_heatmap(scaled_pvals, vmin=lower, vmax=upper)
 
-            if save_file:
-                sns_heatmap.savefig(pickledir + '/heatmap.svg')
-                plt.close()
+            buff = io.BytesIO()
 
-            return sns_heatmap
+            sns_heatmap.savefig(buff)
+            plt.close()
+
+            buff.seek(0)
+
+            return buff
 
     return list_enrichment_pvals
 

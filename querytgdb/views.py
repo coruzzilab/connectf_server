@@ -1,10 +1,10 @@
 import gzip
 import os
 import shutil
+import tempfile
 import time
 import warnings
 from functools import partial
-from io import BytesIO
 from threading import Lock
 from uuid import uuid4
 
@@ -18,28 +18,18 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 
 from querytgdb.utils.excel import create_export_zip
+from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, \
     metadata_to_dict, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import BadNetwork, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
+from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
+    get_motif_enrichment_json
+from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
-
-# matplotlib import order issues
-matplotlib.use('SVG')
-
-import matplotlib.pyplot as plt
-
-plt.rcParams['svg.fonttype'] = 'none'
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ["DejaVu Sans"]
-
-from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
-from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_json, \
-    get_motif_enrichment_heatmap_table
-from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
 
 lock = Lock()
 
@@ -244,22 +234,20 @@ class FileExportView(View):
             out_file = static_storage.path("{}.zip".format(request_id))
             if not os.path.exists(out_file):
                 cache_folder = static_storage.path("{}_pickle".format(request_id))
-                out_folder = static_storage.path(request_id)
+                out_file_prefix = static_storage.path(request_id)
 
-                shutil.rmtree(out_folder, ignore_errors=True)
-                os.makedirs(out_folder)
+                temp_folder = tempfile.mkdtemp()
 
-                create_export_zip(cache_folder, out_folder)
-
-                shutil.make_archive(out_folder, 'zip', out_folder)  # create a zip file for output directory
-                shutil.rmtree(out_folder, ignore_errors=True)  # delete the output directory after creating zip file
+                create_export_zip(cache_folder, temp_folder)
+                shutil.make_archive(out_file_prefix, 'zip', temp_folder)  # create a zip file for output directory
+                shutil.rmtree(temp_folder, ignore_errors=True)  # delete the output directory after creating zip file
 
             return FileResponse(open(out_file, 'rb'),
                                 content_type='application/zip',
                                 as_attachment=True,
                                 filename='query.zip')
 
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             return HttpResponseNotFound(content_type='application/zip')
 
 
@@ -271,17 +259,12 @@ class ListEnrichmentSVGView(View):
 
             cache_path = static_storage.path("{}_pickle".format(request_id))
 
-            buff = BytesIO()
-
-            gene_list_enrichment(
+            buff = gene_list_enrichment(
                 cache_path,
                 draw=True,
                 lower=lower,
                 upper=upper
-            ).savefig(buff)
-            plt.close()
-
-            buff.seek(0)
+            )
             svg_font_adder(buff)
 
             return FileResponse(buff, content_type='image/svg+xml')
