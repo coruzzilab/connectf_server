@@ -1,6 +1,7 @@
 import base64
 import gzip
 import logging
+import math
 import mimetypes
 import pickle
 import pkgutil
@@ -31,6 +32,12 @@ T = TypeVar('T')
 
 class PandasJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
+        if isinstance(o, np.number):
+            if np.isinf(o):
+                return math.inf
+            if np.isnan(o):
+                return math.nan
+            return o.item()
         if isinstance(o, (pd.Index, pd.Series, np.ndarray)):
             return o.tolist()
 
