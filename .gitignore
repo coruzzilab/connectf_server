@@ -50,3 +50,4 @@ nohup.out
 .mypy_cache/
 build/
 dist/
+*.egg-info/

@@ -36,6 +36,7 @@ setup(
         'XlsxWriter',
         'mysqlclient',
         'statsmodels',
-        'scikit-learn'
+        'scikit-learn',
+        'gunicorn'
     ]
 )

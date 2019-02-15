@@ -3,7 +3,7 @@ include README.md
 include manage.py
 recursive-include commongenelists *
 recursive-include commongenelists_zm *
-include tgdbbackend/static/fonts/DejaVuSans.woff
+recursive-include target_networks *
 include tgdbbackend/static/annotated.pickle.gz
 include tgdbbackend/static/annotated_zm.pickle.gz
 include tgdbbackend/static/cluster_info.csv.gz
