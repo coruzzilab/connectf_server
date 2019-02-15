@@ -4,6 +4,7 @@ import warnings
 from collections import deque
 from functools import partial
 from operator import itemgetter
+from threading import Lock, Thread
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from django.db.utils import DatabaseError
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from ..utils import read_cached_result
 
-__all__ = ['get_query_result', 'expand_ref_ids', 'ANNOTATIONS']
+__all__ = ['get_query_result', 'expand_ref_ids', 'annotations']
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,41 @@ def get_annotations() -> pd.DataFrame:
     return anno
 
 
-ANNOTATIONS = get_annotations()
+class Annotations:
+    def __init__(self):
+        self._anno = None
+
+        self.lock = Lock()
+        self.task = Thread(target=self.get_annotations)
+        self.task.start()
+
+    def get_annotations(self) -> pd.DataFrame:
+        """
+        Loads annotations from the database into memory.
+        """
+        try:
+            anno = pd.DataFrame(
+                Annotation.objects.values_list(
+                    'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
+                columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+            anno = anno.set_index('TARGET')
+        except DatabaseError:
+            warnings.warn(DatabaseWarning("No annotation data."))
+
+            anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+            anno.index.name = 'TARGET'
+
+        with self.lock:
+            self._anno = anno
+
+    def __call__(self):
+        if self._anno is None:
+            self.task.join()
+
+        return self._anno
+
+
+annotations = Annotations()
 
 name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:')
 
@@ -256,7 +291,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
             elif re.match(r'^additional_edge$', key, flags=re.I):
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
-                anno_ids = ANNOTATIONS.loc[df.index, 'id']
+                anno_ids = annotations().loc[df.index, 'id']
                 return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges,
                                                               analyses=analyses,
                                                               anno_ids=anno_ids,
@@ -276,7 +311,7 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
     :param edges:
     :return:
     """
-    anno = ANNOTATIONS['id'].reset_index()
+    anno = annotations()['id'].reset_index()
 
     edge_types = pd.DataFrame(
         EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
@@ -718,7 +753,7 @@ def get_query_result(query: Optional[str] = None,
             result
         ], axis=1)
 
-    result = ANNOTATIONS.drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
+    result = annotations().drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
 
     result = result.sort_values('TF Count', ascending=False, kind='mergesort')
 

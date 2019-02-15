@@ -22,7 +22,7 @@ from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
 from ..utils import clear_data, column_string, split_name, svg_font_adder
-from ..utils.parser import ANNOTATIONS
+from ..utils.parser import annotations
 
 
 class MotifData:
@@ -348,7 +348,7 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None) -> Ge
             gene_id = analysis.tf.gene_id
 
             try:
-                gene_name = ANNOTATIONS.at[gene_id, 'Name']
+                gene_name = annotations().at[gene_id, 'Name']
             except KeyError:
                 gene_name = ''
 

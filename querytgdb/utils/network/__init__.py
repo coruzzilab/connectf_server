@@ -15,9 +15,9 @@ from sklearn.metrics import auc
 from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import cache_result, data_to_edges, get_size, read_cached_result
 from ...utils.network.utils import COLOR, COLOR_SHAPE
-from ...utils.parser import ANNOTATIONS
+from ...utils.parser import annotations
 
-GENE_TYPE = ANNOTATIONS[['Name', 'Type']]
+GENE_TYPE = annotations()[['Name', 'Type']]
 SIZE = 20
 GAP = 10
 TF_GAP = 50
@@ -179,7 +179,7 @@ def get_network_json(cache_dir: str,
 
     # additional edges
     if edges:
-        anno = ANNOTATIONS['id'].reset_index()
+        anno = annotations()['id'].reset_index()
         edge_types = pd.DataFrame(
             EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
             columns=['edge_id', 'edge', 'directional'])

@@ -10,7 +10,7 @@ from statsmodels.stats.multitest import fdrcorrection
 
 from ..models import Analysis
 from ..utils import split_name
-from ..utils.parser import ANNOTATIONS
+from ..utils.parser import annotations
 
 
 class AnalysisEnrichmentError(ValueError):
@@ -51,7 +51,7 @@ def analysis_enrichment(cache_path, size_limit: int = 100, raise_warning: bool =
     data = []
     info = []
 
-    background = ANNOTATIONS.shape[0]
+    background = annotations().shape[0]
 
     analysis_ids = df.columns.get_level_values(1)
 

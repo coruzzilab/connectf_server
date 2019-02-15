@@ -13,7 +13,7 @@ from scipy.stats import fisher_exact
 
 from ..models import Analysis
 from ..utils import clear_data, column_string, split_name
-from ..utils.parser import ANNOTATIONS
+from ..utils.parser import annotations
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,8 +66,8 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
         raise FileNotFoundError('No target genes uploaded') from e
 
     if background is None:
-        if not ANNOTATIONS.empty:
-            background = ANNOTATIONS.shape[0]
+        if not annotations().empty:
+            background = annotations().shape[0]
         else:
             background = 28775
 
@@ -132,7 +132,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
                 gene_id = analysis.tf.gene_id
 
                 try:
-                    gene_name = ANNOTATIONS.at[gene_id, 'Name']
+                    gene_name = annotations().at[gene_id, 'Name']
                 except KeyError:
                     gene_name = ''
 
