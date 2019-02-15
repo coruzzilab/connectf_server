@@ -25,7 +25,6 @@ setup(
         'numpy',
         'scipy',
         'django',
-        'djangorestframework',
         'matplotlib',
         'pyparsing',
         'seaborn',

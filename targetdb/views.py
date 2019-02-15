@@ -1,72 +1,70 @@
 import os
-from collections import OrderedDict
-from typing import Generator, Iterable
+from typing import Generator, Iterable, List
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
-from django.db import connection
-from rest_framework import views
-from rest_framework.response import Response
+from django.db.models import F
+from django.http import JsonResponse
+from django.views import View
 
-from querytgdb.models import Analysis, AnalysisData, EdgeData, EdgeType, MetaKey
-from .serializers import TFValueSerializer
+from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeType, MetaKey
 
-storage = FileSystemStorage(settings.GENE_LISTS)
+gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
+networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 
 def get_lists(files: Iterable) -> Generator[str, None, None]:
     for f in files:
-        name, ext = os.path.splitext(f)
-        if ext == '.txt':
-            yield name
+        yield f.split(os.path.extsep, 1)[0]
 
 
 def check_regulation(instance: Analysis):
     return instance.regulation_set.exists()
 
 
-class TFView(views.APIView):
+class TFView(View):
     def get(self, request, *args, **kwargs):
         all_genes = request.GET.get('all', '1')
 
         if all_genes == '1':
-            queryset = [OrderedDict([('gene_id', 'oralltfs')]),
-                        # remove andalltfs because it is not use beyond a handfull of datasets
+            queryset = [{'value': 'oralltfs'},
+                        # remove andalltfs because it is not useful beyond a handfull of datasets
                         # OrderedDict([('gene_id', 'andalltfs')]),
-                        OrderedDict([('gene_id', 'multitype')])]
+                        {'value': 'multitype'}]
         else:
             queryset = []
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT DISTINCT a.gene_id as gene_id, a.name as gene_name FROM querytgdb_analysis as e "
-                "LEFT JOIN querytgdb_annotation as a ON e.tf_id = a.id "
-                "ORDER BY gene_id, gene_name")
+        queryset.extend(
+            Annotation.objects.filter(analysis__in=Analysis.objects.all())
+                .distinct()
+                .annotate(value=F('gene_id'))
+                .values('value', 'name')
+                .order_by('value', 'name')
+                .iterator())
 
-            for gene_id, gene_name in cursor:
-                queryset.append(OrderedDict([
-                    ("gene_id", gene_id),
-                    ("gene_name", gene_name)
-                ]))
-
-        serializer = TFValueSerializer(queryset, many=True)
-
-        return Response(serializer.data)
+        return JsonResponse(queryset, safe=False)
 
 
-class EdgeListView(views.APIView):
+class EdgeListView(View):
     def get(self, request, *args, **kwargs):
-        return Response(EdgeType.objects.values_list("name", flat=True))
+        return JsonResponse(list(EdgeType.objects.values_list("name", flat=True)), safe=False)
 
 
-class InterestingListsView(views.APIView):
+class InterestingListsView(View):
     def get(self, request, *args, **kwargs):
-        directories, files = storage.listdir('./')
+        directories, files = gene_lists_storage.listdir('./')
 
-        return Response(get_lists(files))
+        return JsonResponse(list(get_lists(files)), safe=False)
 
 
-class KeyView(views.APIView):
+class InterestingNetworksView(View):
+    def get(self, request, *args, **kwargs):
+        directories, files = networks_storage.listdir('./')
+
+        return JsonResponse(list(get_lists(files)), safe=False)
+
+
+class KeyView(View):
     def get(self, request):
         tfs = set(request.GET.getlist('tf'))
 
@@ -93,11 +91,11 @@ class KeyView(views.APIView):
             queryset[0:0] = ['fc', 'pvalue', 'additional_edge']
             queryset.extend(MetaKey.objects.filter(searchable=True).values_list('name', flat=True))
 
-        return Response(queryset)
+        return JsonResponse(queryset, safe=False)
 
 
-class ValueView(views.APIView):
-    def get(self, request, key: str) -> Response:
+class ValueView(View):
+    def get(self, request, key: str) -> JsonResponse:
         tfs = set(request.GET.getlist('tf'))
 
         if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
@@ -105,15 +103,20 @@ class ValueView(views.APIView):
 
         key = key.upper()
 
+        queryset: List[str] = []
+
         if key in ('PVALUE', 'FC'):
-            return Response([])
+            return JsonResponse(queryset, safe=False)
         elif key == 'ADDITIONAL_EDGE':
             if tfs:
-                return Response(
+                queryset.extend(
                     EdgeData.objects.filter(tf__gene_id__in=tfs).distinct().values_list('type__name', flat=True))
-            return Response(EdgeType.objects.distinct().values_list('name', flat=True))
+                return JsonResponse(queryset, safe=False)
+
+            queryset.extend(EdgeType.objects.distinct().values_list('name', flat=True))
+            return JsonResponse(queryset, safe=False)
         elif key == 'HAS_COLUMN':
-            queryset = ['EDGE']
+            queryset.append('EDGE')
 
             if tfs:
                 if any(map(check_regulation, Analysis.objects.filter(tf__gene_id__in=tfs))):
@@ -123,10 +126,8 @@ class ValueView(views.APIView):
             else:
                 queryset.extend(('Pvalue', 'FC', 'additional_edge'))
 
-            return Response(queryset)
+            return JsonResponse(queryset, safe=False)
         else:
-            queryset = []
-
             if tfs:
                 analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
 
@@ -138,4 +139,4 @@ class ValueView(views.APIView):
                 queryset.extend(
                     AnalysisData.objects.filter(key__name__iexact=key).distinct().values_list('value', flat=True))
 
-            return Response(queryset)
+            return JsonResponse(queryset, safe=False)

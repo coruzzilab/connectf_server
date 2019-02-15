@@ -35,6 +35,7 @@ lock = Lock()
 
 static_storage = FileSystemStorage(settings.QUERY_CACHE)
 common_genes_storage = FileSystemStorage(settings.GENE_LISTS)
+networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -72,7 +73,7 @@ class QueryView(View):
 
             targetgenes_file = get_file(request, "targetgenes", common_genes_storage)
             filter_tfs_file = get_file(request, "filtertfs")
-            target_networks = get_file(request, "targetnetworks", common_genes_storage)
+            target_networks = get_file(request, "targetnetworks", networks_storage)
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)

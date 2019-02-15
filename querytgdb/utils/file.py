@@ -1,7 +1,11 @@
+import gzip
+import mimetypes
+import os.path
+import re
 from collections import OrderedDict
 from contextlib import closing
 from io import TextIOWrapper
-from typing import Dict, Hashable, IO, Optional, Set, TextIO, Tuple
+from typing import Dict, Hashable, IO, Optional, Set, TextIO, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -19,7 +23,7 @@ class BadNetwork(BadFile):
     pass
 
 
-def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Optional[TextIO]:
+def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Union[TextIO, None]:
     """
     Get file or file name from the request.
 
@@ -32,9 +36,21 @@ def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = N
         return TextIOWrapper(request.FILES[key])
     elif key in request.POST and storage is not None:
         try:
-            return storage.open("{}.txt".format(request.POST[key]), 'r')
-        except (FileNotFoundError, SuspiciousFileOperation):
+            name = request.POST[key]
+            name_regex = re.compile('^' + re.escape(name + os.path.extsep))
+
+            directories, files = storage.listdir('.')
+
+            file = next(filter(name_regex.search, files))
+
+            if mimetypes.guess_type(file)[1] == 'gzip':
+                return gzip.open(storage.path(file), 'rt')
+
+            return storage.open(file, 'r')
+        except (FileNotFoundError, SuspiciousFileOperation, StopIteration):
             pass
+
+    return None
 
 
 def gene_list_to_df(gene_to_name: Dict[str, Set[str]]) -> pd.DataFrame:
@@ -94,7 +110,7 @@ def get_network(f: IO) -> Network:
     except (ParserError, UnicodeDecodeError, EmptyDataError) as e:
         raise BadNetwork(NETWORK_MSG) from e
 
-    name = getattr(f, 'name', 'default')
+    name = os.path.basename(getattr(f, 'name', 'default'))
 
     rows, cols = df.shape
 
@@ -122,7 +138,7 @@ def get_network(f: IO) -> Network:
     return name, df
 
 
-def network_to_lists(network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, OrderedDict]:
+def network_to_lists(network: Network) -> Tuple[pd.DataFrame, OrderedDict]:
     """
     Makes network into user_lists format
     :param network:
