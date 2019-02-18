@@ -40,7 +40,7 @@ media/
 tests/.hitch
 
 # static file
-tgdbbackend/static/queryBuilder/*.zip
+connectf/static/queryBuilder/*.zip
 
 # venv
 venv/
