@@ -15,7 +15,7 @@ from sklearn.metrics import auc
 from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import cache_result, data_to_edges, get_size, read_cached_result
 from ...utils.network.utils import COLOR, COLOR_SHAPE
-from ...utils.parser import annotations
+from querytgdb.utils import annotations
 
 GENE_TYPE = annotations()[['Name', 'Type']]
 SIZE = 20

@@ -13,7 +13,7 @@ from scipy.stats import fisher_exact
 
 from ..models import Analysis
 from ..utils import clear_data, column_string, split_name
-from ..utils.parser import annotations
+from querytgdb.utils import annotations
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:

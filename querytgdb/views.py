@@ -19,8 +19,8 @@ from django.views.generic import View
 
 from querytgdb.utils.excel import create_export_zip
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
-from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, convert_float, \
-    metadata_to_dict, read_from_cache, svg_font_adder
+from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, \
+    check_annotations, convert_float, metadata_to_dict, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import BadNetwork, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
@@ -63,6 +63,8 @@ class QueryView(View):
             raise Http404('Query not available') from e
 
     def post(self, request, *args, **kwargs):
+        errors = []
+
         try:
             request_id = str(uuid4())
 
@@ -78,16 +80,29 @@ class QueryView(View):
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
 
+                bad_genes = check_annotations(user_lists[0].index)
+                if bad_genes:
+                    errors.append(f'Genes in Target Genes File not in database: {", ".join(bad_genes)}')
+
                 if not target_networks:
                     cache_result(user_lists, f'{output}/target_genes.pickle.gz')  # cache the user list here
 
                 file_opts["user_lists"] = user_lists
 
             if filter_tfs_file:
-                file_opts["tf_filter_list"] = get_genes(filter_tfs_file)
+                filter_tfs = get_genes(filter_tfs_file)
+                file_opts["tf_filter_list"] = filter_tfs
+
+                bad_genes = check_annotations(filter_tfs)
+                if bad_genes:
+                    errors.append(f'Genes in Filter TFs File not in database: {", ".join(bad_genes)}')
 
             if target_networks:
                 network = get_network(target_networks)
+
+                bad_genes = check_annotations(network[1]['source'].append(network[1]['target']))
+                if bad_genes:
+                    errors.append(f'Genes in Network File not in database: {", ".join(bad_genes)}')
 
                 try:
                     user_lists = file_opts["user_lists"]
@@ -138,6 +153,9 @@ class QueryView(View):
                 'metadata': metadata_to_dict(metadata),
                 'request_id': request_id
             }
+
+            if errors:
+                res['errors'] = errors
 
             return JsonResponse(res, encoder=PandasJSONEncoder)
         except (QueryError, BadNetwork) as e:

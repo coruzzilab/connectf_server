@@ -8,21 +8,25 @@ import pkgutil
 import re
 import shutil
 import sys
+import warnings
 from contextlib import closing
 from functools import wraps
 from operator import methodcaller
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Dict, IO, List, Optional, Sized, Tuple, TypeVar, Union
+from threading import Lock, Thread
+from typing import Any, BinaryIO, Callable, Dict, IO, List, Optional, Set, Sized, Tuple, TypeVar, Union
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import DatabaseError
 from django.db.models import QuerySet
 from django.http import FileResponse
 from lxml import etree
 
+from querytgdb.models import Annotation
 from ..models import Analysis
 
 logger = logging.getLogger(__name__)
@@ -292,3 +296,58 @@ def read_from_cache(func: Callable[..., T]) -> Callable[..., T]:
         return func(*map(read_cached_result, args), **kwargs)
 
     return wrapper
+
+
+class DatabaseWarning(UserWarning):
+    pass
+
+
+class Annotations:
+    def __init__(self):
+        self._anno: pd.DataFrame = None
+
+        self.lock = Lock()
+        self.task = Thread(target=self.get_annotations)
+        self.task.start()
+
+    def get_annotations(self):
+        """
+        Loads annotations from the database into memory.
+        """
+        try:
+            anno = pd.DataFrame(
+                Annotation.objects.values_list(
+                    'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
+                columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+            anno = anno.set_index('TARGET')
+        except DatabaseError:
+            warnings.warn(DatabaseWarning("No annotation data."))
+
+            anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+            anno.index.name = 'TARGET'
+
+        with self.lock:
+            self._anno = anno
+
+    def __call__(self):
+        if self._anno is None:
+            self.task.join()
+
+        return self._anno
+
+    @property
+    def genes(self) -> Set:
+        if self._anno is None:
+            self()
+
+        return set(self._anno.index)
+
+
+annotations = Annotations()
+
+
+def check_annotations(genes):
+    if isinstance(genes, set):
+        return genes - annotations.genes
+
+    return set(genes) - annotations.genes

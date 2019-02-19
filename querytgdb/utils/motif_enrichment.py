@@ -21,8 +21,8 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
+from querytgdb.utils import annotations
 from ..utils import clear_data, column_string, split_name, svg_font_adder
-from ..utils.parser import annotations
 
 
 class MotifData:

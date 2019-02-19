@@ -10,7 +10,7 @@ from statsmodels.stats.multitest import fdrcorrection
 
 from ..models import Analysis
 from ..utils import split_name
-from ..utils.parser import annotations
+from querytgdb.utils import annotations
 
 
 class AnalysisEnrichmentError(ValueError):

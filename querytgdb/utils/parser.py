@@ -1,10 +1,8 @@
 import logging
 import re
-import warnings
 from collections import deque
 from functools import partial
 from operator import itemgetter
-from threading import Lock, Thread
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import uuid4
 
@@ -13,21 +11,17 @@ import pandas as pd
 import pyparsing as pp
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
-from django.db.utils import DatabaseError
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
+from querytgdb.utils import annotations
 from ..utils import read_cached_result
 
-__all__ = ['get_query_result', 'expand_ref_ids', 'annotations']
+__all__ = ['get_query_result', 'expand_ref_ids']
 
 logger = logging.getLogger(__name__)
 
 
 class QueryError(ValueError):
-    pass
-
-
-class DatabaseWarning(UserWarning):
     pass
 
 
@@ -57,63 +51,6 @@ class TargetSeries(pd.Series):
     def _constructor_expanddim(self):
         return TargetFrame
 
-
-def get_annotations() -> pd.DataFrame:
-    """
-    Loads annotations from the database into memory.
-
-    :return:
-    """
-    try:
-        anno = pd.DataFrame(
-            Annotation.objects.values_list(
-                'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
-            columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-        anno = anno.set_index('TARGET')
-    except DatabaseError:
-        warnings.warn(DatabaseWarning("No annotation data."))
-
-        anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-        anno.index.name = 'TARGET'
-
-    return anno
-
-
-class Annotations:
-    def __init__(self):
-        self._anno = None
-
-        self.lock = Lock()
-        self.task = Thread(target=self.get_annotations)
-        self.task.start()
-
-    def get_annotations(self) -> pd.DataFrame:
-        """
-        Loads annotations from the database into memory.
-        """
-        try:
-            anno = pd.DataFrame(
-                Annotation.objects.values_list(
-                    'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
-                columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-            anno = anno.set_index('TARGET')
-        except DatabaseError:
-            warnings.warn(DatabaseWarning("No annotation data."))
-
-            anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-            anno.index.name = 'TARGET'
-
-        with self.lock:
-            self._anno = anno
-
-    def __call__(self):
-        if self._anno is None:
-            self.task.join()
-
-        return self._anno
-
-
-annotations = Annotations()
 
 name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:')
 
