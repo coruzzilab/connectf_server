@@ -1,4 +1,5 @@
 import gzip
+import os.path
 import pathlib
 import pickle
 import sys
@@ -7,8 +8,9 @@ from functools import partial, reduce
 from io import BytesIO
 from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
-from operator import or_
-from typing import Dict, Generator, Iterable, Optional, Set, Tuple, Union
+from operator import methodcaller, or_
+from pickle import UnpicklingError
+from typing import Dict, Generator, Iterable, Optional, Set, Tuple, Union, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,7 +24,7 @@ from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
 from querytgdb.utils import annotations
-from ..utils import clear_data, column_string, split_name, svg_font_adder
+from ..utils import cache_result, clear_data, column_string, read_cached_result, split_name, svg_font_adder
 
 
 class MotifData:
@@ -123,8 +125,7 @@ def cluster_fisher(row):
 def get_list_enrichment(gene_list: Iterable[str],
                         annotated: pd.DataFrame,
                         annotated_dedup: pd.DataFrame,
-                        ann_cluster_size: pd.DataFrame,
-                        alpha: float = 0.05) -> Tuple[pd.Series, pd.Series]:
+                        ann_cluster_size: pd.DataFrame) -> pd.Series:
     list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
     list_cluster_size = list_cluster_dedup.groupby('#pattern name').size()
 
@@ -135,30 +136,40 @@ def get_list_enrichment(gene_list: Iterable[str],
         annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
     ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
 
-    reject, adj_p = fdrcorrection(p_values, alpha=alpha, is_sorted=True)
+    adj_p = fdrcorrection(p_values, is_sorted=True)[1]
 
     str_index = p_values.index.astype(str)
 
-    return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
+    return pd.Series(adj_p, index=str_index)
 
 
 def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
+                     cache_path: Optional[str] = None,
                      alpha: float = 0.05,
                      show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
-    promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
-                                                  alpha=alpha,
-                                                  annotated=MOTIF.annotated_promo,
-                                                  annotated_dedup=MOTIF.ann_promo_dedup,
-                                                  ann_cluster_size=MOTIF.promo_cluster_size),
-                                          res.values()))
+    try:
+        promo_enrich = read_cached_result(os.path.join(cache_path, 'promo_enrich.pickle.gz'))
+    except (FileNotFoundError, UnpicklingError):
+        promo_enrich = list(map(partial(get_list_enrichment,
+                                        annotated=MOTIF.annotated_promo,
+                                        annotated_dedup=MOTIF.ann_promo_dedup,
+                                        ann_cluster_size=MOTIF.promo_cluster_size),
+                                res.values()))
+        cache_result(promo_enrich, os.path.join(cache_path, 'promo_enrich.pickle.gz'))
+
+    reject_func = methodcaller('le', alpha)
+
     if body:
-        body_enrich, body_reject = zip(*map(partial(get_list_enrichment,
-                                                    alpha=alpha,
-                                                    annotated=MOTIF.annotated_body,
-                                                    annotated_dedup=MOTIF.ann_body_dedup,
-                                                    ann_cluster_size=MOTIF.body_cluster_size),
-                                            res.values()))
+        try:
+            body_enrich = read_cached_result(os.path.join(cache_path, 'body_enrich.pickle.gz'))
+        except (FileNotFoundError, UnpicklingError):
+            body_enrich = list(map(partial(get_list_enrichment,
+                                           annotated=MOTIF.annotated_body,
+                                           annotated_dedup=MOTIF.ann_body_dedup,
+                                           ann_cluster_size=MOTIF.body_cluster_size),
+                                   res.values()))
+            cache_result(body_enrich, os.path.join(cache_path, 'body_enrich.pickle.gz'))
 
         df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
         _promo, _body = tee(res.keys(), 2)
@@ -167,12 +178,15 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
             map(lambda c: c + ('body',), _body))))
 
         if show_reject:
-            rejects = reduce(or_, chain(promo_reject, body_reject))
+            rejects = reduce(or_, map(reject_func, chain(promo_enrich, body_enrich)))
         else:
-            rejects = pd.concat(chain.from_iterable(zip(promo_reject, body_reject)), axis=1)
+            rejects = pd.concat(map(reject_func, chain.from_iterable(zip(promo_enrich, body_enrich))),
+                                axis=1)
     else:
         df = pd.concat(promo_enrich, axis=1, sort=True)
-        columns = [c + ('promo',) for c in res.keys()]
+        columns = [(*c, 'promo') for c in res.keys()]
+
+        promo_reject = map(reject_func, promo_enrich)
 
         if show_reject:
             rejects = reduce(or_, promo_reject)
@@ -188,7 +202,25 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
         rejects.columns = columns
         df = df.where(rejects).dropna(how='all')
 
+    if df.empty:
+        raise NoEnrichedMotif
+
     return df
+
+
+def get_analysis_gene_list(cache_path: str) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
+    df = pd.read_pickle(os.path.join(cache_path, 'tabular_output.pickle.gz'))
+    df = clear_data(df)
+    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
+
+    try:
+        with gzip.open(os.path.join(cache_path, 'target_genes.pickle.gz'), 'rb') as f:
+            _, target_lists = pickle.load(f)
+            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
+    except (FileNotFoundError, TypeError):
+        pass
+
+    return res
 
 
 def merge_cluster_info(df):
@@ -202,19 +234,10 @@ def merge_cluster_info(df):
 
 
 def get_motif_enrichment_json(cache_path: str,
-                              target_genes_path: Optional[str] = None,
                               alpha: float = 0.05,
                               body: bool = False) -> Dict:
-    df = pd.read_pickle(cache_path)
-    df = clear_data(df)
-    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
-
-    try:
-        with gzip.open(target_genes_path, 'rb') as f:
-            _, target_lists = pickle.load(f)
-            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
-    except (FileNotFoundError, TypeError):
-        pass
+    res = get_analysis_gene_list(cache_path)
+    df = motif_enrichment(res, cache_path, alpha=alpha, show_reject=False, body=body)
 
     tfs, analysis_ids = zip(*res.keys())
     analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=analysis_ids)
@@ -237,11 +260,6 @@ def get_motif_enrichment_json(cache_path: str,
 
         columns.append(data)
 
-    df = motif_enrichment(res, alpha=alpha, show_reject=False, body=body)
-
-    if df.empty:
-        raise NoEnrichedMotif
-
     df = df.where(pd.notnull(df), None)
 
     return {
@@ -250,29 +268,7 @@ def get_motif_enrichment_json(cache_path: str,
     }
 
 
-def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05, lower_bound=None, upper_bound=None,
-                                 body=False) -> BytesIO:
-    df = pd.read_pickle(cache_path)
-    df = clear_data(df)
-    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
-
-    try:
-        with gzip.open(target_genes_path, 'rb') as f:
-            _, target_lists = pickle.load(f)
-            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
-    except (FileNotFoundError, TypeError):
-        pass
-
-    df = motif_enrichment(res, alpha=alpha, body=body)
-
-    if df.empty:
-        raise NoEnrichedMotif
-
-    df = df.clip_lower(sys.float_info.min)
-    df = -np.log10(df)
-
-    df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
-
+def make_motif_enrichment_heatmap_columns(res) -> List[str]:
     names, analysis_ids = zip(*res.keys())
 
     analyses = Analysis.objects.filter(pk__in=analysis_ids)
@@ -285,6 +281,21 @@ def get_motif_enrichment_heatmap(cache_path, target_genes_path=None, alpha=0.05,
             columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
         except Analysis.DoesNotExist:
             columns.append('{} — {}'.format(col_name, name))
+
+    return columns
+
+
+def get_motif_enrichment_heatmap(cache_path, alpha=0.05, lower_bound=None, upper_bound=None,
+                                 body=False) -> BytesIO:
+    res = get_analysis_gene_list(cache_path)
+    df = motif_enrichment(res, cache_path, alpha=alpha, body=body)
+
+    df = df.clip_lower(sys.float_info.min)
+    df = -np.log10(df)
+
+    df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
+
+    columns = make_motif_enrichment_heatmap_columns(res)
 
     if not body:
         df.columns = columns
