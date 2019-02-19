@@ -8,7 +8,7 @@ from io import BytesIO
 from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
 from operator import or_
-from typing import Dict, Generator, Iterable, Tuple, Union
+from typing import Dict, Generator, Iterable, Optional, Set, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,7 +42,7 @@ class MotifData:
         self.pool.terminate()
 
     @property
-    def annotated(self):
+    def annotated(self) -> pd.DataFrame:
         if self._annotated is None:
             annotated = self._annotated_async.get()
             self.close()
@@ -53,7 +53,7 @@ class MotifData:
         return self._annotated
 
     @property
-    def annotated_promo(self):
+    def annotated_promo(self) -> pd.DataFrame:
         if self._annotated_promo is None:
             self._annotated_promo = self.annotated[
                 (self.annotated['stop'] - self.annotated['start'] + self.annotated['dist']) < 0]
@@ -61,35 +61,35 @@ class MotifData:
         return self._annotated_promo
 
     @property
-    def ann_promo_dedup(self):
+    def ann_promo_dedup(self) -> pd.DataFrame:
         if self._ann_promo_dedup is None:
             self._ann_promo_dedup = self.annotated_promo.drop_duplicates('match_id')
 
         return self._ann_promo_dedup
 
     @property
-    def promo_cluster_size(self):
+    def promo_cluster_size(self) -> pd.DataFrame:
         if self._promo_cluster_size is None:
             self._promo_cluster_size = self.ann_promo_dedup.groupby('#pattern name').size()
 
         return self._promo_cluster_size
 
     @property
-    def annotated_body(self):
+    def annotated_body(self) -> pd.DataFrame:
         if self._annotated_body is None:
             self._annotated_body = self.annotated[self.annotated['dist'] > 0]
 
         return self._annotated_body
 
     @property
-    def ann_body_dedup(self):
+    def ann_body_dedup(self) -> pd.DataFrame:
         if self._ann_body_dedup is None:
             self._ann_body_dedup = self.annotated_body.drop_duplicates('match_id')
 
         return self._ann_body_dedup
 
     @property
-    def body_cluster_size(self):
+    def body_cluster_size(self) -> pd.DataFrame:
         if self._body_cluster_size is None:
             self._body_cluster_size = self.ann_body_dedup.groupby('#pattern name').size()
 
@@ -120,7 +120,10 @@ def cluster_fisher(row):
     return fisher_exact((row[:2], row[2:]), alternative='greater')[1]
 
 
-def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
+def get_list_enrichment(gene_list: Iterable[str],
+                        annotated: pd.DataFrame,
+                        annotated_dedup: pd.DataFrame,
+                        ann_cluster_size: pd.DataFrame,
                         alpha: float = 0.05) -> Tuple[pd.Series, pd.Series]:
     list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
     list_cluster_size = list_cluster_dedup.groupby('#pattern name').size()
@@ -139,7 +142,9 @@ def get_list_enrichment(gene_list, annotated, annotated_dedup, ann_cluster_size,
     return pd.Series(adj_p, index=str_index), pd.Series(reject, index=str_index)
 
 
-def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Iterable], alpha: float = 0.05, show_reject: bool = True,
+def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
+                     alpha: float = 0.05,
+                     show_reject: bool = True,
                      body: bool = False) -> pd.DataFrame:
     promo_enrich, promo_reject = zip(*map(partial(get_list_enrichment,
                                                   alpha=alpha,
@@ -196,7 +201,10 @@ def merge_cluster_info(df):
         yield [info] + row
 
 
-def get_motif_enrichment_json(cache_path, target_genes_path=None, alpha=0.05, body=False) -> Dict:
+def get_motif_enrichment_json(cache_path: str,
+                              target_genes_path: Optional[str] = None,
+                              alpha: float = 0.05,
+                              body: bool = False) -> Dict:
     df = pd.read_pickle(cache_path)
     df = clear_data(df)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())

@@ -60,15 +60,15 @@ def gene_list_to_df(gene_to_name: Dict[str, Set[str]]) -> pd.DataFrame:
     ).set_index('TARGET')
 
 
-def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, OrderedDict]:
+def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
     """
     Get gene lists from the uploaded target genes file.
 
     :param f:
     :return:
     """
-    gene_to_name = OrderedDict()
-    name_to_gene = OrderedDict()
+    gene_to_name: Dict[str, Set[str]] = OrderedDict()
+    name_to_gene: Dict[str, Set[str]] = OrderedDict()
 
     with closing(f) as gene_file:
         list_name = 'default_list'
@@ -138,7 +138,7 @@ def get_network(f: IO) -> Network:
     return name, df
 
 
-def network_to_lists(network: Network) -> Tuple[pd.DataFrame, OrderedDict]:
+def network_to_lists(network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
     """
     Makes network into user_lists format
     :param network:
@@ -146,8 +146,8 @@ def network_to_lists(network: Network) -> Tuple[pd.DataFrame, OrderedDict]:
     """
     name, data = network
 
-    gene_to_name = OrderedDict()
-    name_to_gene = OrderedDict()
+    gene_to_name: Dict[str, Set[str]] = OrderedDict()
+    name_to_gene: Dict[str, Set[str]] = OrderedDict()
 
     genes = data[['source', 'target']].stack().unique()
 
@@ -162,7 +162,7 @@ def network_to_lists(network: Network) -> Tuple[pd.DataFrame, OrderedDict]:
 
 
 def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
-                        network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, OrderedDict]:
+                        network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
     """
     Make graphs into user_lists format and merging with user_lists
     :param user_lists:
