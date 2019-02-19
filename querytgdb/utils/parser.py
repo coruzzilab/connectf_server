@@ -652,7 +652,7 @@ def get_query_result(query: Optional[str] = None,
             result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
 
         if user_lists is not None:
-            result = result[result.index.isin(user_lists[0].index)]
+            result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
 
         if result.empty:
             raise QueryError("Empty result (user list too restrictive).")
