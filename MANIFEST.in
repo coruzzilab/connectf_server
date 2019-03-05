@@ -4,6 +4,6 @@ include manage.py
 recursive-include commongenelists *
 recursive-include commongenelists_zm *
 recursive-include target_networks *
-include tgdbbackend/static/annotated.pickle.gz
-include tgdbbackend/static/annotated_zm.pickle.gz
-include tgdbbackend/static/cluster_info.csv.gz
+include connectf/static/annotated.pickle.gz
+include connectf/static/annotated_zm.pickle.gz
+include connectf/static/cluster_info.csv.gz

@@ -30,7 +30,6 @@ setup(
         'seaborn',
         'lxml',
         'networkx',
-        'django-crispy-forms',
         'django-cors-headers',
         'XlsxWriter',
         'mysqlclient',

@@ -132,14 +132,14 @@ def create_sifs(result: pd.DataFrame, output):
                 temp_sif = g.groupby('EDGE').apply(
                     lambda x: '{}\t{}\t{}'.format(name, x.name, '\t'.join(x['TARGET']))
                 )
-                temp_sif.to_csv(f, index=False)
-                temp_sif.to_csv(all_sif, index=False)
+                temp_sif.to_csv(f, index=False, header=False)
+                temp_sif.to_csv(all_sif, index=False, header=False)
             with open(output + '/{}.tbl'.format(name), 'w') as f:
                 f.write('shared name\tFOLDCHANGE\tPVALUE\n')
                 temp_tbl = g.apply(lambda x: '{0} ({1[EDGE]}) {1[TARGET]}\t{1[Log2FC]}\t{1[Pvalue]}'.format(name, x),
                                    axis=1)
-                temp_tbl.to_csv(f, index=False)
-                temp_tbl.to_csv(all_tbl, index=False)
+                temp_tbl.to_csv(f, index=False, header=False)
+                temp_tbl.to_csv(all_tbl, index=False, header=False)
 
     crit_tfs = res_group.apply(lambda x: x.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().any(axis=1))
     common_tfs = crit_tfs.all(axis=1)
@@ -153,10 +153,10 @@ def create_sifs(result: pd.DataFrame, output):
                 temp_sif = g.groupby('EDGE').apply(
                     lambda x: '{}\t{}\t{}'.format(name, x.name, '\t'.join(x['TARGET']))
                 )
-                temp_sif.to_csv(sif, index=False)
+                temp_sif.to_csv(sif, index=False, header=False)
                 temp_tbl = g.apply(lambda x: '{0} ({1[EDGE]}) {1[TARGET]}\t{1[Log2FC]}\t{1[Pvalue]}'.format(name, x),
                                    axis=1)
-                temp_tbl.to_csv(tbl, index=False)
+                temp_tbl.to_csv(tbl, index=False, header=False)
 
     create_filtered_sifs(common_tfs, output + '/common_tfs.sif', output + '/common_tfs.tbl')
     create_filtered_sifs(shared_tfs, output + '/shared_tfs.sif', output + '/shared_tfs.tbl')

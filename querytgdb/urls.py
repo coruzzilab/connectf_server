@@ -1,28 +1,29 @@
-from django.urls import re_path
+from django.urls import path
 
 from . import views
 
 urlpatterns = [
-    re_path(r'^(?:(?P<request_id>[a-f0-9\-]+)/)?$', views.QueryView.as_view(), name="queryapp"),
-    re_path(r'^network/(?P<request_id>[a-f0-9\-]+)/$', views.NetworkJSONView.as_view()),
-    re_path(r'^stats/(?P<request_id>[a-f0-9\-]+)/$', views.StatsView.as_view()),
-    re_path(r'^export/(?P<request_id>[a-f0-9\-]+)?\.zip$', views.FileExportView.as_view()),
-    re_path(r'^list_enrichment/(?P<request_id>[a-f0-9\-]+)\.svg$',
-            views.ListEnrichmentSVGView.as_view()),
-    re_path(r'^list_enrichment/(?P<request_id>[a-f0-9\-]+)/$',
-            views.ListEnrichmentTableView.as_view()),
-    re_path(r'^list_enrichment/(?P<request_id>[a-f0-9\-]+)/legend/$',
-            views.ListEnrichmentLegendView.as_view()),
-    re_path(r'^motif_enrichment/cluster_info.csv$', views.MotifEnrichmentInfo.as_view()),
-    re_path(r'^motif_enrichment/(?P<request_id>[a-f0-9\-]+)?/$',
-            views.MotifEnrichmentJSONView.as_view()),
-    re_path(r'^motif_enrichment/(?P<request_id>[a-f0-9\-]+)?/heatmap\.svg$',
-            views.MotifEnrichmentHeatmapView.as_view()),
-    re_path(r'^motif_enrichment/(?P<request_id>[a-f0-9\-]+)?/heatmap_table/$',
-            views.MotifEnrichmentHeatmapTableView.as_view()),
-    re_path(r'^analysis_enrichment/(?P<request_id>[a-f0-9\-]+)/$',
-            views.AnalysisEnrichmentView.as_view()),
-    re_path(r'^summary/(?P<request_id>[a-f0-9\-]+)/$', views.SummaryView.as_view()),
-    re_path(r'^aupr/(?P<request_id>[a-f0-9\-]+)/$', views.NetworkAuprView.as_view()),
-    re_path(r'^aupr/(?P<request_id>[a-f0-9\-]+)/pruned/(?P<cutoff>[+\-0-9eE.]+)/$', views.NetworkPrunedView.as_view())
+    path('', views.QueryView.as_view(), name="queryapp"),
+    path('<uuid:request_id>/', views.QueryView.as_view()),
+    path('network/<uuid:request_id>/', views.NetworkJSONView.as_view()),
+    path('stats/<uuid:request_id>/', views.StatsView.as_view()),
+    path('export/<uuid:request_id>.zip', views.FileExportView.as_view()),
+    path('list_enrichment/<uuid:request_id>.svg',
+         views.ListEnrichmentSVGView.as_view()),
+    path('list_enrichment/<uuid:request_id>/',
+         views.ListEnrichmentTableView.as_view()),
+    path('list_enrichment/<uuid:request_id>/legend/',
+         views.ListEnrichmentLegendView.as_view()),
+    path('motif_enrichment/cluster_info.csv', views.MotifEnrichmentInfo.as_view()),
+    path('motif_enrichment/<uuid:request_id>/',
+         views.MotifEnrichmentJSONView.as_view()),
+    path('motif_enrichment/<uuid:request_id>/heatmap.svg',
+         views.MotifEnrichmentHeatmapView.as_view()),
+    path('motif_enrichment/<uuid:request_id>/heatmap_table/',
+         views.MotifEnrichmentHeatmapTableView.as_view()),
+    path('analysis_enrichment/<uuid:request_id>/',
+         views.AnalysisEnrichmentView.as_view()),
+    path('summary/<uuid:request_id>/', views.SummaryView.as_view()),
+    path('aupr/<uuid:request_id>/', views.NetworkAuprView.as_view()),
+    path('aupr/<uuid:request_id>/pruned/(P<cutoff>[+\-0-9eE.]+)/', views.NetworkPrunedView.as_view())
 ]

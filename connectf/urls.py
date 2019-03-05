@@ -24,8 +24,8 @@ urlpatterns = [
 
                   url(r"^api/", include(('targetdb.urls', 'targetdb'),
                                         namespace='targetdb')),
-                  url(r'^queryapp/', include(('querytgdb.urls', 'queryapp'),
-                                             namespace='queryapp'))
+                  url(r'^api/', include(('querytgdb.urls', 'queryapp'),
+                                        namespace='queryapp'))
               ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 if settings.DEBUG:

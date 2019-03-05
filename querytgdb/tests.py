@@ -22,7 +22,8 @@ from .utils.file import BadNetwork, get_network
 class TestImportData(TestCase):
     @classmethod
     def setUpClass(cls):
-        annotation_file = max(iglob("test_data/annotation*.csv.gz"), key=os.path.getmtime)
+        annotation_file = os.environ.get('TEST_ANNOTATION',
+                                         max(iglob("test_data/annotation*.csv.gz"), key=os.path.getmtime))
         import_annotations(annotation_file)
 
     @classmethod
