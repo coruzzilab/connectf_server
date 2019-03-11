@@ -1,6 +1,20 @@
-from django.urls import path
+from django.urls import path, register_converter
 
+import sungear.views
 from . import views
+
+
+class FloatConverter:
+    regex = r"(?:[-+]?\d*\.?\d+)(?:[eE]([-+]?\d+))?"
+
+    def to_python(self, value):
+        return float(value)
+
+    def to_url(self, value):
+        return str(value)
+
+
+register_converter(FloatConverter, 'float')
 
 urlpatterns = [
     path('', views.QueryView.as_view(), name="queryapp"),
@@ -25,5 +39,5 @@ urlpatterns = [
          views.AnalysisEnrichmentView.as_view()),
     path('summary/<uuid:request_id>/', views.SummaryView.as_view()),
     path('aupr/<uuid:request_id>/', views.NetworkAuprView.as_view()),
-    path('aupr/<uuid:request_id>/pruned/(P<cutoff>[+\-0-9eE.]+)/', views.NetworkPrunedView.as_view())
+    path('aupr/<uuid:request_id>/pruned/<float:cutoff>/', views.NetworkPrunedView.as_view())
 ]

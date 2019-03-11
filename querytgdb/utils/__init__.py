@@ -1,5 +1,6 @@
 import base64
 import gzip
+import io
 import logging
 import math
 import mimetypes
@@ -14,7 +15,7 @@ from functools import wraps
 from operator import methodcaller
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, BinaryIO, Callable, Dict, IO, List, Optional, Set, Sized, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, IO, List, Optional, Set, Sized, Tuple, TypeVar, Union
 from uuid import UUID
 
 import numpy as np
@@ -178,7 +179,7 @@ def column_string(n: int) -> str:
     return s
 
 
-def svg_font_adder(buff: BinaryIO) -> BinaryIO:
+def svg_font_adder(buff: io.BytesIO) -> io.BytesIO:
     """
     Adds font file as a base64 encoded string to an SVG
 

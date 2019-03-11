@@ -9,7 +9,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from ..models import Analysis
-from ..utils import split_name
+from ..utils import split_name, clear_data
 from querytgdb.utils import annotations
 
 
@@ -34,8 +34,7 @@ def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, 
 def analysis_enrichment(cache_path, size_limit: int = 100, raise_warning: bool = False) -> Dict:
     df = pd.read_pickle(cache_path)
 
-    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
-    df.columns = df.columns.droplevel(2)
+    df = clear_data(df)
 
     if df.shape[1] < 2:
         raise AnalysisEnrichmentError('Analysis enrichment requires more than 1 queried analysis')

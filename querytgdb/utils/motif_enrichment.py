@@ -10,7 +10,7 @@ from itertools import chain, count, tee
 from multiprocessing.pool import ThreadPool
 from operator import methodcaller, or_
 from pickle import UnpicklingError
-from typing import Dict, Generator, Iterable, Optional, Set, Tuple, Union, List
+from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,6 +25,8 @@ from statsmodels.stats.multitest import fdrcorrection
 from querytgdb.models import Analysis
 from querytgdb.utils import annotations
 from ..utils import cache_result, clear_data, column_string, read_cached_result, split_name, svg_font_adder
+
+sns.set()
 
 
 class MotifData:
@@ -290,7 +292,7 @@ def get_motif_enrichment_heatmap(cache_path, alpha=0.05, lower_bound=None, upper
     res = get_analysis_gene_list(cache_path)
     df = motif_enrichment(res, cache_path, alpha=alpha, body=body)
 
-    df = df.clip_lower(sys.float_info.min)
+    df = df.clip(lower=sys.float_info.min)
     df = -np.log10(df)
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
@@ -349,15 +351,12 @@ TableRow = Tuple[Dict, str, str, str, str, str]
 def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None) -> Generator[TableRow, None, None]:
     df = pd.read_pickle(cache_path)
     df = clear_data(df)
-    res = df.columns.tolist()
 
-    names, analysis_ids = zip(*res)
-
-    analyses = Analysis.objects.filter(pk__in=analysis_ids)
+    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
 
     col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
-    for (name, analysis_id), col_str in zip(res, col_strings):
+    for (name, analysis_id), col_str in zip(df.columns, col_strings):
         name, criterion = split_name(name)
 
         info = OrderedDict([('name', name), ('filter', criterion)])

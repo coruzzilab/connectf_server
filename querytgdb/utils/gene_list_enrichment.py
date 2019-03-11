@@ -11,9 +11,11 @@ import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from scipy.stats import fisher_exact
 
+from querytgdb.utils import annotations
 from ..models import Analysis
 from ..utils import clear_data, column_string, split_name
-from querytgdb.utils import annotations
+
+sns.set()
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:

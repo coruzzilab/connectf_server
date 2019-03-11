@@ -1,0 +1,3 @@
+backend      : SVG
+savefig.format      : svg
+savefig.facecolor   : none
