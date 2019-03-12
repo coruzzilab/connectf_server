@@ -19,7 +19,7 @@ sns.set()
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.clip_lower(sys.float_info.min)
+    df = df.clip(lower=sys.float_info.min)
     return -np.log10(df)
 
 

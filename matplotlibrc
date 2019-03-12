@@ -1,3 +1,6 @@
 backend      : SVG
 savefig.format      : svg
 savefig.facecolor   : none
+svg.fonttype: none
+font.family         : sans-serif
+font.sans-serif     : DejaVu Sans

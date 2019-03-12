@@ -25,6 +25,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
 from django.db.models import QuerySet
 from django.http import FileResponse
+from fontTools.ttLib import TTFont
 from lxml import etree
 
 from querytgdb.models import Annotation
@@ -179,6 +180,17 @@ def column_string(n: int) -> str:
     return s
 
 
+with TTFont(io.BytesIO(pkgutil.get_data('matplotlib', 'mpl-data/fonts/ttf/DejaVuSans.ttf')),
+            recalcBBoxes=False,
+            recalcTimestamp=False) as font, \
+        io.BytesIO() as font_buff:
+    font.flavor = "woff"
+    font.save(font_buff, reorderTables=False)
+    FONT_STR = '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
+               'url({}) format("woff");}}'.format('data:font/woff;base64,' +
+                                                  base64.standard_b64encode(font_buff.getvalue()).decode())
+
+
 def svg_font_adder(buff: io.BytesIO) -> io.BytesIO:
     """
     Adds font file as a base64 encoded string to an SVG
@@ -190,10 +202,7 @@ def svg_font_adder(buff: io.BytesIO) -> io.BytesIO:
     tree = etree.parse(buff)
     style = tree.find('./{http://www.w3.org/2000/svg}defs/{http://www.w3.org/2000/svg}style')
 
-    font_str = base64.standard_b64encode(pkgutil.get_data('matplotlib', 'mpl-data/fonts/ttf/DejaVuSans.ttf')).decode()
-
-    style.text += '@font-face {{font-family: "DejaVu Sans"; src: local("DejaVu Sans"), local("DejaVuSans"), ' \
-                  'url({}) format("truetype");}}'.format('data:font/ttf;base64,' + font_str)
+    style.text += FONT_STR
 
     buff.truncate(0)
     tree.write(buff)
