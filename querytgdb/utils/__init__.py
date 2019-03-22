@@ -20,16 +20,14 @@ from uuid import UUID
 
 import numpy as np
 import pandas as pd
-from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
-from django.db.models import QuerySet
 from django.http import FileResponse
 from fontTools.ttLib import TTFont
 from lxml import etree
 
 from querytgdb.models import Annotation
-from ..models import Analysis
+from ..models import AnalysisData
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +139,7 @@ def cache_view(func: Callable[..., T], cache_path: str, dummy_cache: bool = Fals
     except FileNotFoundError:
         result = func()
         if not dummy_cache:
-            cache_result(result, cache_path)
+            Thread(target=cache_result, args=(result, cache_path)).start()
 
     return result
 
@@ -237,7 +235,7 @@ def clear_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: bool = True) -> pd.DataFrame:
+def data_to_edges(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
     """
     Convert EDGE and Log2FC to respective edge_type
     :param df:
@@ -247,15 +245,15 @@ def data_to_edges(df: pd.DataFrame, analyses: Optional[QuerySet] = None, drop: b
     """
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
 
-    if analyses is None:
-        analyses = Analysis.objects.filter(
-            pk__in=df.columns.get_level_values(1)
-        ).prefetch_related('analysisdata_set', 'analysisdata_set__key')
+    edge_types = dict(AnalysisData.objects.filter(
+        key__name='EDGE_TYPE',
+        analysis_id__in=df.columns.get_level_values(1)
+    ).values_list('analysis_id', 'value'))
 
     def set_edge_name(s):
         try:
-            edge_type = analyses.get(pk=s.name[1]).analysisdata_set.get(key__name='EDGE_TYPE').value
-        except (ObjectDoesNotExist, MultipleObjectsReturned):
+            edge_type = edge_types[s.name[1]]
+        except KeyError:
             edge_type = 'edge'
 
         if s.name[2] == 'Log2FC':

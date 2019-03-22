@@ -3,8 +3,8 @@ from operator import itemgetter
 import pandas as pd
 from django.core.management.base import BaseCommand, CommandParser
 
-from ...models import Annotation
 from querytgdb.utils.insert_data import import_annotations
+from ...models import Annotation
 
 
 class Command(BaseCommand):

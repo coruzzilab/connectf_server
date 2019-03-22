@@ -1,7 +1,7 @@
 import math
 import os
 from io import BytesIO
-from operator import methodcaller
+from operator import itemgetter, methodcaller
 from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
 from uuid import uuid4
 
@@ -12,10 +12,10 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import auc
 
+from querytgdb.utils import annotations
 from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import cache_result, data_to_edges, get_size, read_cached_result
 from ...utils.network.utils import COLOR, COLOR_SHAPE
-from querytgdb.utils import annotations
 
 GENE_TYPE = annotations()[['Name', 'Type']]
 SIZE = 20
@@ -72,12 +72,12 @@ def get_network_json(cache_dir: str,
 
     analyses = Analysis.objects.filter(
         pk__in=df.columns.get_level_values(1)
-    ).prefetch_related('analysisdata_set', 'analysisdata_set__key', 'tf')
+    ).prefetch_related('tf')
 
     try:
         data, network_table = read_cached_result(network_cache_file)
     except FileNotFoundError:
-        network_table = data_to_edges(df, analyses)
+        network_table = data_to_edges(df)
 
         def get_tf(idx):
             return analyses.get(pk=idx).tf.gene_id
@@ -105,33 +105,6 @@ def get_network_json(cache_dir: str,
         tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
             (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
 
-        edge_node_stack = edge_nodes.stack()
-        # edge building and positioning
-
-        edge_counts = (edge_node_stack
-                       .groupby(level=[0, 1])
-                       .value_counts())
-        # scale edge weights here
-        edge_counts = edge_counts - edge_counts.min() + 1
-
-        edge_group = (edge_counts
-                      .reset_index(level=[1, 2])
-                      .groupby(edge_node_stack
-                               .reset_index(level=1)
-                               .groupby(level=0)
-                               .apply(lambda x: x.iloc[:, 0].nunique())))
-
-        max_group_num = edge_group.apply(lambda x: x.index.nunique()).max()
-
-        num_targets = len(edge_group)
-        s_target = math.ceil(math.sqrt(num_targets))
-
-        num_group = math.ceil(math.sqrt(max_group_num))
-        group_bbox = group_edge_len(num_group)  # square edge length of largest number of tfs
-
-        groups_edge_len = group_edge_len(s_target, group_bbox, G_GAP)
-
-        tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
         data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, True))
 
         data.extend({
@@ -146,34 +119,63 @@ def get_network_json(cache_dir: str,
                     } for t, s, e in
                     tf_nodes.stack().reset_index().drop_duplicates().itertuples(name=None, index=False))
 
-        group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
-            (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
+        if not edge_nodes.empty:
+            edge_node_stack = edge_nodes.stack()
+            # edge building and positioning
 
-        for (num, e_group), g_ij in zip(edge_group, group_grid):
-            e_group = e_group.sort_values(by=e_group.columns.tolist())
-            s_group = math.ceil(math.sqrt(e_group.index.nunique()))
+            edge_counts = (edge_node_stack
+                           .groupby(level=[0, 1])
+                           .value_counts())
+            # scale edge weights here
+            edge_counts = edge_counts - edge_counts.min() + 1
 
-            e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'),
-                              dtype=np.float64).reshape(
-                (2, -1), order='C').T * (SIZE + GAP)
-            e_grid += g_ij - np.mean(e_grid, axis=0)  # add offset
+            edge_group = (edge_counts
+                          .reset_index(level=[1, 2])
+                          .groupby(edge_node_stack
+                                   .reset_index(level=1)
+                                   .groupby(level=0)
+                                   .apply(lambda x: x.iloc[:, 0].nunique())))
 
-            data.extend(
-                make_nodes(
-                    GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
-                    e_grid))
+            max_group_num = edge_group.apply(lambda x: x.index.nunique()).max()
 
-            data.extend({
-                            'group': 'edges',
-                            'data': {
-                                'id': uuid4(),
-                                'source': s,
-                                'target': t,
-                                'name': e,
-                                'weight': w,
-                                **COLOR[e]
-                            }
-                        } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
+            num_targets = len(edge_group)
+            s_target = math.ceil(math.sqrt(num_targets))
+
+            num_group = math.ceil(math.sqrt(max_group_num))
+            group_bbox = group_edge_len(num_group)  # square edge length of largest number of tfs
+
+            groups_edge_len = group_edge_len(s_target, group_bbox, G_GAP)
+
+            tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
+
+            group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
+                (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
+
+            for (num, e_group), g_ij in zip(edge_group, group_grid):
+                e_group = e_group.sort_values(by=e_group.columns.tolist())
+                s_group = math.ceil(math.sqrt(e_group.index.nunique()))
+
+                e_grid = np.array(np.meshgrid(np.arange(s_group), np.arange(s_group), indexing='ij'),
+                                  dtype=np.float64).reshape(
+                    (2, -1), order='C').T * (SIZE + GAP)
+                e_grid += g_ij - np.mean(e_grid, axis=0)  # add offset
+
+                data.extend(
+                    make_nodes(
+                        GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
+                        e_grid))
+
+                data.extend({
+                                'group': 'edges',
+                                'data': {
+                                    'id': uuid4(),
+                                    'source': s,
+                                    'target': t,
+                                    'name': e,
+                                    'weight': w,
+                                    **COLOR[e]
+                                }
+                            } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
         cache_result((data, network_table), network_cache_file)
 
@@ -390,13 +392,10 @@ AucData = Tuple[float, Sized, Sized]
 
 def randomized_aucs(predictions,
                     ties: Optional[np.ndarray] = None,
-                    iterations: int = 1000) -> Tuple[List[float], AucData, AucData]:
+                    iterations: int = 1000) -> List[AucData]:
     rand_aucs = []
 
     h = predictions
-
-    min_auc: AucData = (1, [], [])
-    max_auc: AucData = (0, [], [])
 
     r = np.arange(1, predictions.shape[0] + 1)
 
@@ -412,15 +411,9 @@ def randomized_aucs(predictions,
             curr_recall = c / h.sum()
 
         curr_auc = auc(curr_recall, curr_prec)
-        rand_aucs.append(curr_auc)
+        rand_aucs.append((curr_auc, curr_recall, curr_prec))
 
-        if curr_auc <= min_auc[0]:
-            min_auc = (curr_auc, curr_recall, curr_prec)
-
-        if curr_auc >= max_auc[0]:
-            max_auc = (curr_auc, curr_recall, curr_prec)
-
-    return rand_aucs, min_auc, max_auc
+    return rand_aucs
 
 
 def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bool = False):
@@ -437,7 +430,7 @@ def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bo
     if randomize:
         return aupr, recall, precision, g, randomized_aucs(g[0], dup)
 
-    return aupr, recall, precision, g, None
+    return aupr, recall, precision, g, []
 
 
 def get_pruned_network(cache_dir: str, cutoff: float) -> pd.DataFrame:
@@ -499,7 +492,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
         plt.figure(fig.number)
 
     except (TypeError, FileNotFoundError) as e:
-        pred_auc, recall, precision, g, (rand_aucs, min_auc, max_auc) = get_prediction_data(df, data, True)
+        pred_auc, recall, precision, g, rand_auc_data = get_prediction_data(df, data, True)
 
         cell_text = [[''] for i in range(8)]
 
@@ -513,12 +506,16 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
         plt.ylabel("precision")
         plt.ylim(-0.05, 1.05)
 
-        p_value = (np.array(rand_aucs) >= pred_auc).mean()
+        rand_aucs = np.fromiter(map(itemgetter(0), rand_auc_data), float, count=1000)
+        percentiles = np.percentile(rand_aucs, [97.5, 2.5], interpolation='nearest')
+        upper_bound = rand_auc_data[np.where(rand_aucs == percentiles[0])[0][0]]
+        lower_bound = rand_auc_data[np.where(rand_aucs == percentiles[1])[0][0]]
+        p_value = (rand_aucs >= pred_auc).mean()
 
         plt.plot(recall, precision, label=f'{name} auc: {pred_auc:.4f}', zorder=3, color='C0')
-        plt.plot(*max_auc[1:], label=f'{name} max random auc: {max_auc[0]:.4f}',
+        plt.plot(*upper_bound[1:], label=f'{name} random auc 97.5 percentile: {upper_bound[0]:.4f}',
                  linestyle='--', zorder=1, color='darkgrey')
-        plt.plot(*min_auc[1:], label=f'{name} min random auc: {min_auc[0]:.4f}',
+        plt.plot(*lower_bound[1:], label=f'{name} random auc 2.5 percentile: {lower_bound[0]:.4f}',
                  linestyle=':', zorder=2, color='lightgrey')
 
         # setup the table style
@@ -564,7 +561,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
 
             if score is not None:
                 cell_text[4][0] = format(score, '.4f')
-                s += f'\nscore: {score:.4f}'
+                s += f'\nedge score: {score:.4f}'
 
             plt.annotate(s, xy, xytext=(3, 3), textcoords='offset pixels', color='red')
 
@@ -592,7 +589,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
     )
 
     plt.subplot(gs[1])
-    plt.legend(loc=0)
+    plt.legend(loc='upper left', bbox_to_anchor=(-0.05, -0.15))
     plt.savefig(buff, bbox_inches='tight')
 
     plt.close(fig)

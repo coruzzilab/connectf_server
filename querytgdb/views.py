@@ -1,11 +1,12 @@
 import gzip
+import logging
 import os
 import shutil
 import tempfile
 import time
 import warnings
 from functools import partial
-from threading import Lock
+from threading import Lock, Thread
 from uuid import uuid4
 
 import matplotlib
@@ -20,7 +21,8 @@ from django.views.generic import View
 from querytgdb.utils.excel import create_export_zip
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, \
-    check_annotations, convert_float, metadata_to_dict, read_from_cache, svg_font_adder
+    check_annotations, \
+    convert_float, metadata_to_dict, read_cached_result, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import BadNetwork, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
@@ -30,6 +32,8 @@ from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatma
 from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
+
+logger = logging.getLogger(__name__)
 
 lock = Lock()
 
@@ -44,9 +48,8 @@ class QueryView(View):
         try:
             output = static_storage.path(f'{request_id}_pickle')
 
-            result, metadata, stats = get_query_result(cache_path=output)
-
-            columns, merged_cells, result_list = format_data(result, stats)
+            columns, merged_cells, result_list, metadata = read_cached_result(
+                output + '/formatted_tabular_output.pickle.gz')
 
             res = {
                 'result': {
@@ -54,7 +57,7 @@ class QueryView(View):
                     'mergeCells': merged_cells,
                     'columns': columns,
                 },
-                'metadata': metadata_to_dict(metadata),
+                'metadata': metadata,
                 'request_id': request_id
             }
 
@@ -133,16 +136,19 @@ class QueryView(View):
             # save the query
             with open(output + '/query.txt', 'w') as f:
                 f.write(query.strip() + '\n')
+            result, metadata, stats, tasks = get_query_result(query=query,
+                                                              edges=edges,
+                                                              cache_path=output,
+                                                              size_limit=100000000,
+                                                              **file_opts)
 
-            result, metadata, stats = get_query_result(query=query,
-                                                       edges=edges,
-                                                       cache_path=output,
-                                                       size_limit=100000000,
-                                                       **file_opts)
-
+            metadata = metadata_to_dict(metadata)
             columns, merged_cells, result_list = format_data(result, stats)
 
-            cache_result(result_list, output + '/formatted_tabular_output.pickle.gz')
+            Thread(target=cache_result,
+                   args=((columns, merged_cells, result_list, metadata),
+                         output + '/formatted_tabular_output.pickle.gz'),
+                   name=f'{request_id}_formatted').start()
 
             res = {
                 'result': {
@@ -150,13 +156,14 @@ class QueryView(View):
                     'mergeCells': merged_cells,
                     'columns': columns
                 },
-                'metadata': metadata_to_dict(metadata),
+                'metadata': metadata,
                 'request_id': request_id
             }
 
             if errors:
                 res['errors'] = errors
-
+            for t in tasks:
+                t.join()
             return JsonResponse(res, encoder=PandasJSONEncoder)
         except (QueryError, BadNetwork) as e:
             return HttpResponseBadRequest(e)

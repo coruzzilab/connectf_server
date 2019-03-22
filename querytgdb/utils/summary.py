@@ -1,16 +1,20 @@
 import re
+import time
 from collections import OrderedDict
 from typing import Any, Dict
+import logging
 
 import numpy as np
 import pandas as pd
 
-from ..models import Analysis, Annotation
+from ..models import Analysis
 from ..utils import data_to_edges
 
+logger = logging.getLogger(__name__)
 
-def rename_tf(name, anno: Annotation) -> str:
-    return re.sub(r'^' + re.escape(anno.gene_id), anno.gene_name_symbol, name, flags=re.I)
+
+def rename_tf(name: str, gene_id: str, gene_name_symbol: str) -> str:
+    return re.sub(r'^' + re.escape(gene_id), gene_name_symbol, name, flags=re.I)
 
 
 def get_summary(df: pd.DataFrame) -> Dict[str, Any]:
@@ -18,12 +22,18 @@ def get_summary(df: pd.DataFrame) -> Dict[str, Any]:
 
     analyses = Analysis.objects.filter(
         pk__in=df.columns.get_level_values(1)
-    ).distinct().prefetch_related('analysisdata_set', 'analysisdata_set__key', 'tf')
+    ).distinct().prefetch_related('tf')
 
-    col_names = {a.pk: a.name for a in analyses}
-    tf_names = {t: rename_tf(t, analyses.get(pk=a).tf) for t, a, c in df.columns}
+    analysis_data = pd.DataFrame(
+        ((a.pk, a.name, a.tf.gene_id, a.tf.gene_name_symbol) for a in analyses.iterator()),
+        columns=['pk', 'name', 'gene_id', 'symbol']
+    ).set_index('pk')
 
-    df = data_to_edges(df, analyses)
+    col_names = dict(analysis_data[['name']].itertuples(name=None))
+    tf_names = {t: rename_tf(t, analysis_data.at[a, 'gene_id'], analysis_data.at[a, 'symbol']) for t, a, c in
+                df.columns}
+
+    df = data_to_edges(df)
 
     df = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
 

@@ -4,6 +4,7 @@ import re
 from collections import deque
 from functools import partial
 from operator import itemgetter
+from threading import Thread
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import uuid4
 
@@ -15,7 +16,7 @@ from django.db.models import Q
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from querytgdb.utils import annotations
-from ..utils import read_cached_result
+from ..utils import clear_data
 
 __all__ = ['get_query_result', 'expand_ref_ids']
 
@@ -95,8 +96,6 @@ def is_name(key: str, item: Union[pp.ParseResults, Any]) -> bool:
 is_modifier = partial(is_name, 'modifier')
 is_mod = partial(is_name, 'mod')
 
-interactions = Interaction.objects.all()
-
 
 def mod_to_str(curr: pp.ParseResults) -> str:
     if isinstance(curr, str):
@@ -156,7 +155,7 @@ def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
 
 COL_TRANSLATE = {
     'PVALUE': 'Pvalue',
-    'FC': 'Log2FC',
+    'LOG2FC': 'Log2FC',
     'ADDITIONAL_EDGE': 'ADD_EDGES'
 }
 
@@ -225,7 +224,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
 
             if re.match(r'^pvalue$', key, flags=re.I):
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
-            elif re.match(r'^fc$', key, flags=re.I):
+            elif re.match(r'^log2fc$', key, flags=re.I):
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
             elif re.match(r'^additional_edge$', key, flags=re.I):
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
@@ -314,31 +313,35 @@ def get_tf_data(query: str,
     :param target_filter_list:
     :return:
     """
+    anno = annotations()
+
     if (tf_filter_list is not None and tf_filter_list.str.contains(rf'^{re.escape(query)}$', flags=re.I).any()) \
             or tf_filter_list is None:
         analyses = Analysis.objects.filter(tf__gene_id__iexact=query)
 
         df = TargetFrame(
-            interactions.filter(analysis__in=analyses).values_list(
-                'target__gene_id', 'analysis_id').iterator(),
-            columns=['TARGET', 'ANALYSIS'])
+            Interaction.objects.filter(analysis__in=analyses).values_list(
+                'target_id', 'analysis_id').iterator(),
+            columns=['id', 'ANALYSIS'])
+        df = df.merge(anno['id'].reset_index(), on=['id'])
         if target_filter_list is not None:
             df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
+        df = df.reindex(columns=['TARGET', 'ANALYSIS', 'id'])
     else:
         analyses = []
-        df = TargetFrame(columns=['TARGET', 'ANALYSIS'])
+        df = TargetFrame(columns=['TARGET', 'ANALYSIS', 'id'])
 
     if not df.empty:
         reg = TargetFrame(
             Regulation.objects.filter(analysis__in=analyses).values_list(
-                'analysis_id', 'target__gene_id', 'p_value', 'foldchange').iterator(),
-            columns=['ANALYSIS', 'TARGET', 'Pvalue', 'Log2FC'])
+                'analysis_id', 'target_id', 'p_value', 'foldchange').iterator(),
+            columns=['ANALYSIS', 'id', 'Pvalue', 'Log2FC'])
 
         df.insert(2, 'EDGE', '+')
 
         if not reg.empty:
-            # reg['Log2FC'] = reg['Log2FC'].fillna(np.finfo(reg['Log2FC'].dtype).max)
-            df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
+            df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
+            df = df.drop('id', axis=1)
             df.loc[df['ANALYSIS'].isin(reg['ANALYSIS']), 'EDGE'] = np.nan
 
         if edges:
@@ -360,6 +363,18 @@ def get_tf_data(query: str,
     return df
 
 
+def get_all_interaction(qs):
+    return TargetFrame(qs.iterator(), columns=['id', 'ANALYSIS'])
+
+
+def get_all_regulation(qs):
+    return TargetFrame(qs.iterator(), columns=['ANALYSIS', 'id', 'Pvalue', 'Log2FC'])
+
+
+def get_all_analyses(qs):
+    return TargetFrame(qs.iterator(), columns=['ANALYSIS', 'TF'])
+
+
 def get_all_tf(query: str,
                edges: Optional[List[str]] = None,
                tf_filter_list: Optional[pd.Series] = None,
@@ -372,9 +387,16 @@ def get_all_tf(query: str,
     :param target_filter_list:
     :return:
     """
-    qs = Interaction.objects.values_list('target__gene_id', 'analysis_id')
+    qs = Interaction.objects.values_list('target_id', 'analysis_id')
+    anno = annotations()
 
-    # Additional restrictions here
+    if tf_filter_list is not None:
+        qs = qs.filter(analysis__tf_id__in=anno.loc[anno.index.str.upper().isin(tf_filter_list.str.upper()), 'id'])
+
+    df = get_all_interaction(qs)
+    df = df.merge(anno['id'].reset_index(), on='id')
+    df = df.reindex(columns=['TARGET', 'ANALYSIS', 'id'])
+
     if query == "multitype":
         a = pd.DataFrame(Analysis.objects.filter(
             analysisdata__key__name__iexact="EXPERIMENT_TYPE"
@@ -382,34 +404,22 @@ def get_all_tf(query: str,
 
         a = a.groupby('tf_id').filter(lambda x: x['analysisdata__value'].nunique() > 1)
 
-        qs = qs.filter(analysis_id__in=a['id'])
-
-    if tf_filter_list is not None:
-        qs = qs.filter(analysis__tf__gene_id__in=tf_filter_list)
-
-    df = TargetFrame(qs.iterator(), columns=['TARGET', 'ANALYSIS'])
+        df = df[df['ANALYSIS'].isin(a['id'])]
 
     if target_filter_list is not None:
         df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
 
-    analyses = TargetFrame(
-        Analysis.objects.values_list('id', 'tf__gene_id').iterator(),
-        columns=['ANALYSIS', 'TF']
-    )
+    analyses = get_all_analyses(Analysis.objects.values_list('id', 'tf__gene_id'))
 
     df = df.merge(analyses, on='ANALYSIS')
 
-    reg = TargetFrame(
-        Regulation.objects.values_list(
-            'analysis_id', 'target__gene_id', 'p_value', 'foldchange').iterator(),
-        columns=['ANALYSIS', 'TARGET', 'Pvalue', 'Log2FC'])
+    reg = get_all_regulation(Regulation.objects.values_list('analysis_id', 'target_id', 'p_value', 'foldchange'))
 
-    df = df.merge(reg, on=['ANALYSIS', 'TARGET'], how='left')
+    df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
+    df = df.drop('id', axis=1)
 
     if df.empty:
         raise ValueError("No data in database.")
-
-    no_fc = df.groupby(by='ANALYSIS').apply(lambda x: pd.isna(x['Log2FC']).all())
 
     if edges:
         try:
@@ -418,7 +428,7 @@ def get_all_tf(query: str,
             pass
 
     df.insert(3, 'EDGE', np.nan)
-    df['EDGE'] = df['EDGE'].mask(df['ANALYSIS'].isin(no_fc.index[no_fc]), '+')
+    df['EDGE'] = df['EDGE'].where(df['ANALYSIS'].isin(reg['ANALYSIS']), '+')
 
     df = (df.set_index(['TF', 'ANALYSIS', 'TARGET'])
           .unstack(level=[0, 1])
@@ -619,19 +629,21 @@ def parse_query(query: str,
         raise QueryError("Could not parse query") from e
 
 
-def get_stats(result: pd.DataFrame) -> Dict[str, Any]:
-    return {
-        'total': result.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].groupby(
-            level=[0, 1], axis=1).count().sum()
-    }
+def get_total(df: pd.DataFrame) -> pd.DataFrame:
+    return clear_data(df).groupby(level=[0, 1], axis=1).count().sum()
 
 
-def get_query_result(query: Optional[str] = None,
+def induce_repress_count(s: pd.Series) -> pd.Series:
+    return pd.Series(((s > 0).sum(), (s < 0).sum()),
+                     index=['induced', 'repressed'])
+
+
+def get_query_result(query: str,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
                      cache_path: Optional[str] = None,
-                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, List[Thread]]:
     """
     Get query result from query string or cache
 
@@ -643,41 +655,45 @@ def get_query_result(query: Optional[str] = None,
     :param size_limit:
     :return:
     """
-    if query is not None:
-        result = parse_query(query, edges, tf_filter_list)
-        metadata = get_metadata(result.columns.get_level_values(1))
+    tasks = []
 
-        stats = get_stats(result)
+    result = parse_query(query, edges, tf_filter_list)
+    metadata = get_metadata(result.columns.get_level_values(1))
 
-        if cache_path:
-            result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
+    stats = {}
+    stats['total'] = get_total(result)
 
-        if user_lists is not None:
-            result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
+    if cache_path:
+        t = Thread(target=result.to_pickle, args=(cache_path + '/tabular_output_unfiltered.pickle.gz',))
+        tasks.append(t)
+        t.start()
+        # result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
 
-            if result.empty:
-                raise QueryError("Empty result (user list too restrictive).")
+    if user_lists is not None:
+        result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
 
-        if cache_path is not None:  # cache here
-            if user_lists is not None:
-                result.to_pickle(cache_path + '/tabular_output.pickle.gz')
-            else:
-                os.symlink(
-                    cache_path + '/tabular_output_unfiltered.pickle.gz',
-                    cache_path + '/tabular_output.pickle.gz'
-                )
-            metadata.to_pickle(cache_path + '/metadata.pickle.gz')
-    elif cache_path is not None:
-        result = pd.read_pickle(cache_path + '/tabular_output.pickle.gz')
-        metadata = pd.read_pickle(cache_path + '/metadata.pickle.gz')
-        stats = get_stats(pd.read_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz'))
+        if result.empty:
+            raise QueryError("Empty result (user list too restrictive).")
 
-        try:
-            user_lists = read_cached_result(cache_path + '/target_genes.pickle.gz')
-        except FileNotFoundError:
-            pass
+        stats['edge_counts'] = get_total(result)
     else:
-        raise ValueError("Need query or cache_path")
+        stats['edge_counts'] = stats['total']
+
+    stats['induce_repress_count'] = result.loc[:, (slice(None), slice(None), 'Log2FC')].apply(induce_repress_count)
+
+    if cache_path is not None:  # cache here
+        if user_lists is not None:
+            t = Thread(target=result.to_pickle, args=(cache_path + '/tabular_output.pickle.gz',))
+            tasks.append(t)
+            t.start()
+            # result.to_pickle(cache_path + '/tabular_output.pickle.gz')
+        else:
+            os.symlink(
+                cache_path + '/tabular_output_unfiltered.pickle.gz',
+                cache_path + '/tabular_output.pickle.gz'
+            )
+        Thread(target=metadata.to_pickle, args=(cache_path + '/metadata.pickle.gz',)).start()
+        # metadata.to_pickle(cache_path + '/metadata.pickle.gz')
 
     logger.info(f"Unfiltered Dataframe size: {result.size}")
 
@@ -692,10 +708,8 @@ def get_query_result(query: Optional[str] = None,
         result = user_lists[0].merge(result, left_index=True, right_index=True, how='inner')
         result = result.sort_values(['User List Count', 'User List'])
     else:
-        result = pd.concat([
-            pd.DataFrame(np.nan, columns=['User List', 'User List Count'], index=result.index),
-            result
-        ], axis=1)
+        result.insert(0, 'User List Count', np.nan)
+        result.insert(0, 'User List', np.nan)
 
     result = annotations().drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
 
@@ -704,4 +718,4 @@ def get_query_result(query: Optional[str] = None,
     logger.info(f"Dataframe size: {result.size}")
 
     # return statistics here as well
-    return result, metadata, stats
+    return result, metadata, stats, tasks

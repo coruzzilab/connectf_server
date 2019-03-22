@@ -23,11 +23,11 @@ def create_export_zip(cache_dir, out_dir):
 
 def write_excel(cache_dir, out_dir):
     with pd.ExcelWriter(out_dir + '/tabular_output.xlsx', engine='xlsxwriter') as writer:
-        df = pd.read_pickle(cache_dir + '/formatted_tabular_output.pickle.gz')
+        data = pd.read_pickle(cache_dir + '/formatted_tabular_output.pickle.gz')
         metadata = pd.read_pickle(cache_dir + '/metadata.pickle.gz')
         metadata.index.name = None
 
-        write_data(df, writer)
+        write_data(data[2], writer)
         write_metadata(metadata, writer)
 
 

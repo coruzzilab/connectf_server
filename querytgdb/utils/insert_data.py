@@ -78,6 +78,9 @@ def insert_data(data_file, metadata_file, sep=','):
     except TypeError:
         metadata = process_meta_file(metadata_file)
 
+    if not Annotation.objects.exists():
+        raise ValueError("Please use 'import_annotation' to add gene annotations to the database first.")
+
     try:
         tf = Annotation.objects.get(gene_id=metadata['TRANSCRIPTION_FACTOR_ID'])
     except Annotation.DoesNotExist:
@@ -144,6 +147,8 @@ def read_annotation_file(annotation_file: str) -> pd.DataFrame:
 
 
 def import_annotations(annotation_file: str, dry_run: bool = False, delete_existing: bool = True):
+    logger.setLevel(logging.INFO)
+
     anno = pd.DataFrame(Annotation.objects.values_list(named=True).iterator())
     if anno.empty:
         anno = pd.DataFrame(columns=["id", "gene_id", "name", "fullname", "gene_type", "gene_family"])
