@@ -2,6 +2,7 @@ import logging
 import os
 import re
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from operator import itemgetter
 from threading import Thread
@@ -393,27 +394,34 @@ def get_all_tf(query: str,
     if tf_filter_list is not None:
         qs = qs.filter(analysis__tf_id__in=anno.loc[anno.index.str.upper().isin(tf_filter_list.str.upper()), 'id'])
 
-    df = get_all_interaction(qs)
-    df = df.merge(anno['id'].reset_index(), on='id')
-    df = df.reindex(columns=['TARGET', 'ANALYSIS', 'id'])
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        interaction_task = executor.submit(get_all_interaction, qs)
+        regulation_task = executor.submit(get_all_regulation,
+                                          Regulation.objects.values_list('analysis_id', 'target_id', 'p_value',
+                                                                         'foldchange'))
+        analysis_task = executor.submit(get_all_analyses, Analysis.objects.values_list('id', 'tf__gene_id'))
 
-    if query == "multitype":
-        a = pd.DataFrame(Analysis.objects.filter(
-            analysisdata__key__name__iexact="EXPERIMENT_TYPE"
-        ).values_list('id', 'tf_id', 'analysisdata__value', named=True).iterator())
+        df = interaction_task.result()
 
-        a = a.groupby('tf_id').filter(lambda x: x['analysisdata__value'].nunique() > 1)
+        df = df.merge(anno['id'].reset_index(), on='id')
+        df = df.reindex(columns=['TARGET', 'ANALYSIS', 'id'])
 
-        df = df[df['ANALYSIS'].isin(a['id'])]
+        if query == "multitype":
+            a = pd.DataFrame(Analysis.objects.filter(
+                analysisdata__key__name__iexact="EXPERIMENT_TYPE"
+            ).values_list('id', 'tf_id', 'analysisdata__value', named=True).iterator())
 
-    if target_filter_list is not None:
-        df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
+            a = a.groupby('tf_id').filter(lambda x: x['analysisdata__value'].nunique() > 1)
 
-    analyses = get_all_analyses(Analysis.objects.values_list('id', 'tf__gene_id'))
+            df = df[df['ANALYSIS'].isin(a['id'])]
 
-    df = df.merge(analyses, on='ANALYSIS')
+        if target_filter_list is not None:
+            df = df[df['TARGET'].str.upper().isin(target_filter_list.str.upper())]
 
-    reg = get_all_regulation(Regulation.objects.values_list('analysis_id', 'target_id', 'p_value', 'foldchange'))
+        analyses = analysis_task.result()
+        df = df.merge(analyses, on='ANALYSIS')
+
+        reg = regulation_task.result()
 
     df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
     df = df.drop('id', axis=1)
@@ -547,10 +555,10 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     :param df:
     :return:
     """
-    analysis_order = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(
-        axis=1, level=1).sum().sort_values(ascending=False)
-    tf_order = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(
-        axis=1, level=0).sum().sort_values(ascending=False)
+    edges = clear_data(df)
+
+    analysis_order = edges.count(axis=1, level=1).sum().sort_values(ascending=False)
+    tf_order = edges.count(axis=1, level=0).sum().sort_values(ascending=False)
 
     return (df.reindex(labels=analysis_order.index, axis=1, level=1)
             .reindex(labels=tf_order.index, axis=1, level=0))
@@ -624,7 +632,9 @@ def parse_query(query: str,
         if result.empty or not result.include:
             raise QueryError('empty query')
 
-        return reorder_data(result)
+        result = reorder_data(result)
+
+        return result
     except pp.ParseException as e:
         raise QueryError("Could not parse query") from e
 
@@ -702,7 +712,9 @@ def get_query_result(query: str,
 
     counts = get_tf_count(result)
 
-    result = pd.concat([counts, result], axis=1)
+    result = result.copy()
+    result.columns = result.columns.to_flat_index()
+    result.insert(0, 'TF Count', counts)
 
     if user_lists:
         result = user_lists[0].merge(result, left_index=True, right_index=True, how='inner')

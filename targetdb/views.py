@@ -80,7 +80,7 @@ class KeyView(View):
             analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
 
             if any(analysis.regulation_set.exists() for analysis in analyses):
-                queryset[0:0] = ['fc', 'pvalue']
+                queryset[0:0] = ['log2fc', 'pvalue']
 
             queryset.extend(
                 MetaKey.objects.filter(
@@ -88,7 +88,7 @@ class KeyView(View):
                     searchable=True
                 ).distinct().values_list('name', flat=True))
         else:
-            queryset[0:0] = ['fc', 'pvalue', 'additional_edge']
+            queryset[0:0] = ['log2fc', 'pvalue', 'additional_edge']
             queryset.extend(MetaKey.objects.filter(searchable=True).values_list('name', flat=True))
 
         return JsonResponse(queryset, safe=False)
@@ -105,7 +105,7 @@ class ValueView(View):
 
         queryset: List[str] = []
 
-        if key in ('PVALUE', 'FC'):
+        if key in ('PVALUE', 'LOG2FC'):
             return JsonResponse(queryset, safe=False)
         elif key == 'ADDITIONAL_EDGE':
             if tfs:
@@ -120,11 +120,11 @@ class ValueView(View):
 
             if tfs:
                 if any(map(check_regulation, Analysis.objects.filter(tf__gene_id__in=tfs))):
-                    queryset.extend(('Pvalue', 'FC'))
+                    queryset.extend(('Pvalue', 'Log2FC'))
                 if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
                     queryset.append('additional_edge')
             else:
-                queryset.extend(('Pvalue', 'FC', 'additional_edge'))
+                queryset.extend(('Pvalue', 'Log2FC', 'additional_edge'))
 
             return JsonResponse(queryset, safe=False)
         else:

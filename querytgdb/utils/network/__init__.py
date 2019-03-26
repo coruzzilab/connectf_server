@@ -513,9 +513,9 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
         p_value = (rand_aucs >= pred_auc).mean()
 
         plt.plot(recall, precision, label=f'{name} auc: {pred_auc:.4f}', zorder=3, color='C0')
-        plt.plot(*upper_bound[1:], label=f'{name} random auc 97.5 percentile: {upper_bound[0]:.4f}',
+        plt.plot(*upper_bound[1:], label=f'{name} random AUPR 97.5 percentile: {upper_bound[0]:.4f}',
                  linestyle='--', zorder=1, color='darkgrey')
-        plt.plot(*lower_bound[1:], label=f'{name} random auc 2.5 percentile: {lower_bound[0]:.4f}',
+        plt.plot(*lower_bound[1:], label=f'{name} random AUPR 2.5 percentile: {lower_bound[0]:.4f}',
                  linestyle=':', zorder=2, color='lightgrey')
 
         # setup the table style

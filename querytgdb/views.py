@@ -24,11 +24,11 @@ from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cach
     check_annotations, \
     convert_float, metadata_to_dict, read_cached_result, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
-from .utils.file import BadNetwork, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
+from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
-from .utils.motif_enrichment import NoEnrichedMotif, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
-    get_motif_enrichment_json
+from .utils.motif_enrichment import MOTIF, NoEnrichedMotif, get_motif_enrichment_heatmap, \
+    get_motif_enrichment_heatmap_table, get_motif_enrichment_json
 from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
@@ -134,7 +134,7 @@ class QueryView(View):
             query = request.POST['query']
 
             # save the query
-            with open(output + '/query.txt', 'w') as f:
+            with open(os.path.join(output, 'query.txt'), 'w') as f:
                 f.write(query.strip() + '\n')
             result, metadata, stats, tasks = get_query_result(query=query,
                                                               edges=edges,
@@ -165,7 +165,7 @@ class QueryView(View):
             for t in tasks:
                 t.join()
             return JsonResponse(res, encoder=PandasJSONEncoder)
-        except (QueryError, BadNetwork) as e:
+        except (QueryError, BadFile) as e:
             return HttpResponseBadRequest(e)
         except ValueError as e:
             raise Http404('Query not available') from e
@@ -337,7 +337,7 @@ class MotifEnrichmentJSONView(View):
                     alpha = float(request.GET.get('alpha', 0.05))
                 except ValueError:
                     alpha = 0.05
-                body = request.GET.get('body', '0')
+                regions = request.GET.getlist('regions')
 
                 cache_path = static_storage.path("{}_pickle/".format(request_id))
 
@@ -347,8 +347,8 @@ class MotifEnrichmentJSONView(View):
                 return JsonResponse(
                     get_motif_enrichment_json(
                         cache_path,
-                        alpha=alpha,
-                        body=body == '1'),
+                        regions,
+                        alpha=alpha),
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif) as e:
                 raise Http404 from e
@@ -366,7 +366,7 @@ class MotifEnrichmentHeatmapView(View):
                     alpha = float(request.GET.get('alpha', 0.05))
                 except ValueError:
                     alpha = 0.05
-                body = request.GET.get('body', '0')
+                regions = request.GET.getlist('regions')
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
 
@@ -377,10 +377,10 @@ class MotifEnrichmentHeatmapView(View):
 
                 buff = get_motif_enrichment_heatmap(
                     cache_path,
+                    regions,
                     upper_bound=upper,
                     lower_bound=lower,
-                    alpha=alpha,
-                    body=body == '1'
+                    alpha=alpha
                 )
 
                 return FileResponse(buff, content_type='image/svg+xml')
@@ -421,6 +421,14 @@ class MotifEnrichmentInfo(View):
                                 content_type="text/csv",
                                 filename="cluster_info.csv",
                                 as_attachment=True)
+
+
+class MotifEnrichmentRegions(View):
+    def get(self, request):
+        return JsonResponse({
+            'regions': MOTIF.region_desc,
+            'default_regions': MOTIF.default_regions
+        })
 
 
 class AnalysisEnrichmentView(View):

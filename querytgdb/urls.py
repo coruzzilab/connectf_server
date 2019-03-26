@@ -29,6 +29,7 @@ urlpatterns = [
     path('list_enrichment/<uuid:request_id>/legend/',
          views.ListEnrichmentLegendView.as_view()),
     path('motif_enrichment/cluster_info.csv', views.MotifEnrichmentInfo.as_view()),
+    path('motif_enrichment/regions/', views.MotifEnrichmentRegions.as_view()),
     path('motif_enrichment/<uuid:request_id>/',
          views.MotifEnrichmentJSONView.as_view()),
     path('motif_enrichment/<uuid:request_id>/heatmap.svg',

@@ -1,16 +1,16 @@
 import gzip
 import os.path
-import pathlib
 import pickle
 import sys
 from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
-from itertools import chain, count, tee
-from multiprocessing.pool import ThreadPool
-from operator import methodcaller, or_
+from itertools import chain, count, cycle, starmap, tee
+from operator import itemgetter, methodcaller, or_
 from pickle import UnpicklingError
+from threading import Thread
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
+import multiprocessing as mp
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,97 +23,49 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from querytgdb.utils import annotations
-from ..utils import cache_result, clear_data, column_string, read_cached_result, split_name, svg_font_adder
+from querytgdb.utils import annotations, cache_result, clear_data, column_string, read_cached_result, split_name, \
+    svg_font_adder
+from querytgdb.utils.motif_enrichment.motif import MotifData, Region
 
 sns.set()
 
-
-class MotifData:
-    def __init__(self, data_file: Union[str, pathlib.Path]):
-        self.pool = ThreadPool()
-        self._annotated_async = self.pool.apply_async(pd.read_pickle, args=(data_file,))
-        self._annotated = None
-        self._annotated_promo = None
-        self._ann_promo_dedup = None
-        self._promo_cluster_size = None
-
-        self._annotated_body = None
-        self._ann_body_dedup = None
-        self._body_cluster_size = None
-
-    def close(self):
-        self.pool.terminate()
-
-    @property
-    def annotated(self) -> pd.DataFrame:
-        if self._annotated is None:
-            annotated = self._annotated_async.get()
-            self.close()
-            annotated = annotated[annotated['p-value'] < 0.0001]
-
-            self._annotated = annotated
-
-        return self._annotated
-
-    @property
-    def annotated_promo(self) -> pd.DataFrame:
-        if self._annotated_promo is None:
-            self._annotated_promo = self.annotated[
-                (self.annotated['stop'] - self.annotated['start'] + self.annotated['dist']) < 0]
-
-        return self._annotated_promo
-
-    @property
-    def ann_promo_dedup(self) -> pd.DataFrame:
-        if self._ann_promo_dedup is None:
-            self._ann_promo_dedup = self.annotated_promo.drop_duplicates('match_id')
-
-        return self._ann_promo_dedup
-
-    @property
-    def promo_cluster_size(self) -> pd.DataFrame:
-        if self._promo_cluster_size is None:
-            self._promo_cluster_size = self.ann_promo_dedup.groupby('#pattern name').size()
-
-        return self._promo_cluster_size
-
-    @property
-    def annotated_body(self) -> pd.DataFrame:
-        if self._annotated_body is None:
-            self._annotated_body = self.annotated[self.annotated['dist'] > 0]
-
-        return self._annotated_body
-
-    @property
-    def ann_body_dedup(self) -> pd.DataFrame:
-        if self._ann_body_dedup is None:
-            self._ann_body_dedup = self.annotated_body.drop_duplicates('match_id')
-
-        return self._ann_body_dedup
-
-    @property
-    def body_cluster_size(self) -> pd.DataFrame:
-        if self._body_cluster_size is None:
-            self._body_cluster_size = self.ann_body_dedup.groupby('#pattern name').size()
-
-        return self._body_cluster_size
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-
 MOTIF = MotifData(settings.MOTIF_ANNOTATION)
+
+
+@MOTIF.register
+class Promoter(Region):
+    default = True
+    name = 'promoter'
+    description = '1000bp upstream promoter region'
+
+    def get_region(self, annotation: pd.DataFrame):
+        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']) < 0]
+
+
+@MOTIF.register
+class Body(Region):
+    name = 'body'
+    description = 'gene body'
+
+    def get_region(self, annotation: pd.DataFrame):
+        return annotation[annotation['dist'] > 0]
+
+
+@MOTIF.register
+class Promoter500(Region):
+    name = 'promoter_500'
+    description = '500bp upstream promoter region'
+
+    def get_region(self, annotation: pd.DataFrame):
+        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']).between(-500, -1)]
+
 
 CLUSTER_INFO = pd.read_csv(
     settings.MOTIF_CLUSTER,
     index_col=0
 ).fillna('').to_dict('index')
 
-COLORS = sns.color_palette("husl", 2)
+COLORS = dict(zip(MOTIF.regions, sns.color_palette("husl", len(MOTIF.regions))))
 
 
 class NoEnrichedMotif(ValueError):
@@ -146,56 +98,49 @@ def get_list_enrichment(gene_list: Iterable[str],
 
 
 def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
+                     regions: Optional[List[str]] = None,
                      cache_path: Optional[str] = None,
                      alpha: float = 0.05,
-                     show_reject: bool = True,
-                     body: bool = False) -> pd.DataFrame:
-    try:
-        promo_enrich = read_cached_result(os.path.join(cache_path, 'promo_enrich.pickle.gz'))
-    except (FileNotFoundError, UnpicklingError):
-        promo_enrich = list(map(partial(get_list_enrichment,
-                                        annotated=MOTIF.annotated_promo,
-                                        annotated_dedup=MOTIF.ann_promo_dedup,
-                                        ann_cluster_size=MOTIF.promo_cluster_size),
-                                res.values()))
-        cache_result(promo_enrich, os.path.join(cache_path, 'promo_enrich.pickle.gz'))
+                     show_reject: bool = True) -> Tuple[List[str], pd.DataFrame]:
+    if not regions:
+        regions = MOTIF.default_regions
+    else:
+        regions = sorted(set(MOTIF.regions) & set(regions), key=MOTIF.regions.index)
+
+    results: Dict[str, List[pd.Series]] = OrderedDict()
+
+    for region in regions:
+        try:
+            region_enrich = read_cached_result(os.path.join(cache_path, f'{region}_enrich.pickle.gz'))
+        except (FileNotFoundError, UnpicklingError):
+            region_enrich = list(map(partial(get_list_enrichment,
+                                             annotated=getattr(MOTIF, region),
+                                             annotated_dedup=getattr(MOTIF, f'{region}_dedup'),
+                                             ann_cluster_size=getattr(MOTIF, f'{region}_cluster_size')),
+                                     res.values()))
+            Thread(target=cache_result,
+                   args=(region_enrich, os.path.join(cache_path, f'{region}_enrich.pickle.gz'))).start()
+
+        results[region] = region_enrich
 
     reject_func = methodcaller('le', alpha)
 
-    if body:
-        try:
-            body_enrich = read_cached_result(os.path.join(cache_path, 'body_enrich.pickle.gz'))
-        except (FileNotFoundError, UnpicklingError):
-            body_enrich = list(map(partial(get_list_enrichment,
-                                           annotated=MOTIF.annotated_body,
-                                           annotated_dedup=MOTIF.ann_body_dedup,
-                                           ann_cluster_size=MOTIF.body_cluster_size),
-                                   res.values()))
-            cache_result(body_enrich, os.path.join(cache_path, 'body_enrich.pickle.gz'))
+    df = pd.concat(chain.from_iterable(zip(*results.values())), axis=1, sort=True)
 
-        df = pd.concat(chain.from_iterable(zip(promo_enrich, body_enrich)), axis=1)
-        _promo, _body = tee(res.keys(), 2)
-        columns = list(chain.from_iterable(zip(
-            map(lambda c: c + ('promo',), _promo),
-            map(lambda c: c + ('body',), _body))))
-
-        if show_reject:
-            rejects = reduce(or_, map(reject_func, chain(promo_enrich, body_enrich)))
-        else:
-            rejects = pd.concat(map(reject_func, chain.from_iterable(zip(promo_enrich, body_enrich))),
-                                axis=1)
-    else:
-        df = pd.concat(promo_enrich, axis=1, sort=True)
-        columns = [(*c, 'promo') for c in res.keys()]
-
-        promo_reject = map(reject_func, promo_enrich)
-
-        if show_reject:
-            rejects = reduce(or_, promo_reject)
-        else:
-            rejects = pd.concat(promo_reject, axis=1, sort=True)
+    columns = list(starmap(
+        lambda r, c: c + (r,),
+        zip(
+            cycle(regions),
+            chain.from_iterable(zip(*tee(res.keys(), len(results))))
+        )
+    ))
 
     df.columns = columns
+
+    if show_reject:
+        rejects = reduce(or_, map(reject_func, chain.from_iterable(results.values())))
+    else:
+        rejects = pd.concat(map(reject_func, chain.from_iterable(zip(*results.values()))), axis=1, sort=True)
 
     if show_reject:
         rejects = rejects.reindex(df.index)
@@ -207,7 +152,7 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
     if df.empty:
         raise NoEnrichedMotif
 
-    return df
+    return regions, df
 
 
 def get_analysis_gene_list(cache_path: str) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
@@ -236,13 +181,12 @@ def merge_cluster_info(df):
 
 
 def get_motif_enrichment_json(cache_path: str,
-                              alpha: float = 0.05,
-                              body: bool = False) -> Dict:
+                              regions: Optional[List[str]] = None,
+                              alpha: float = 0.05) -> Dict:
     res = get_analysis_gene_list(cache_path)
-    df = motif_enrichment(res, cache_path, alpha=alpha, show_reject=False, body=body)
+    regions, df = motif_enrichment(res, regions, cache_path, alpha=alpha, show_reject=False)
 
-    tfs, analysis_ids = zip(*res.keys())
-    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=analysis_ids)
+    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
 
     columns = []
 
@@ -266,7 +210,8 @@ def get_motif_enrichment_json(cache_path: str,
 
     return {
         'columns': columns,
-        'result': list(merge_cluster_info(df))
+        'result': list(merge_cluster_info(df)),
+        'regions': regions
     }
 
 
@@ -287,10 +232,13 @@ def make_motif_enrichment_heatmap_columns(res) -> List[str]:
     return columns
 
 
-def get_motif_enrichment_heatmap(cache_path, alpha=0.05, lower_bound=None, upper_bound=None,
-                                 body=False) -> BytesIO:
+def get_motif_enrichment_heatmap(cache_path,
+                                 regions: Optional[List[str]] = None,
+                                 alpha=0.05,
+                                 lower_bound=None,
+                                 upper_bound=None) -> BytesIO:
     res = get_analysis_gene_list(cache_path)
-    df = motif_enrichment(res, cache_path, alpha=alpha, body=body)
+    regions, df = motif_enrichment(res, regions, cache_path, alpha=alpha)
 
     df = df.clip(lower=sys.float_info.min)
     df = -np.log10(df)
@@ -299,14 +247,8 @@ def get_motif_enrichment_heatmap(cache_path, alpha=0.05, lower_bound=None, upper
 
     columns = make_motif_enrichment_heatmap_columns(res)
 
-    if not body:
-        df.columns = columns
-    else:
-        _promo, _body = tee(columns, 2)
-        df.columns = chain.from_iterable(zip(
-            map(lambda x: x + ' promo', _promo),
-            map(lambda x: x + ' body', _body)
-        ))
+    df.columns = starmap(lambda r, x: f'{x} {r}',
+                         zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
 
     df = df.T
 
@@ -315,8 +257,8 @@ def get_motif_enrichment_heatmap(cache_path, alpha=0.05, lower_bound=None, upper
     opts = {}
     if rows > 1:
         opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
-        if body:
-            opts['row_colors'] = [COLORS[s.endswith('promo')] for s in df.index]
+        if len(regions) > 1:
+            opts['row_colors'] = [COLORS[r] for r, s in zip(cycle(regions), df.index)]
 
     if cols > 1:
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)

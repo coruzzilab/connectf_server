@@ -80,6 +80,9 @@ def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
                 gene_to_name.setdefault(line, set()).add(list_name)
                 name_to_gene.setdefault(list_name, set()).add(line)
 
+    if not gene_to_name:
+        raise BadFile("Target Gene list empty")
+
     df = gene_list_to_df(gene_to_name)
 
     return df, name_to_gene
@@ -88,6 +91,10 @@ def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
 def get_genes(f: TextIO) -> pd.Series:
     with closing(f) as g:
         s = pd.Series(g.readlines())
+
+    if s.empty:
+        raise BadFile("Filter TF list is empty")
+
     s = s.str.strip()
     s = s[~(s.str.startswith('>') | s.str.startswith(';'))].reset_index(drop=True)
 
