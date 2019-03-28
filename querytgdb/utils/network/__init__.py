@@ -1,8 +1,9 @@
+import gzip
 import math
 import os
 from io import BytesIO
 from operator import itemgetter, methodcaller
-from typing import Any, BinaryIO, Dict, Generator, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
+from typing import Any, Dict, Generator, IO, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
 from uuid import uuid4
 
 import matplotlib.gridspec as gridspec
@@ -462,7 +463,7 @@ row_labels = [
 
 
 def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutoff: Optional[float] = None,
-                   cache_path: Optional[str] = None) -> BinaryIO:
+                   cache_path: Optional[str] = None) -> IO:
     """
     Get AUPR of uploaded predicted network
 
@@ -578,7 +579,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
             ["{:,}".format(data["target"].nunique())]
         ]
 
-    if not hasattr(gs, '_layoutbox'):
+    if not hasattr(gs, '_layoutbox'):  # weird issue with pickling
         gs._layoutbox = None
 
     plt.subplot(gs[0])
@@ -590,7 +591,7 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
 
     plt.subplot(gs[1])
     plt.legend(loc='upper left', bbox_to_anchor=(-0.05, -0.15))
-    plt.savefig(buff, bbox_inches='tight')
+    plt.savefig(gzip.open(buff, 'wb'), bbox_inches='tight')
 
     plt.close(fig)
     buff.seek(0)

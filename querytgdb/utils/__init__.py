@@ -62,11 +62,9 @@ class GzipFileResponse(FileResponse):
     Does not compress files
     """
 
-    def set_headers(self, filelike):
-        if isinstance(filelike, gzip.GzipFile) and hasattr(filelike, 'name'):
-            filelike.name = None
-
-        return super().set_headers(filelike)
+    def __init__(self, *args, as_attachment=False, filename='', **kwargs):
+        super().__init__(*args, as_attachment=as_attachment, filename=filename, **kwargs)
+        self['Content-Encoding'] = 'gzip'
 
 
 def open_file(path, mode: str) -> IO:

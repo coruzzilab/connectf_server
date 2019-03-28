@@ -1,4 +1,3 @@
-import gzip
 import logging
 import os
 import shutil
@@ -21,8 +20,7 @@ from django.views.generic import View
 from querytgdb.utils.excel import create_export_zip
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, \
-    check_annotations, \
-    convert_float, metadata_to_dict, read_cached_result, read_from_cache, svg_font_adder
+    check_annotations, convert_float, metadata_to_dict, read_cached_result, read_from_cache, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
@@ -415,9 +413,7 @@ class MotifEnrichmentHeatmapTableView(View):
 
 class MotifEnrichmentInfo(View):
     def get(self, request):
-        g = gzip.open(settings.MOTIF_CLUSTER)
-
-        return GzipFileResponse(g,
+        return GzipFileResponse(open(settings.MOTIF_CLUSTER, 'rb'),
                                 content_type="text/csv",
                                 filename="cluster_info.csv",
                                 as_attachment=True)
