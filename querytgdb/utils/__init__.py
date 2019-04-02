@@ -336,17 +336,19 @@ class Annotations:
             self._anno = anno
 
     def __call__(self):
-        if self._anno is None:
-            self.task.join()
+        return self.annotation
+
+    @property
+    def annotation(self):
+        with self.lock:
+            if self._anno is None:
+                self.task.join()
 
         return self._anno
 
     @property
     def genes(self) -> Set:
-        if self._anno is None:
-            self()
-
-        return set(self._anno.index)
+        return set(self.annotation.index)
 
 
 annotations = Annotations()

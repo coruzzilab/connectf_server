@@ -52,16 +52,22 @@ class EdgeListView(View):
 
 class InterestingListsView(View):
     def get(self, request, *args, **kwargs):
-        directories, files = gene_lists_storage.listdir('./')
+        try:
+            directories, files = gene_lists_storage.listdir('./')
 
-        return JsonResponse(list(get_lists(files)), safe=False)
+            return JsonResponse(list(get_lists(files)), safe=False)
+        except FileNotFoundError:
+            return JsonResponse([], safe=False)
 
 
 class InterestingNetworksView(View):
     def get(self, request, *args, **kwargs):
-        directories, files = networks_storage.listdir('./')
+        try:
+            directories, files = networks_storage.listdir('./')
 
-        return JsonResponse(list(get_lists(files)), safe=False)
+            return JsonResponse(list(get_lists(files)), safe=False)
+        except FileNotFoundError:
+            return JsonResponse([], safe=False)
 
 
 class KeyView(View):

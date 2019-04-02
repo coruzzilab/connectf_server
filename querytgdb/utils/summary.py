@@ -1,8 +1,7 @@
+import logging
 import re
-import time
 from collections import OrderedDict
 from typing import Any, Dict
-import logging
 
 import numpy as np
 import pandas as pd

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 lock = Lock()
 
 static_storage = FileSystemStorage(settings.QUERY_CACHE)
-common_genes_storage = FileSystemStorage(settings.GENE_LISTS)
+gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
 networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 
@@ -74,7 +74,7 @@ class QueryView(View):
 
             file_opts = {}
 
-            targetgenes_file = get_file(request, "targetgenes", common_genes_storage)
+            targetgenes_file = get_file(request, "targetgenes", gene_lists_storage)
             filter_tfs_file = get_file(request, "filtertfs")
             target_networks = get_file(request, "targetnetworks", networks_storage)
 

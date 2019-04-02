@@ -670,8 +670,9 @@ def get_query_result(query: str,
     result = parse_query(query, edges, tf_filter_list)
     metadata = get_metadata(result.columns.get_level_values(1))
 
-    stats = {}
-    stats['total'] = get_total(result)
+    stats = {
+        'total': get_total(result)
+    }
 
     if cache_path:
         t = Thread(target=result.to_pickle, args=(cache_path + '/tabular_output_unfiltered.pickle.gz',))
@@ -681,6 +682,7 @@ def get_query_result(query: str,
 
     if user_lists is not None:
         result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
+        result = reorder_data(result)  # reorder again here due to filtering
 
         if result.empty:
             raise QueryError("Empty result (user list too restrictive).")
