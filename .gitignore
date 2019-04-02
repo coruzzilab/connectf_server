@@ -51,3 +51,5 @@ nohup.out
 build/
 dist/
 *.egg-info/
+
+config.yaml

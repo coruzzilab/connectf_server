@@ -35,7 +35,8 @@ setup(
         'mysqlclient',
         'statsmodels',
         'scikit-learn',
-        'gunicorn'
+        'gunicorn',
+        'pyyaml'
     ],
     python_requires='>=3.5'
 )
