@@ -691,7 +691,7 @@ def get_query_result(query: str,
     else:
         stats['edge_counts'] = stats['total']
 
-    stats['induce_repress_count'] = result.loc[:, (slice(None), slice(None), 'Log2FC')].apply(induce_repress_count)
+    stats['induce_repress_count'] = result.loc[:, (slice(None), slice(None), ['Log2FC'])].apply(induce_repress_count)
 
     if cache_path is not None:  # cache here
         if user_lists is not None:
