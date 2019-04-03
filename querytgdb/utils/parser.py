@@ -260,8 +260,6 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
     except KeyError:
         tf_ids = Annotation.objects.filter(analysis__in=df['ANALYSIS'].unique()).values_list('pk', flat=True)
 
-    target_ids = anno.loc[anno['TARGET'].isin(df['TARGET'].unique()), 'id']
-
     edge_data = pd.DataFrame(
         EdgeData.objects.filter(
             tf_id__in=tf_ids
@@ -269,7 +267,7 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
         columns=['source', 'target', 'edge_id']
     )
 
-    edge_data = edge_data.loc[edge_data['target'].isin(target_ids), :]
+    edge_data = edge_data.loc[edge_data['target'].isin(df['id']), :]
 
     edge_data = (edge_data
                  .merge(edge_types[['edge_id', 'edge']], on='edge_id')
@@ -290,14 +288,13 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
 
         edge_data = edge_data.reset_index()
 
-        edge_data = edge_data.merge(anno, left_on='source', right_on='id').merge(anno, left_on='target',
-                                                                                 right_on='id')
-        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
-        edge_data.columns = ['TF', 'TARGET', 'ADD_EDGES']
+        edge_data = edge_data.merge(anno, left_on='source', right_on='id')
+        edge_data = edge_data[['TARGET', 'target', 'edge']]
+        edge_data.columns = ['TF', 'id', 'ADD_EDGES']
 
         if 'TF' in df:
-            return df.merge(edge_data, on=['TF', 'TARGET'], how='left')
-        return df.merge(edge_data.drop('TF', axis=1), on='TARGET', how='left')
+            return df.merge(edge_data, on=['TF', 'id'], how='left')
+        return df.merge(edge_data.drop('TF', axis=1), on='id', how='left')
 
     raise ValueError("No Edge Data")
 
@@ -342,7 +339,6 @@ def get_tf_data(query: str,
 
         if not reg.empty:
             df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
-            df = df.drop('id', axis=1)
             df.loc[df['ANALYSIS'].isin(reg['ANALYSIS']), 'EDGE'] = np.nan
 
         if edges:
@@ -350,6 +346,8 @@ def get_tf_data(query: str,
                 df = add_edges(df, edges)
             except ValueError:
                 pass
+
+        df = df.drop('id', axis=1)
 
         df = (df.pivot(index='TARGET', columns='ANALYSIS')
               .swaplevel(0, 1, axis=1)
@@ -424,7 +422,6 @@ def get_all_tf(query: str,
         reg = regulation_task.result()
 
     df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
-    df = df.drop('id', axis=1)
 
     if df.empty:
         raise ValueError("No data in database.")
@@ -434,6 +431,8 @@ def get_all_tf(query: str,
             df = add_edges(df, edges)
         except ValueError:
             pass
+
+    df = df.drop('id', axis=1)
 
     df.insert(3, 'EDGE', np.nan)
     df['EDGE'] = df['EDGE'].where(df['ANALYSIS'].isin(reg['ANALYSIS']), '+')
