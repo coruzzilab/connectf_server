@@ -1,30 +1,38 @@
 import re
+import os
+import shutil
 from itertools import groupby
 from operator import itemgetter
-from typing import List, Sized
-import shutil
+from typing import List, Sized, Union
+from uuid import UUID
 
 import numpy as np
 import pandas as pd
+from django.core.cache import caches
 
-from ..utils.parser import expand_ref_ids
 from ..utils import column_string, data_to_edges
+from ..utils.parser import expand_ref_ids
 
 __all__ = ('create_export_zip',)
 
+cache = caches['file']
 
-def create_export_zip(cache_dir, out_dir):
-    df = pd.read_pickle(cache_dir + '/tabular_output.pickle.gz')
+
+def create_export_zip(uid: Union[str, UUID], out_dir):
+    cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/query'])
+    df = cached_data[f'{uid}/tabular_output']
     create_sifs(df, out_dir)
     create_all_tf_genelists(df, out_dir)
-    shutil.copy(cache_dir + "/query.txt", out_dir)
-    write_excel(cache_dir, out_dir)
+    with open(os.path.join(out_dir, 'query.txt'), 'w') as f:
+        f.write(cached_data[f'{uid}/query'])
+    write_excel(uid, out_dir)
 
 
-def write_excel(cache_dir, out_dir):
-    with pd.ExcelWriter(out_dir + '/tabular_output.xlsx', engine='xlsxwriter') as writer:
-        data = pd.read_pickle(cache_dir + '/formatted_tabular_output.pickle.gz')
-        metadata = pd.read_pickle(cache_dir + '/metadata.pickle.gz')
+def write_excel(uid: Union[str, UUID], out_dir):
+    with pd.ExcelWriter(os.path.join(out_dir, 'tabular_output.xlsx'), engine='xlsxwriter') as writer:
+        cached_data = cache.get_many([f'{uid}/formatted_tabular_output', f'{uid}/metadata'])
+        data = cached_data[f'{uid}/formatted_tabular_output']
+        metadata = cached_data[f'{uid}/metadata']
         metadata.index.name = None
 
         write_data(data[2], writer)
@@ -162,11 +170,10 @@ def create_sifs(result: pd.DataFrame, output):
     create_filtered_sifs(shared_tfs, output + '/shared_tfs.sif', output + '/shared_tfs.tbl')
 
 
-#################################
 # Generate genelists
 def create_all_tf_genelists(result: pd.DataFrame, output):
     group_res = result.groupby(**group_opt)
 
-    with open(output + '/genelists_all_tf.fa', 'w') as f:
+    with open(os.path.join(output, 'genelists_all_tf.fa'), 'w') as f:
         for name, group in group_res:
             f.write('>{}\n{}\n'.format(name, '\n'.join(group.index)))

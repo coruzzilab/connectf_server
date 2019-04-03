@@ -1,16 +1,17 @@
 import warnings
 from collections import OrderedDict
 from itertools import combinations
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
+from uuid import UUID
 
 import pandas as pd
 from scipy.special import comb
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
-from ..models import Analysis
-from ..utils import split_name, clear_data
 from querytgdb.utils import annotations
+from ..models import Analysis
+from ..utils import clear_data, split_name
 
 
 class AnalysisEnrichmentError(ValueError):
@@ -31,9 +32,7 @@ def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, 
     return (analysis.tf.gene_name_symbol, *split_col_name(col_name)[1:])
 
 
-def analysis_enrichment(cache_path, size_limit: int = 100, raise_warning: bool = False) -> Dict:
-    df = pd.read_pickle(cache_path)
-
+def analysis_enrichment(df: pd.DataFrame, size_limit: int = 100, raise_warning: bool = False) -> Dict:
     df = clear_data(df)
 
     if df.shape[1] < 2:

@@ -1,17 +1,16 @@
 import logging
-import os
 import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from operator import itemgetter
-from threading import Thread
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import numpy as np
 import pandas as pd
 import pyparsing as pp
+from django.core.cache import caches
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
 
@@ -22,6 +21,7 @@ from ..utils import clear_data
 __all__ = ['get_query_result', 'expand_ref_ids']
 
 logger = logging.getLogger(__name__)
+cache = caches['file']
 
 
 class QueryError(ValueError):
@@ -648,15 +648,16 @@ def induce_repress_count(s: pd.Series) -> pd.Series:
 
 
 def get_query_result(query: str,
+                     uid: Optional[Union[str, UUID]] = None,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
-                     cache_path: Optional[str] = None,
-                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, List[Thread]]:
+                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, str]:
     """
     Get query result from query string or cache
 
     :param query:
+    :param uid:
     :param user_lists:
     :param tf_filter_list:
     :param edges:
@@ -664,7 +665,8 @@ def get_query_result(query: str,
     :param size_limit:
     :return:
     """
-    tasks = []
+    if uid is None:
+        uid = uuid4()
 
     result = parse_query(query, edges, tf_filter_list)
     metadata = get_metadata(result.columns.get_level_values(1))
@@ -673,11 +675,7 @@ def get_query_result(query: str,
         'total': get_total(result)
     }
 
-    if cache_path:
-        t = Thread(target=result.to_pickle, args=(cache_path + '/tabular_output_unfiltered.pickle.gz',))
-        tasks.append(t)
-        t.start()
-        # result.to_pickle(cache_path + '/tabular_output_unfiltered.pickle.gz')
+    cache.set(f'{uid}/tabular_output_unfiltered', result)
 
     if user_lists is not None:
         result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
@@ -692,19 +690,8 @@ def get_query_result(query: str,
 
     stats['induce_repress_count'] = result.loc[:, (slice(None), slice(None), ['Log2FC'])].apply(induce_repress_count)
 
-    if cache_path is not None:  # cache here
-        if user_lists is not None:
-            t = Thread(target=result.to_pickle, args=(cache_path + '/tabular_output.pickle.gz',))
-            tasks.append(t)
-            t.start()
-            # result.to_pickle(cache_path + '/tabular_output.pickle.gz')
-        else:
-            os.symlink(
-                cache_path + '/tabular_output_unfiltered.pickle.gz',
-                cache_path + '/tabular_output.pickle.gz'
-            )
-        Thread(target=metadata.to_pickle, args=(cache_path + '/metadata.pickle.gz',)).start()
-        # metadata.to_pickle(cache_path + '/metadata.pickle.gz')
+    cache.set_many({f'{uid}/tabular_output': result,
+                    f'{uid}/metadata': metadata})
 
     logger.info(f"Unfiltered Dataframe size: {result.size}")
 
@@ -731,4 +718,4 @@ def get_query_result(query: str,
     logger.info(f"Dataframe size: {result.size}")
 
     # return statistics here as well
-    return result, metadata, stats, tasks
+    return result, metadata, stats, uid

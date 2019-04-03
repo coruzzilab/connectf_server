@@ -15,11 +15,12 @@ from functools import wraps
 from operator import methodcaller
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, IO, List, Optional, Set, Sized, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, IO, Optional, Set, Sized, Tuple, TypeVar, Union
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
+from django.core.cache import caches
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
 from django.http import FileResponse
@@ -30,6 +31,7 @@ from querytgdb.models import Annotation
 from ..models import AnalysisData
 
 logger = logging.getLogger(__name__)
+cache = caches['file']
 
 T = TypeVar('T')
 
@@ -95,51 +97,6 @@ def cache_result(obj: Any, cache_name: Union[str, Path], mode: str = 'wb') -> Un
             pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
 
     return cache_name
-
-
-def read_cached_result(cache_name: Union[str, List[str]], mode: str = 'rb') -> Union[T, IO]:
-    """
-    Read cached file
-
-    Returns pickled object if possible.
-    :param cache_name:
-    :param mode:
-    :return:
-    """
-    try:
-        cache = open_file(cache_name, mode)
-
-        try:
-            with closing(cache) as c:
-                return pickle.load(c)
-        except pickle.UnpicklingError:
-            return open_file(cache_name, mode)
-    except TypeError:
-        for p in cache_name:
-            try:
-                return read_cached_result(p, mode)
-            except FileNotFoundError:
-                pass
-
-        raise FileNotFoundError(f"file not in paths: {', '.join(cache_name)}")
-
-
-def cache_view(func: Callable[..., T], cache_path: str, dummy_cache: bool = False) -> T:
-    """
-    read results from cache if possible
-    :param func:
-    :param cache_path:
-    :param dummy_cache:
-    :return:
-    """
-    try:
-        result = read_cached_result(cache_path)
-    except FileNotFoundError:
-        result = func()
-        if not dummy_cache:
-            Thread(target=cache_result, args=(result, cache_path)).start()
-
-    return result
 
 
 def convert_float(s) -> Optional[float]:
@@ -285,21 +242,6 @@ def get_size(func: Callable[..., Sized]) -> Callable[..., Sized]:
         logger.info(f"{func.__name__} len: {len(result)} size: {sys.getsizeof(result)}")
 
         return result
-
-    return wrapper
-
-
-def read_from_cache(func: Callable[..., T]) -> Callable[..., T]:
-    """
-    read argument from cache file and pass as parameter
-
-    :param func:
-    :return:
-    """
-
-    @wraps(func)
-    def wrapper(*args: str, **kwargs):
-        return func(*map(read_cached_result, args), **kwargs)
 
     return wrapper
 

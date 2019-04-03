@@ -2,14 +2,13 @@ import logging
 import os
 import shutil
 import tempfile
-import time
 import warnings
-from functools import partial
-from threading import Lock, Thread
+from threading import Lock
 from uuid import uuid4
 
 import matplotlib
 from django.conf import settings
+from django.core.cache import caches
 from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
@@ -19,8 +18,8 @@ from django.views.generic import View
 
 from querytgdb.utils.excel import create_export_zip
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
-from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, cache_result, cache_view, \
-    check_annotations, convert_float, metadata_to_dict, read_cached_result, read_from_cache, svg_font_adder
+from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, convert_float, \
+    metadata_to_dict, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
 from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
@@ -32,10 +31,10 @@ from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
 
 logger = logging.getLogger(__name__)
+cache = caches['file']
 
 lock = Lock()
 
-static_storage = FileSystemStorage(settings.QUERY_CACHE)
 gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
 networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
@@ -43,34 +42,29 @@ networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 @method_decorator(csrf_exempt, name='dispatch')
 class QueryView(View):
     def get(self, request, request_id):
-        try:
-            output = static_storage.path(f'{request_id}_pickle')
+        cached_data = cache.get(f'{request_id}/formatted_tabular_output')
+        if cached_data is None:
+            raise Http404('Query not available')
 
-            columns, merged_cells, result_list, metadata = read_cached_result(
-                output + '/formatted_tabular_output.pickle.gz')
+        columns, merged_cells, result_list, metadata = cached_data
 
-            res = {
-                'result': {
-                    'data': result_list,
-                    'mergeCells': merged_cells,
-                    'columns': columns,
-                },
-                'metadata': metadata,
-                'request_id': request_id
-            }
+        res = {
+            'result': {
+                'data': result_list,
+                'mergeCells': merged_cells,
+                'columns': columns,
+            },
+            'metadata': metadata,
+            'request_id': request_id
+        }
 
-            return JsonResponse(res, encoder=PandasJSONEncoder)
-        except FileNotFoundError as e:
-            raise Http404('Query not available') from e
+        return JsonResponse(res, encoder=PandasJSONEncoder)
 
     def post(self, request, *args, **kwargs):
         errors = []
 
         try:
             request_id = str(uuid4())
-
-            output = static_storage.path(f'{request_id}_pickle')
-            os.makedirs(output, exist_ok=True)
 
             file_opts = {}
 
@@ -86,7 +80,7 @@ class QueryView(View):
                     errors.append(f'Genes in Target Genes File not in database: {", ".join(bad_genes)}')
 
                 if not target_networks:
-                    cache_result(user_lists, f'{output}/target_genes.pickle.gz')  # cache the user list here
+                    cache.set(f'{request_id}/target_genes', user_lists)  # cache the user list here
 
                 file_opts["user_lists"] = user_lists
 
@@ -125,28 +119,25 @@ class QueryView(View):
                 if not graph_filter_list.empty:
                     file_opts["tf_filter_list"] = tf_filter_list.drop_duplicates().sort_values()
 
-                cache_result(network, f'{output}/target_network.pickle.gz')
-                cache_result(user_lists, f'{output}/target_genes.pickle.gz')
+                cache.set_many({f'{request_id}/target_network': network,
+                                f'{request_id}/target_genes': user_lists})
 
             edges = request.POST.getlist('edges')
             query = request.POST['query']
 
             # save the query
-            with open(os.path.join(output, 'query.txt'), 'w') as f:
-                f.write(query.strip() + '\n')
-            result, metadata, stats, tasks = get_query_result(query=query,
-                                                              edges=edges,
-                                                              cache_path=output,
-                                                              size_limit=100000000,
-                                                              **file_opts)
+            cache.set(f'{request_id}/query', query.strip() + '\n')
+
+            result, metadata, stats, _uid = get_query_result(query=query,
+                                                             edges=edges,
+                                                             size_limit=50_000_000,
+                                                             uid=request_id,
+                                                             **file_opts)
 
             metadata = metadata_to_dict(metadata)
             columns, merged_cells, result_list = format_data(result, stats)
 
-            Thread(target=cache_result,
-                   args=((columns, merged_cells, result_list, metadata),
-                         output + '/formatted_tabular_output.pickle.gz'),
-                   name=f'{request_id}_formatted').start()
+            cache.set(f'{request_id}/formatted_tabular_output', (columns, merged_cells, result_list, metadata))
 
             res = {
                 'result': {
@@ -160,8 +151,7 @@ class QueryView(View):
 
             if errors:
                 res['errors'] = errors
-            for t in tasks:
-                t.join()
+
             return JsonResponse(res, encoder=PandasJSONEncoder)
         except (QueryError, BadFile) as e:
             return HttpResponseBadRequest(e)
@@ -173,28 +163,27 @@ class QueryView(View):
 
 class NetworkAuprView(View):
     def get(self, request, request_id):
-        cache_dir = static_storage.path(f'{request_id}_pickle')
-
         precision = convert_float(request.GET.get('precision'))
 
         try:
             with lock, warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning,
                                         module="matplotlib.figure")
-                result = read_from_cache(get_auc_figure)(
-                    os.path.join(cache_dir, 'target_network.pickle.gz'),
-                    os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'),
-                    precision_cutoff=precision,
-                    cache_path=cache_dir)
+
+                cached_data = cache.get_many([f'{request_id}/target_network',
+                                              f'{request_id}/tabular_output_unfiltered'])
+
+                result = get_auc_figure(cached_data[f'{request_id}/target_network'],
+                                        cached_data[f'{request_id}/tabular_output_unfiltered'],
+                                        request_id,
+                                        precision_cutoff=precision)
 
                 return GzipFileResponse(result, content_type="image/svg+xml")
-        except FileNotFoundError:
+        except KeyError:
             raise Http404
 
     def head(self, request, request_id):
-        cache_dir = static_storage.path(f'{request_id}_pickle')
-
-        if os.path.exists(os.path.join(cache_dir, 'target_network.pickle.gz')):
+        if cache.get(f'{request_id}/target_network') is not None:
             return HttpResponse()
         raise Http404
 
@@ -202,10 +191,12 @@ class NetworkAuprView(View):
 class NetworkPrunedView(View):
     def get(self, request, request_id, cutoff):
         try:
-            cache_dir = static_storage.path(f'{request_id}_pickle')
-            precision_cutoff = float(cutoff)
+            try:
+                precision_cutoff = float(cutoff)
+            except (ValueError, TypeError):
+                return HttpResponseBadRequest("Invalid precision cutoff")
 
-            pruned = get_pruned_network(cache_dir, precision_cutoff)
+            pruned = get_pruned_network(request_id, precision_cutoff)
 
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename="pruned_network.csv"'
@@ -213,21 +204,27 @@ class NetworkPrunedView(View):
             pruned.to_csv(response, index=False)
 
             return response
-        except (ValueError, TypeError):
-            return HttpResponseBadRequest("Invalid precision cutoff")
-        except FileNotFoundError:
+        except ValueError:
             return HttpResponseNotFound(content_type='text/csv')
 
 
 class StatsView(View):
     def get(self, request, request_id):
         try:
-            cache_dir = static_storage.path(f'{request_id}_pickle/tabular_output.pickle.gz')
-            stats_cache = static_storage.path(f'{request_id}_pickle/stats.pickle.gz')
+            data_cache = f'{request_id}/tabular_output'
+            stats_cache = f'{request_id}/stats'
 
-            info = cache_view(partial(read_from_cache(get_network_stats), cache_dir), stats_cache)
+            stats = cache.get(stats_cache)
 
-            return JsonResponse(info, encoder=PandasJSONEncoder)
+            if stats is None:
+                try:
+                    stats = get_network_stats(cache.get(data_cache))
+                except AttributeError:
+                    raise Http404
+
+                cache.set(stats_cache, stats)
+
+            return JsonResponse(stats, encoder=PandasJSONEncoder)
         except FileNotFoundError:
             raise Http404
 
@@ -238,40 +235,32 @@ class NetworkJSONView(View):
             edges = request.GET.getlist('edges')
             precision = convert_float(request.GET.get('precision'))
 
-            cache_dir = static_storage.path(f'{request_id}_pickle/')
-
-            result = get_network_json(cache_dir, edges=edges, precision_cutoff=precision)
+            result = get_network_json(request_id, edges=edges, precision_cutoff=precision)
 
             return JsonResponse(result, safe=False, encoder=NetworkJSONEncoder)
         except ValueError:
             return HttpResponseBadRequest("Network too large", content_type="application/json")
-        except FileNotFoundError:
+        except KeyError:
             return HttpResponseNotFound(content_type="application/json")
 
 
 class FileExportView(View):
     def get(self, request, request_id):
         try:
-            if not request_id:
-                raise FileNotFoundError
-
-            out_file = static_storage.path("{}.zip".format(request_id))
+            out_file = os.path.join(tempfile.gettempdir(), f'{request_id}.zip')
             if not os.path.exists(out_file):
-                cache_folder = static_storage.path("{}_pickle".format(request_id))
-                out_file_prefix = static_storage.path(request_id)
 
-                temp_folder = tempfile.mkdtemp()
-
-                create_export_zip(cache_folder, temp_folder)
-                shutil.make_archive(out_file_prefix, 'zip', temp_folder)  # create a zip file for output directory
-                shutil.rmtree(temp_folder, ignore_errors=True)  # delete the output directory after creating zip file
+                with tempfile.TemporaryDirectory() as temp_folder:
+                    create_export_zip(request_id, temp_folder)
+                    shutil.make_archive(os.path.splitext(out_file)[0], 'zip', temp_folder,
+                                        logger=logger)  # create a zip file for output directory
 
             return FileResponse(open(out_file, 'rb'),
                                 content_type='application/zip',
                                 as_attachment=True,
                                 filename='query.zip')
 
-        except FileNotFoundError:
+        except KeyError:
             return HttpResponseNotFound(content_type='application/zip')
 
 
@@ -281,10 +270,8 @@ class ListEnrichmentSVGView(View):
             upper = convert_float(request.GET.get('upper'))
             lower = convert_float(request.GET.get('lower'))
 
-            cache_path = static_storage.path("{}_pickle".format(request_id))
-
             buff = gene_list_enrichment(
-                cache_path,
+                request_id,
                 draw=True,
                 lower=lower,
                 upper=upper
@@ -292,36 +279,35 @@ class ListEnrichmentSVGView(View):
             svg_font_adder(buff)
 
             return FileResponse(buff, content_type='image/svg+xml')
-        except (FileNotFoundError, ValueError) as e:
+        except ValueError as e:
             return HttpResponseNotFound(content_type='image/svg+xml')
 
 
 class ListEnrichmentLegendView(View):
     def get(self, request, request_id):
         try:
-            cache_path = static_storage.path("{}_pickle".format(request_id))
+            result = cache.get(f'{request_id}/list_enrichment_legend')
 
-            result = cache_view(
-                partial(gene_list_enrichment, cache_path, legend=True),
-                cache_path + '/list_enrichment_legend.pickle.gz'
-            )
+            if result is None:
+                result = gene_list_enrichment(request_id, legend=True)
+                cache.set(f'{request_id}/list_enrichment_legend', result)
+
             return JsonResponse(result, safe=False, encoder=PandasJSONEncoder)
-        except FileNotFoundError as e:
+        except ValueError as e:
             raise Http404 from e
 
 
 class ListEnrichmentTableView(View):
     def get(self, request, request_id):
         try:
-            pickledir = static_storage.path("{}_pickle".format(request_id))
+            result = cache.get(f'{request_id}/list_enrichment')
 
-            result = cache_view(
-                partial(gene_list_enrichment_json, pickledir),
-                pickledir + '/list_enrichment.pickle.gz'
-            )
+            if result is None:
+                result = gene_list_enrichment_json(request_id)
+                cache.set(f'{request_id}/list_enrichment', result)
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
-        except (FileNotFoundError, ValueError) as e:
+        except ValueError as e:
             raise Http404 from e
 
 
@@ -337,14 +323,9 @@ class MotifEnrichmentJSONView(View):
                     alpha = 0.05
                 regions = request.GET.getlist('regions')
 
-                cache_path = static_storage.path("{}_pickle/".format(request_id))
-
-                if not os.path.exists(os.path.join(cache_path, 'tabular_output.pickle.gz')):
-                    time.sleep(3)
-
                 return JsonResponse(
                     get_motif_enrichment_json(
-                        cache_path,
+                        request_id,
                         regions,
                         alpha=alpha),
                     encoder=PandasJSONEncoder)
@@ -368,13 +349,8 @@ class MotifEnrichmentHeatmapView(View):
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
 
-                cache_path = static_storage.path("{}_pickle/".format(request_id))
-
-                if not os.path.exists(os.path.join(cache_path, 'tabular_output.pickle.gz')):
-                    time.sleep(3)
-
                 buff = get_motif_enrichment_heatmap(
-                    cache_path,
+                    request_id,
                     regions,
                     upper_bound=upper,
                     lower_bound=lower,
@@ -390,24 +366,14 @@ class MotifEnrichmentHeatmapView(View):
 
 class MotifEnrichmentHeatmapTableView(View):
     def get(self, request, request_id):
-        if not request_id:
-            raise Http404
-
-        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
-        target_genes = static_storage.path(f"{request_id}_pickle/target_genes.pickle.gz")
-
-        if not os.path.exists(cache_path):
-            time.sleep(3)
-
         try:
             return JsonResponse(
                 list(get_motif_enrichment_heatmap_table(
-                    cache_path,
-                    target_genes
+                    request_id
                 )),
                 safe=False
             )
-        except FileNotFoundError:
+        except KeyError:
             raise Http404
 
 
@@ -429,27 +395,33 @@ class MotifEnrichmentRegions(View):
 
 class AnalysisEnrichmentView(View):
     def get(self, request, request_id):
-        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
-        analysis_cache = static_storage.path(f"{request_id}_pickle/analysis_enrichment.pickle.gz")
-
         try:
-            result = cache_view(partial(analysis_enrichment, cache_path), analysis_cache)
+            result = cache.get(f'{request_id}/analysis_enrichment')
+
+            if result is None:
+                df = cache.get(f'{request_id}/tabular_output')
+
+                if df is None:
+                    return HttpResponseNotFound("Please make a new query")
+
+                result = analysis_enrichment(df)
+                cache.set(f'{request_id}/analysis_enrichment', result)
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
-        except FileNotFoundError:
-            return HttpResponseNotFound("Please make a new query")
         except AnalysisEnrichmentError as e:
             return HttpResponseBadRequest(e)
 
 
 class SummaryView(View):
     def get(self, request, request_id):
-        cache_path = static_storage.path(f"{request_id}_pickle/tabular_output.pickle.gz")
-        summary_cache = static_storage.path(f"{request_id}_pickle/summary.pickle.gz")
+        result = cache.get(f'{request_id}/summary')
 
-        try:
-            result = cache_view(partial(read_from_cache(get_summary), cache_path), summary_cache)
+        if result is None:
+            df = cache.get(f"{request_id}/tabular_output")
+            if df is None:
+                return HttpResponseNotFound("Please make a new query")
 
-            return JsonResponse(result, encoder=PandasJSONEncoder)
-        except FileNotFoundError:
-            return HttpResponseNotFound("Please make a new query")
+            result = get_summary(df)
+            cache.set(f'{request_id}/summary', result)
+
+        return JsonResponse(result, encoder=PandasJSONEncoder)

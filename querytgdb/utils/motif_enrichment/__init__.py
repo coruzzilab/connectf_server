@@ -7,10 +7,9 @@ from functools import partial, reduce
 from io import BytesIO
 from itertools import chain, count, cycle, starmap, tee
 from operator import itemgetter, methodcaller, or_
-from pickle import UnpicklingError
 from threading import Thread
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
-import multiprocessing as mp
+from uuid import UUID
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,16 +17,19 @@ import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from django.conf import settings
+from django.core.cache import caches
 from django.core.exceptions import ObjectDoesNotExist
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from querytgdb.utils import annotations, cache_result, clear_data, column_string, read_cached_result, split_name, \
+from querytgdb.utils import annotations, cache_result, clear_data, column_string, split_name, \
     svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import MotifData, Region
 
 sns.set()
+
+cache = caches['file']
 
 MOTIF = MotifData(settings.MOTIF_ANNOTATION)
 
@@ -99,7 +101,7 @@ def get_list_enrichment(gene_list: Iterable[str],
 
 def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
                      regions: Optional[List[str]] = None,
-                     cache_path: Optional[str] = None,
+                     uid: Optional[Union[str, UUID]] = None,
                      alpha: float = 0.05,
                      show_reject: bool = True) -> Tuple[List[str], pd.DataFrame]:
     if not regions:
@@ -109,17 +111,18 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
 
     results: Dict[str, List[pd.Series]] = OrderedDict()
 
+    cached_region = cache.get_many([f'{uid}/{r}_enrich' for r in regions])
+
     for region in regions:
         try:
-            region_enrich = read_cached_result(os.path.join(cache_path, f'{region}_enrich.pickle.gz'))
-        except (FileNotFoundError, UnpicklingError):
+            region_enrich = cached_region[f'{uid}/{region}_enrich']
+        except KeyError:
             region_enrich = list(map(partial(get_list_enrichment,
                                              annotated=getattr(MOTIF, region),
                                              annotated_dedup=getattr(MOTIF, f'{region}_dedup'),
                                              ann_cluster_size=getattr(MOTIF, f'{region}_cluster_size')),
                                      res.values()))
-            Thread(target=cache_result,
-                   args=(region_enrich, os.path.join(cache_path, f'{region}_enrich.pickle.gz'))).start()
+            cache.set(f'{uid}/{region}_enrich', region_enrich)
 
         results[region] = region_enrich
 
@@ -155,16 +158,16 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
     return regions, df
 
 
-def get_analysis_gene_list(cache_path: str) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
-    df = pd.read_pickle(os.path.join(cache_path, 'tabular_output.pickle.gz'))
+def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
+    cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
+    df = cached_data[f'{uid}/tabular_output']
     df = clear_data(df)
     res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
 
     try:
-        with gzip.open(os.path.join(cache_path, 'target_genes.pickle.gz'), 'rb') as f:
-            _, target_lists = pickle.load(f)
-            res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
-    except (FileNotFoundError, TypeError):
+        _, target_lists = cached_data[f'{uid}/target_genes']
+        res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
+    except KeyError:
         pass
 
     return res
@@ -180,11 +183,11 @@ def merge_cluster_info(df):
         yield [info] + row
 
 
-def get_motif_enrichment_json(cache_path: str,
+def get_motif_enrichment_json(uid: Union[str, UUID],
                               regions: Optional[List[str]] = None,
                               alpha: float = 0.05) -> Dict:
-    res = get_analysis_gene_list(cache_path)
-    regions, df = motif_enrichment(res, regions, cache_path, alpha=alpha, show_reject=False)
+    res = get_analysis_gene_list(uid)
+    regions, df = motif_enrichment(res, regions, uid, alpha=alpha, show_reject=False)
 
     analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
 
@@ -232,13 +235,13 @@ def make_motif_enrichment_heatmap_columns(res) -> List[str]:
     return columns
 
 
-def get_motif_enrichment_heatmap(cache_path,
+def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  regions: Optional[List[str]] = None,
                                  alpha=0.05,
                                  lower_bound=None,
                                  upper_bound=None) -> BytesIO:
-    res = get_analysis_gene_list(cache_path)
-    regions, df = motif_enrichment(res, regions, cache_path, alpha=alpha)
+    res = get_analysis_gene_list(uid)
+    regions, df = motif_enrichment(res, regions, uid, alpha=alpha)
 
     df = df.clip(lower=sys.float_info.min)
     df = -np.log10(df)
@@ -290,8 +293,9 @@ def get_motif_enrichment_heatmap(cache_path,
 TableRow = Tuple[Dict, str, str, str, str, str]
 
 
-def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None) -> Generator[TableRow, None, None]:
-    df = pd.read_pickle(cache_path)
+def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[TableRow, None, None]:
+    cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
+    df = cached_data[f'{uid}/tabular_output']
     df = clear_data(df)
 
     analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
@@ -319,14 +323,13 @@ def get_motif_enrichment_heatmap_table(cache_path, target_genes_path=None) -> Ge
         yield (info, col_str, name, criterion, gene_name, analysis_id)
 
     try:
-        with gzip.open(target_genes_path, 'rb') as f:
-            _, target_lists = pickle.load(f)
+        _, target_lists = cached_data[f'{uid}/target_genes']
 
-            name = 'Target Gene List'
+        name = 'Target Gene List'
 
-            yield (
-                {'name': name, 'genes': ", ".join(set(chain.from_iterable(target_lists.values())))},
-                next(col_strings), name, '', '', ''
-            )
-    except (FileNotFoundError, TypeError):
+        yield (
+            {'name': name, 'genes': ", ".join(set(chain.from_iterable(target_lists.values())))},
+            next(col_strings), name, '', '', ''
+        )
+    except KeyError:
         pass

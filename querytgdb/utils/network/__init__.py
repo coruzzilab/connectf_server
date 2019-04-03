@@ -1,22 +1,24 @@
 import gzip
 import math
-import os
 from io import BytesIO
 from operator import itemgetter, methodcaller
 from typing import Any, Dict, Generator, IO, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
+from django.core.cache import caches
 from sklearn.metrics import auc
 
 from querytgdb.utils import annotations
 from ...models import Analysis, Annotation, EdgeData, EdgeType
-from ...utils import cache_result, data_to_edges, get_size, read_cached_result
+from ...utils import data_to_edges, get_size
 from ...utils.network.utils import COLOR, COLOR_SHAPE
+
+cache = caches['file']
 
 GENE_TYPE = annotations()[['Name', 'Type']]
 SIZE = 20
@@ -56,28 +58,31 @@ def group_edge_len(n: int, size: int = SIZE, gap: int = GAP) -> int:
     return n * size + (n - 1) * gap
 
 
-def get_network_json(cache_dir: str,
+def get_network_json(uid: Union[str, UUID],
                      edges: Optional[List[str]] = None,
                      precision_cutoff: Optional[float] = None) -> List[Dict[str, Any]]:
     """
     Get cytoscape network from queried data.
 
-    :param cache_dir:
+    :param uid:
     :param edges:
     :param precision_cutoff:
     :return:
     """
-    network_cache_file = os.path.join(cache_dir, 'network.pickle.gz')
+    network_key = f'{uid}/network'
+    df_key = f'{uid}/tabular_output'
 
-    df = read_cached_result(os.path.join(cache_dir, 'tabular_output.pickle.gz'))
+    cached_data = cache.get_many([df_key, network_key])
+
+    df = cached_data[df_key]
 
     analyses = Analysis.objects.filter(
         pk__in=df.columns.get_level_values(1)
     ).prefetch_related('tf')
 
     try:
-        data, network_table = read_cached_result(network_cache_file)
-    except FileNotFoundError:
+        data, network_table = cached_data[network_key]
+    except KeyError:
         network_table = data_to_edges(df)
 
         def get_tf(idx):
@@ -178,7 +183,7 @@ def get_network_json(cache_dir: str,
                                 }
                             } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
-        cache_result((data, network_table), network_cache_file)
+        cache.set(network_key, (data, network_table))
 
     # additional edges
     if edges:
@@ -239,13 +244,16 @@ def get_network_json(cache_dir: str,
     if precision_cutoff is not None:
         try:
             try:
-                data_cache = os.path.join(cache_dir, 'figure_data.pickle.gz')
-                recall, precision, g = read_cached_result(data_cache)
-            except FileNotFoundError:
-                name, network_data = read_cached_result(f"{cache_dir}/target_network.pickle.gz")
+                recall, precision, g = cache.get(f'{uid}/figure_data')
+            except TypeError:
+                name, network_data = cache.get(f"{uid}/target_network")
                 network_data = network_data.sort_values('rank')
-                df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
-                pred_auc, recall, precision, g = get_prediction_data(df, network_data)[:-1]
+                df_unf = cache.get(f'{uid}/tabular_output_unfiltered')
+
+                if df_unf is None:
+                    raise
+
+                pred_auc, recall, precision, g = get_prediction_data(df_unf, network_data)[:-1]
 
             rank = get_cutoff_info(g, precision, recall, precision_cutoff)[0]
 
@@ -264,7 +272,7 @@ def get_network_json(cache_dir: str,
                         } for s, e, t in
                         g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None,
                                                                                                    index=False))
-        except (ValueError, FileNotFoundError):
+        except (ValueError, TypeError):
             pass
 
     return data
@@ -434,15 +442,17 @@ def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bo
     return aupr, recall, precision, g, []
 
 
-def get_pruned_network(cache_dir: str, cutoff: float) -> pd.DataFrame:
-    name, data = read_cached_result(f"{cache_dir}/target_network.pickle.gz")
+def get_pruned_network(uid: str, cutoff: float) -> pd.DataFrame:
+    name, data = cache.get(f"{uid}/target_network")
     data = data.sort_values('rank')
 
     try:
-        data_cache = os.path.join(cache_dir, 'figure_data.pickle.gz')
-        recall, precision, g = read_cached_result(data_cache)
-    except (FileNotFoundError, TypeError):
-        df = read_cached_result(os.path.join(cache_dir, 'tabular_output_unfiltered.pickle.gz'))
+        recall, precision, g = cache.get(f'{uid}/figure_data')
+    except TypeError:
+        df = cache.get(f'{uid}/tabular_output_unfiltered')
+        if df is None:
+            raise ValueError("Query data not found")
+
         pred_auc, recall, precision, g = get_prediction_data(df, data)[:-1]
 
     rank = get_cutoff_info(g, precision, recall, cutoff)[0]
@@ -462,15 +472,15 @@ row_labels = [
 ]
 
 
-def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precision_cutoff: Optional[float] = None,
-                   cache_path: Optional[str] = None) -> IO:
+def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, uid: Union[str, UUID],
+                   precision_cutoff: Optional[float] = None) -> IO:
     """
     Get AUPR of uploaded predicted network
 
     :param network:
     :param df:
+    :param uid:
     :param precision_cutoff:
-    :param cache_path:
     :return:
     """
     fig: plt.Figure
@@ -484,15 +494,17 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
     name, data = network
     data = data.sort_values('rank')
 
-    try:
-        figure_cache = os.path.join(cache_path, 'figure.pickle.gz')
-        data_cache = os.path.join(cache_path, 'figure_data.pickle.gz')
+    figure_cache = f'{uid}/figure'
+    data_cache = f'{uid}/figure_data'
 
-        fig, gs, cell_text = read_cached_result(figure_cache)
-        recall, precision, g = read_cached_result(data_cache)
+    try:
+        cached_data = cache.get_many([f'{uid}/figure', f'{uid}/figure_data'])
+
+        fig, gs, cell_text = cached_data[figure_cache]
+        recall, precision, g = cached_data[data_cache]
         plt.figure(fig.number)
 
-    except (TypeError, FileNotFoundError) as e:
+    except (TypeError, KeyError) as e:
         pred_auc, recall, precision, g, rand_auc_data = get_prediction_data(df, data, True)
 
         cell_text = [[''] for i in range(8)]
@@ -531,11 +543,8 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, precisio
             [format(p_value, '.3f') if p_value else '<0.001']
         ]
 
-        try:
-            cache_result((fig, gs, cell_text), figure_cache)
-            cache_result((recall, precision, g), data_cache)
-        except NameError:
-            pass
+        cache.set(figure_cache, (fig, gs, cell_text))
+        cache.set(data_cache, (recall, precision, g))
 
     if precision_cutoff is not None:
         cell_text[3][0] = str(precision_cutoff)

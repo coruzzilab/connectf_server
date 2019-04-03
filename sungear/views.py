@@ -1,4 +1,3 @@
-import os.path
 from collections import OrderedDict, defaultdict
 from functools import reduce
 from itertools import groupby
@@ -8,15 +7,14 @@ from uuid import uuid4
 
 import numpy as np
 import pandas as pd
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
+from django.core.cache import caches
 from django.http import Http404, HttpResponse
 from django.views import View
 
 from querytgdb.models import Analysis
 from querytgdb.utils import clear_data
 
-static_storage = FileSystemStorage(settings.QUERY_CACHE)
+cache = caches['file']
 
 
 class SungearException(ValueError):
@@ -33,52 +31,48 @@ def get_vertices(n: int, r: float = 0.4375, center=(0.5, 0.5), start=0) -> np.nd
 # Create your views here.
 class SungearView(View):
     def get(self, request, request_id):
-        try:
-            cache_path = static_storage.path(f"{request_id}_pickle")
+        df = cache.get(f'{request_id}/tabular_output')
+        if df is None:
+            raise Http404
 
-            df = pd.read_pickle(os.path.join(cache_path, 'tabular_output.pickle.gz'))
-            df = clear_data(df)
+        df = clear_data(df)
 
-            if df.shape[1] < 2:
-                raise SungearException("Sungear needs at least 2 analyses.")
+        if df.shape[1] < 2:
+            raise SungearException("Sungear needs at least 2 analyses.")
 
-            analyses = Analysis.objects.filter(
-                pk__in=df.columns.get_level_values(1)
-            ).prefetch_related('analysisdata_set', 'tf')
+        analyses = Analysis.objects.filter(
+            pk__in=df.columns.get_level_values(1)
+        ).prefetch_related('analysisdata_set', 'tf')
 
-            gene_lists = OrderedDict(
-                (analyses.get(pk=name[1]).name, set(col.index[col.notna()])) for name, col in df.iteritems()
-            )
+        gene_lists = OrderedDict(
+            (analyses.get(pk=name[1]).name, set(col.index[col.notna()])) for name, col in df.iteritems()
+        )
 
-            total_genes = reduce(or_, gene_lists.values())
-            gene_to_list: DefaultDict[str, List] = defaultdict(list)
+        total_genes = reduce(or_, gene_lists.values())
+        gene_to_list: DefaultDict[str, List] = defaultdict(list)
 
-            for name, l in gene_lists.items():
-                for g in (total_genes & l):
-                    gene_to_list[g].append(name)
+        for name, l in gene_lists.items():
+            for g in (total_genes & l):
+                gene_to_list[g].append(name)
 
-            num_lists = len(gene_lists)
+        num_lists = len(gene_lists)
 
-            vertices = pd.DataFrame(get_vertices(num_lists))
-            vertices.index = gene_lists.keys()
+        vertices = pd.DataFrame(get_vertices(num_lists))
+        vertices.index = gene_lists.keys()
 
-            print(vertices)
+        print(vertices)
 
-            # if num_lists > 15:
-            #     raise SungearException("Too many analyses (>15)")
+        # if num_lists > 15:
+        #     raise SungearException("Too many analyses (>15)")
 
-            intersects: Dict[str, List] = OrderedDict()
+        intersects: Dict[str, List] = OrderedDict()
 
-            for name, group in groupby(
-                    sorted(((tuple(sorted(v)), k) for k, v in gene_to_list.items()),
-                           key=lambda x: (len(x[0]), x[0], x[1])),
-                    key=itemgetter(0)):
-                uid = str(uuid4())
-                if len(name) > 1:
-                    intersects[uid] = [name, vertices.loc[list(name), :].mean(axis=0), tuple(map(itemgetter(1), group))]
+        for name, group in groupby(
+                sorted(((tuple(sorted(v)), k) for k, v in gene_to_list.items()),
+                       key=lambda x: (len(x[0]), x[0], x[1])),
+                key=itemgetter(0)):
+            uid = str(uuid4())
+            if len(name) > 1:
+                intersects[uid] = [name, vertices.loc[list(name), :].mean(axis=0), tuple(map(itemgetter(1), group))]
 
-            print(intersects)
-
-            return HttpResponse(request_id)
-        except FileNotFoundError as e:
-            raise Http404 from e
+        return HttpResponse(request_id)

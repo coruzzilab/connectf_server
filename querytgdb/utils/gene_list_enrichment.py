@@ -1,14 +1,15 @@
 import io
 import sys
 from itertools import count, product
-from typing import Any, Dict, Optional
-from uuid import uuid4
+from typing import Any, Dict, Optional, Union
+from uuid import UUID, uuid4
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
+from django.core.cache import caches
 from scipy.stats import fisher_exact
 
 from querytgdb.utils import annotations
@@ -16,6 +17,8 @@ from ..models import Analysis
 from ..utils import clear_data, column_string, split_name
 
 sns.set()
+
+cache = caches['file']
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -48,12 +51,12 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
     return sns_heatmap
 
 
-def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True, legend=False,
+def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None, draw=True, legend=False,
                          upper=None, lower=None):
     """
     Draws gene list enrichment heatmap from cached query
 
-    :param pickledir:
+    :param uid:
     :param background:
     :param draw:
     :param legend:
@@ -62,18 +65,23 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
     :return:
     """
     # raising exception here if target genes are not uploaded by the user
+    cached_data = cache.get_many([f'{uid}/target_genes', f'{uid}/tabular_output_unfiltered'])
+
     try:
-        name_to_list, list_to_name = pd.read_pickle(pickledir + '/target_genes.pickle.gz')
-    except FileNotFoundError as e:
-        raise FileNotFoundError('No target genes uploaded') from e
+        name_to_list, list_to_name = cached_data[f'{uid}/target_genes']
+    except KeyError as e:
+        raise ValueError('No target genes uploaded') from e
+
+    try:
+        query_result = cached_data[f'{uid}/tabular_output_unfiltered']
+    except KeyError as e:
+        raise ValueError('Query result unavailable') from e
 
     if background is None:
         if not annotations().empty:
             background = annotations().shape[0]
         else:
             background = 28775
-
-    query_result = pd.read_pickle(pickledir + '/tabular_output_unfiltered.pickle.gz')
 
     # default background:
     # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
@@ -116,7 +124,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
 
         indices = []
 
-        for (name, criterion, analysis_id, l, uid), col_name in orig_index:
+        for (name, criterion, analysis_id, l, _uid), col_name in orig_index:
             tf = analyses.get(pk=analysis_id).tf
             indices.append('{} — {}{} ({})'.format(col_name, tf.gene_id, ' ' + tf.name if tf.name else '', l))
 
@@ -126,7 +134,7 @@ def gene_list_enrichment(pickledir, background: Optional[int] = None, draw=True,
             result = []
 
             for idx, col_label in orig_index:
-                name, criterion, analysis_id, l, uid = idx
+                name, criterion, analysis_id, l, _uid = idx
 
                 info = {'name': name, 'filter': criterion}
                 analysis = analyses.get(pk=analysis_id)
