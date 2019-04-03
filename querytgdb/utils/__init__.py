@@ -221,19 +221,20 @@ def split_name(name: str) -> Tuple[str, str]:
     return name, criterion
 
 
-def clear_data(df: pd.DataFrame) -> pd.DataFrame:
+def clear_data(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
     """
     Remove unneeded columns when doing later calculations
     :param df:
     :return:
     """
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
-    df.columns = df.columns.droplevel(2)
+    if drop:
+        df.columns = df.columns.droplevel(2)
 
     return df
 
 
-def data_to_edges(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
+def data_to_edges(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert EDGE and Log2FC to respective edge_type
     :param df:
@@ -264,8 +265,7 @@ def data_to_edges(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
 
     df = df.apply(set_edge_name)
 
-    if drop:
-        df.columns = df.columns.droplevel(2)
+    df.columns = df.columns.droplevel(2)
 
     return df
 
