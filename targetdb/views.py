@@ -5,7 +5,9 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db.models import F
 from django.http import JsonResponse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeType, MetaKey
 
@@ -23,6 +25,7 @@ def check_regulation(instance: Analysis):
 
 
 class TFView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request, *args, **kwargs):
         all_genes = request.GET.get('all', '1')
 
@@ -46,11 +49,13 @@ class TFView(View):
 
 
 class EdgeListView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request, *args, **kwargs):
         return JsonResponse(list(EdgeType.objects.values_list("name", flat=True)), safe=False)
 
 
 class InterestingListsView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request, *args, **kwargs):
         try:
             directories, files = gene_lists_storage.listdir('./')
@@ -61,6 +66,7 @@ class InterestingListsView(View):
 
 
 class InterestingNetworksView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request, *args, **kwargs):
         try:
             directories, files = networks_storage.listdir('./')
@@ -71,6 +77,7 @@ class InterestingNetworksView(View):
 
 
 class KeyView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request):
         tfs = set(request.GET.getlist('tf'))
 
@@ -101,6 +108,7 @@ class KeyView(View):
 
 
 class ValueView(View):
+    @method_decorator(ensure_csrf_cookie)
     def get(self, request, key: str) -> JsonResponse:
         tfs = set(request.GET.getlist('tf'))
 

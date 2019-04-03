@@ -12,8 +12,6 @@ from django.core.cache import caches
 from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 
 from querytgdb.utils.excel import create_export_zip
@@ -39,7 +37,6 @@ gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
 networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class QueryView(View):
     def get(self, request, request_id):
         cached_data = cache.get(f'{request_id}/formatted_tabular_output')

@@ -1,8 +1,7 @@
 import warnings
 from collections import OrderedDict
 from itertools import combinations
-from typing import Dict, Tuple, Union
-from uuid import UUID
+from typing import Dict, Tuple
 
 import pandas as pd
 from scipy.special import comb
