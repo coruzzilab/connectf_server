@@ -1,6 +1,5 @@
-import re
 import os
-import shutil
+import re
 from itertools import groupby
 from operator import itemgetter
 from typing import List, Sized, Union
@@ -8,14 +7,12 @@ from uuid import UUID
 
 import numpy as np
 import pandas as pd
-from django.core.cache import caches
+from django.core.cache import cache
 
 from ..utils import column_string, data_to_edges
 from ..utils.parser import expand_ref_ids
 
 __all__ = ('create_export_zip',)
-
-cache = caches['file']
 
 
 def create_export_zip(uid: Union[str, UUID], out_dir):

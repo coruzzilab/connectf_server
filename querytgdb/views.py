@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import matplotlib
 from django.conf import settings
-from django.core.cache import caches
+from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
@@ -29,7 +29,6 @@ from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
 
 logger = logging.getLogger(__name__)
-cache = caches['file']
 
 lock = Lock()
 
@@ -153,7 +152,7 @@ class QueryView(View):
         except (QueryError, BadFile) as e:
             return HttpResponseBadRequest(e)
         except ValueError as e:
-            raise Http404('Query not available') from e
+            raise Http404(f'Query not available: {e}') from e
         except MultiValueDictKeyError:
             return HttpResponseBadRequest("Problem with query.")
 
@@ -276,7 +275,7 @@ class ListEnrichmentSVGView(View):
             svg_font_adder(buff)
 
             return FileResponse(buff, content_type='image/svg+xml')
-        except ValueError as e:
+        except ValueError:
             return HttpResponseNotFound(content_type='image/svg+xml')
 
 
@@ -305,7 +304,7 @@ class ListEnrichmentTableView(View):
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
         except ValueError as e:
-            raise Http404 from e
+            raise Http404(e) from e
 
 
 class MotifEnrichmentJSONView(View):

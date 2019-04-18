@@ -124,14 +124,17 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
     for i, col in enumerate(islice(zip(*columns), data_col_len, None)):
         j = i + data_col_len
         try:
-            if col[1] != prev[1]:
+            if col[0:2] != prev[0:2]:
                 name, _, uuid_ = col[0].rpartition(' ')
                 name = name or uuid_
                 analysis = analyses[col[1]]
 
                 tf = analysis.tf
                 if tf.name:
-                    name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id}\n({0.name})\n".format(tf), name, re.I)
+                    name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id}\n({0.name})\n".format(tf), name, 1, re.I)
+                else:
+                    name = re.sub(r'^' + re.escape(tf.gene_id), tf.gene_id, name, 1, re.I)
+
                 tech = get_tech(analysis)
                 method = get_analysis_method(analysis)
 

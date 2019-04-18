@@ -1,6 +1,7 @@
 import io
 import sys
 from itertools import count, product
+from operator import itemgetter
 from typing import Any, Dict, Optional, Union
 from uuid import UUID, uuid4
 
@@ -9,7 +10,7 @@ import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
-from django.core.cache import caches
+from django.core.cache import cache
 from scipy.stats import fisher_exact
 
 from querytgdb.utils import annotations
@@ -17,8 +18,6 @@ from ..models import Analysis
 from ..utils import clear_data, column_string, split_name
 
 sns.set()
-
-cache = caches['file']
 
 
 def scale_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -105,6 +104,8 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
     if not legend:
+        list_enrichment_count = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.int_)
+
         colnames = {}
 
         for (analysis_name, analysis_list), (name, user_list) in product(targets.items(), list_to_name.items()):
@@ -116,8 +117,13 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
                 [len(analysis_list - user_list), background - len(user_list | analysis_list)]
             ], alternative='greater')
             list_enrichment_pvals.at[analysis_name, name] = pvalue
+            list_enrichment_count.at[analysis_name, name] = intersect_len
 
-        list_enrichment_pvals.rename(columns=colnames, inplace=True)
+        list_enrichment_pvals = list_enrichment_pvals.rename(columns=colnames)
+        list_enrichment_count = list_enrichment_count.rename(columns=colnames)
+
+        if not draw:
+            return list_enrichment_pvals, list_enrichment_count
 
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
@@ -164,22 +170,21 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
 
             return buff
 
-    return list_enrichment_pvals
 
-
-def gene_list_enrichment_json(pickledir) -> Dict[str, Any]:
-    df = gene_list_enrichment(
-        pickledir,
-        draw=False
+def gene_list_enrichment_json(uid) -> Dict[str, Any]:
+    data, counts = gene_list_enrichment(
+        uid,
+        draw=False,
+        legend=False
     )
-    names, criteria, analysis_ids, ls, uids = zip(*df.index)
-    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set',
-                                                                             'analysisdata_set__key',
-                                                                             'tf')
+    analyses = Analysis.objects.filter(pk__in=map(itemgetter(2), data.index)).prefetch_related('analysisdata_set',
+                                                                                               'analysisdata_set__key',
+                                                                                               'tf')
 
     result = []
 
-    for (name, criterion, analysis_id, l, uid), *row in df.itertuples(name=None):
+    for ((name, criterion, analysis_id, l, uid), *row), count_row in zip(data.itertuples(name=None),
+                                                                         counts.itertuples(name=None, index=False)):
         info = {'filter': criterion, 'targets': l}
         try:
             analysis = analyses.get(pk=analysis_id)
@@ -188,9 +193,11 @@ def gene_list_enrichment_json(pickledir) -> Dict[str, Any]:
         except Analysis.DoesNotExist:
             pass
 
-        result.append([info] + row)
+        result.append({'info': info,
+                       'p-value': row,
+                       'count': count_row})
 
     return {
-        'columns': df.columns,
+        'columns': data.columns,
         'result': result
     }

@@ -3,13 +3,10 @@ import io
 import json
 import os
 import secrets
-import shutil
 from glob import iglob
 
 import pandas as pd
-from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.files.storage import FileSystemStorage
 from django.test import TestCase
 from django.urls import reverse
 
@@ -69,9 +66,6 @@ class TestImportData(TestCase):
             self.assertTrue(analysis.regulation_set.exists(), "should have p-value and fold change data")
 
 
-static_storage = FileSystemStorage(settings.QUERY_CACHE)
-
-
 class TestQuery(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -102,23 +96,6 @@ class TestQuery(TestCase):
 
         self.assertIn('request_id', result, "has request_id")
 
-        cache_path = static_storage.path(f"{result['request_id']}_pickle")
-
-        self.assertTrue(os.path.exists(cache_path))
-
-        with self.subTest("all files have data"):
-            cache_files = [
-                'formatted_tabular_output.pickle.gz',
-                'metadata.pickle.gz',
-                'query.txt',
-                'tabular_output.pickle.gz',
-                'tabular_output_unfiltered.pickle.gz',
-            ]
-            for f in cache_files:
-                self.assertGreater(os.path.getsize(os.path.join(cache_path, f)), 0, f"{f} should have data")
-
-        shutil.rmtree(cache_path)
-
     def test_cached_query(self):
         """
         Test if cached query is used
@@ -133,8 +110,6 @@ class TestQuery(TestCase):
         response = self.client.get(reverse("queryapp:queryapp") + request_id + "/")
 
         self.assertEqual(response.status_code, 200)
-
-        shutil.rmtree(static_storage.path(f"{request_id}_pickle"))
 
 
 class TestNetworkParsing(TestCase):

@@ -7,14 +7,12 @@ from uuid import uuid4
 
 import numpy as np
 import pandas as pd
-from django.core.cache import caches
+from django.core.cache import cache
 from django.http import Http404, HttpResponse
 from django.views import View
 
 from querytgdb.models import Analysis
 from querytgdb.utils import clear_data
-
-cache = caches['file']
 
 
 class SungearException(ValueError):

@@ -1,26 +1,19 @@
 import base64
-import gzip
 import io
 import logging
 import math
-import mimetypes
-import pickle
 import pkgutil
 import re
-import shutil
 import sys
 import warnings
-from contextlib import closing
 from functools import wraps
 from operator import methodcaller
-from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, IO, Optional, Set, Sized, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, Set, Sized, Tuple, TypeVar
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
-from django.core.cache import caches
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
 from django.http import FileResponse
@@ -31,7 +24,6 @@ from querytgdb.models import Annotation
 from ..models import AnalysisData
 
 logger = logging.getLogger(__name__)
-cache = caches['file']
 
 T = TypeVar('T')
 
@@ -67,36 +59,6 @@ class GzipFileResponse(FileResponse):
     def __init__(self, *args, as_attachment=False, filename='', **kwargs):
         super().__init__(*args, as_attachment=as_attachment, filename=filename, **kwargs)
         self['Content-Encoding'] = 'gzip'
-
-
-def open_file(path, mode: str) -> IO:
-    encoding = mimetypes.guess_type(path)[1]
-    if encoding == 'gzip':
-        cache = gzip.open(path, mode)
-    else:
-        cache = open(path, mode)
-
-    return cache
-
-
-def cache_result(obj: Any, cache_name: Union[str, Path], mode: str = 'wb') -> Union[str, Path]:
-    """
-    Caches object as gzipped picked
-    :param obj:
-    :param cache_name:
-    :param mode:
-    :return:
-    """
-    cache = open_file(cache_name, mode)
-
-    with closing(cache) as c:
-        try:
-            shutil.copyfileobj(obj, c)
-            obj.seek(0)
-        except AttributeError:
-            pickle.dump(obj, c, protocol=pickle.HIGHEST_PROTOCOL)
-
-    return cache_name
 
 
 def convert_float(s) -> Optional[float]:
@@ -195,8 +157,6 @@ def data_to_edges(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert EDGE and Log2FC to respective edge_type
     :param df:
-    :param analyses:
-    :param drop:
     :return:
     """
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
@@ -212,8 +172,10 @@ def data_to_edges(df: pd.DataFrame) -> pd.DataFrame:
         except KeyError:
             edge_type = 'edge'
 
+        c = pd.Series(index=s.index, dtype=str)
+
         if s.name[2] == 'Log2FC':
-            c = s.mask(s >= 0, edge_type + ':INDUCED')
+            c = c.mask(s >= 0, edge_type + ':INDUCED')
             c = c.mask(s < 0, edge_type + ':REPRESSED')
 
             return c

@@ -4,13 +4,13 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from operator import itemgetter
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import UUID, uuid4
 
 import numpy as np
 import pandas as pd
 import pyparsing as pp
-from django.core.cache import caches
+from django.core.cache import cache, caches
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
 
@@ -21,7 +21,8 @@ from ..utils import clear_data
 __all__ = ['get_query_result', 'expand_ref_ids']
 
 logger = logging.getLogger(__name__)
-cache = caches['file']
+
+mem_cache = caches['mem']
 
 
 class QueryError(ValueError):
@@ -110,6 +111,9 @@ def query_metadata(df: TargetFrame, key: str, value: str) -> pd.DataFrame:
         (Q(analysisdata__key__name__iexact=key) & Q(analysisdata__value__iexact=value))
     ).values_list('id', flat=True)
 
+    if not ref_ids:
+        return pd.DataFrame(False, columns=df.columns, index=df.index)
+
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
     mask.loc[:, ~df.columns.get_level_values(1).isin(ref_ids)] = False
@@ -122,26 +126,27 @@ def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str
     apply Pvalue and Log2FC (fold change)
     """
     value = float(value)
+    try:
+        c = df[(*df.name, key)]
+    except KeyError:
+        return pd.DataFrame(False, columns=df.columns, index=df.index)
+
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
-    try:
-        if oper == '=':
-            return mask.where(df[(*df.name, key)] == value, False)
-        elif oper == '>=':
-            return mask.where(df[(*df.name, key)] >= value, False)
-        elif oper == '<=':
-            return mask.where(df[(*df.name, key)] <= value, False)
-        elif oper == '>':
-            return mask.where(df[(*df.name, key)] > value, False)
-        elif oper == '<':
-            return mask.where(df[(*df.name, key)] < value, False)
-        elif oper == '!=':
-            return mask.where(df[(*df.name, key)] != value, False)
-        else:
-            raise ValueError('invalid operator: {}'.format(oper))
-    except KeyError:
-        mask.loc[:, :] = False
-        return mask
+    if oper == '=':
+        return mask.where(c == value, False)
+    elif oper == '>=':
+        return mask.where(c >= value, False)
+    elif oper == '<=':
+        return mask.where(c <= value, False)
+    elif oper == '>':
+        return mask.where(c > value, False)
+    elif oper == '<':
+        return mask.where(c < value, False)
+    elif oper == '!=':
+        return mask.where(c != value, False)
+    else:
+        raise ValueError('invalid operator: {}'.format(oper))
 
 
 def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
@@ -200,7 +205,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
     if isinstance(query, pp.ParseResults):
         if 'key' not in query:
             it = iter(query)
-            stack = deque()
+            stack: Deque[Union[pp.ParseResults, pd.DataFrame]] = deque()
 
             try:
                 while True:
@@ -234,9 +239,9 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
                                                               analyses=analyses,
                                                               anno_ids=anno_ids,
                                                               value=value)
-            elif re.match(r'^has_column$', key, flags=re.I):
-                value = value.upper()
-                return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
+            # elif re.match(r'^has_column$', key, flags=re.I):
+            #     value = value.upper()
+            #     return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
             else:
                 return query_metadata(df, key, value)
     return query
@@ -274,29 +279,29 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
                  .drop('edge_id', axis=1)
                  .set_index(['source', 'target']))
 
-    if not edge_data.empty:
-        edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
+    if edge_data.empty:
+        raise ValueError("No Edge Data")
 
-        row_num, col_num = edge_data.shape
+    edge_data = pd.concat(map(itemgetter(1), edge_data.groupby('edge')), axis=1)
 
-        if col_num > 1:
-            edge_data = edge_data.iloc[:, 0].str.cat(
-                map(itemgetter(1), edge_data.iloc[:, 1:].iteritems()),
-                sep=',', na_rep='', join='inner').str.strip(',')
-        else:
-            edge_data = edge_data.fillna('')
+    row_num, col_num = edge_data.shape
 
-        edge_data = edge_data.reset_index()
+    if col_num > 1:
+        edge_data = edge_data.iloc[:, 0].str.cat(
+            map(itemgetter(1), edge_data.iloc[:, 1:].iteritems()),
+            sep=',', na_rep='', join='inner').str.strip(',')
+    else:
+        edge_data = edge_data.fillna('')
 
-        edge_data = edge_data.merge(anno, left_on='source', right_on='id')
-        edge_data = edge_data[['TARGET', 'target', 'edge']]
-        edge_data.columns = ['TF', 'id', 'ADD_EDGES']
+    edge_data = edge_data.reset_index()
 
-        if 'TF' in df:
-            return df.merge(edge_data, on=['TF', 'id'], how='left')
-        return df.merge(edge_data.drop('TF', axis=1), on='id', how='left')
+    edge_data = edge_data.merge(anno, left_on='source', right_on='id')
+    edge_data = edge_data[['TARGET', 'target', 'edge']]
+    edge_data.columns = ['TF', 'id', 'ADD_EDGES']
 
-    raise ValueError("No Edge Data")
+    if 'TF' in df:
+        return df.merge(edge_data, on=['TF', 'id'], how='left')
+    return df.merge(edge_data.drop('TF', axis=1), on='id', how='left')
 
 
 def get_tf_data(query: str,
@@ -316,6 +321,9 @@ def get_tf_data(query: str,
     if (tf_filter_list is not None and tf_filter_list.str.contains(rf'^{re.escape(query)}$', flags=re.I).any()) \
             or tf_filter_list is None:
         analyses = Analysis.objects.filter(tf__gene_id__iexact=query)
+
+        if not analyses.exists():
+            raise ValueError(f'"{query}" is not in database')
 
         df = TargetFrame(
             Interaction.objects.filter(analysis__in=analyses).values_list(
@@ -339,7 +347,7 @@ def get_tf_data(query: str,
 
         if not reg.empty:
             df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
-            df.loc[df['ANALYSIS'].isin(reg['ANALYSIS']), 'EDGE'] = np.nan
+            df.loc[df['Log2FC'].notna(), 'EDGE'] = np.nan
 
         if edges:
             try:
@@ -355,6 +363,11 @@ def get_tf_data(query: str,
               .dropna(axis=1, how='all'))
     else:
         df = TargetFrame(columns=[(np.nan, 'EDGE')])
+
+    try:
+        query = analyses[0].tf.gene_id
+    except IndexError:
+        query = query.upper()
 
     df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
     df.filter_string += query
@@ -374,18 +387,9 @@ def get_all_analyses(qs):
     return TargetFrame(qs.iterator(), columns=['ANALYSIS', 'TF'])
 
 
-def get_all_tf(query: str,
-               edges: Optional[List[str]] = None,
+def get_all_df(query: str,
                tf_filter_list: Optional[pd.Series] = None,
                target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
-    """
-    Get data for all TFs at once
-    :param query:
-    :param edges:
-    :param tf_filter_list:
-    :param target_filter_list:
-    :return:
-    """
     qs = Interaction.objects.values_list('target_id', 'analysis_id')
     anno = annotations()
 
@@ -423,6 +427,30 @@ def get_all_tf(query: str,
 
     df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
 
+    # additional restrictions here as well
+    if query == 'andalltfs':
+        df = df[df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().all(axis=1)]
+
+    return df
+
+
+def get_all_tf(query: str,
+               edges: Optional[List[str]] = None,
+               tf_filter_list: Optional[pd.Series] = None,
+               target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
+    """
+    Get data for all TFs at once
+    :param query:
+    :param edges:
+    :param tf_filter_list:
+    :param target_filter_list:
+    :return:
+    """
+    if tf_filter_list is None and target_filter_list is None:
+        df = mem_cache.get_or_set(query, partial(get_all_df, query))
+    else:
+        df = get_all_df(query, tf_filter_list, target_filter_list)
+
     if df.empty:
         raise ValueError("No data in database.")
 
@@ -435,7 +463,7 @@ def get_all_tf(query: str,
     df = df.drop('id', axis=1)
 
     df.insert(3, 'EDGE', np.nan)
-    df['EDGE'] = df['EDGE'].where(df['ANALYSIS'].isin(reg['ANALYSIS']), '+')
+    df['EDGE'] = df['EDGE'].where(df['Log2FC'].notna(), '+')
 
     df = (df.set_index(['TF', 'ANALYSIS', 'TARGET'])
           .unstack(level=[0, 1])
@@ -445,15 +473,15 @@ def get_all_tf(query: str,
 
     df.filter_string += query
 
-    # additional restrictions here as well
-    if query == 'andalltfs':
-        df = df[df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().all(axis=1)]
-
     return df
 
 
 def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
     return f' "{prec.filter_string}" {uuid4()}', f' "{succ.filter_string}" {uuid4()}'
+
+
+def rename_suffix(df, names):
+    return df.rename(columns={n: f'{n} "{df.filter_string}" {uuid4()}' for n in names}, level=0)
 
 
 def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
@@ -470,7 +498,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
     """
     if isinstance(query, pp.ParseResults):
         it = iter(query)
-        stack = deque()
+        stack: Deque[Union[pd.DataFrame, str, pp.ParseResults]] = deque()
 
         try:
             while True:
@@ -478,6 +506,9 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                 if curr in ('and', 'or'):
                     prec, succ = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list), \
                                  get_tf(next(it), edges, tf_filter_list, target_filter_list)
+                    uniq_cols = prec.columns.get_level_values(0).intersection(succ.columns.get_level_values(0)).unique()
+                    if uniq_cols.any():
+                        prec, succ = rename_suffix(prec, uniq_cols), rename_suffix(succ, uniq_cols)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
@@ -512,7 +543,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     filter_string += succ.filter_string
 
                     try:
-                        df = df.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
+                        df = df.dropna(axis=1, how='all')
                     except IndexError:
                         # beware of the shape of indices and columns
                         df = TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
@@ -532,7 +563,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
 
                     # filter out empty tfs
                     prec = prec.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
-                    prec.filter_string += '[' + mod_to_str(curr) + ']'
+                    prec.filter_string += f'[{mod_to_str(curr)}]'
 
                     stack.append(prec)
                 else:
@@ -541,11 +572,13 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
             return get_tf(stack.pop(), edges, tf_filter_list, target_filter_list)
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
-    else:
+    elif isinstance(query, str):
         if query.lower() in {'andalltfs', 'oralltfs', 'multitype'}:
             return get_all_tf(query.lower(), edges, tf_filter_list, target_filter_list)
 
         return get_tf_data(query, edges, tf_filter_list, target_filter_list)
+    else:
+        raise ValueError(query)
 
 
 def reorder_data(df: TargetFrame) -> TargetFrame:
@@ -559,8 +592,8 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     analysis_order = edges.count(axis=1, level=1).sum().sort_values(ascending=False)
     tf_order = edges.count(axis=1, level=0).sum().sort_values(ascending=False)
 
-    return (df.reindex(labels=analysis_order.index, axis=1, level=1)
-            .reindex(labels=tf_order.index, axis=1, level=0))
+    return (df.reindex(columns=analysis_order.index, level=1)
+            .reindex(columns=tf_order.index, level=0))
 
 
 def get_metadata(ids: Sequence) -> TargetFrame:
@@ -652,7 +685,7 @@ def get_query_result(query: str,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
-                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, str]:
+                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, Union[str, UUID]]:
     """
     Get query result from query string or cache
 
@@ -661,7 +694,6 @@ def get_query_result(query: str,
     :param user_lists:
     :param tf_filter_list:
     :param edges:
-    :param cache_path:
     :param size_limit:
     :return:
     """

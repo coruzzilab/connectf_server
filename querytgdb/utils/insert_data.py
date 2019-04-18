@@ -15,15 +15,15 @@ from querytgdb.utils.sif import get_network
 logger = logging.getLogger(__name__)
 
 nan_regex = re.compile(r'^n/?an?$', flags=re.I)
-searchable = ['TRANSCRIPTION_FACTOR_ID', 'EXPERIMENT_TYPE', 'EXPERIMENTER', 'DATE', 'TECHNOLOGY', 'ANALYSIS_METHOD',
-              'ANALYSIS_CUTOFF', 'EDGE_TYPE', 'GENOTYPE', 'DATA_SOURCE', 'TREATMENTS', 'CONTROL', 'TISSUE/SAMPLE']
+searchable = ['EXPERIMENT_TYPE', 'TECHNOLOGY', 'EDGE_TYPE', 'GENOTYPE', 'DATA_SOURCE', 'CONTROL',
+              'TISSUE/SAMPLE']
 
 
 class UnkownGeneWarning(Warning):
     pass
 
 
-def process_meta_file(f: TextIO) -> pd.Series:
+def process_meta_file(f: TextIO) -> pd.DataFrame:
     metadata = pd.Series(f.readlines())
 
     metadata = (metadata
@@ -32,16 +32,18 @@ def process_meta_file(f: TextIO) -> pd.Series:
                 .replace([r'', nan_regex], np.nan, regex=True)
                 .dropna(subset=[0])
                 .fillna('')
-                .set_index(0, verify_integrity=True)
-                .squeeze())
+                .set_index(0, verify_integrity=True))
 
     metadata.index = metadata.index.str.upper().str.replace(' ', '_')
+    metadata['special'] = metadata.index.str.extract(r'^([^a-z])', flags=re.I, expand=False)
+    metadata.index = metadata.index.str.replace(r'^[^a-z]+', '', flags=re.I)
+    metadata.columns = ['data', 'special']
 
     date_rows = metadata.index.str.contains(r'_?DATE$')
 
     if date_rows.any():
-        metadata[date_rows] = pd.to_datetime(
-            metadata[date_rows], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
+        metadata.loc[date_rows, 'data'] = pd.to_datetime(
+            metadata.loc[date_rows, 'data'], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
 
     return metadata
 
@@ -82,9 +84,11 @@ def insert_data(data_file, metadata_file, sep=','):
         raise ValueError("Please use 'import_annotation' to add gene annotations to the database first.")
 
     try:
-        tf = Annotation.objects.get(gene_id=metadata['TRANSCRIPTION_FACTOR_ID'])
+        tf = Annotation.objects.get(gene_id=metadata.loc['TRANSCRIPTION_FACTOR_ID', 'data'])
+        metadata = metadata.drop('TRANSCRIPTION_FACTOR_ID')
     except Annotation.DoesNotExist:
-        raise ValueError('Transcription Factor ID {} does not exist.'.format(metadata['TRANSCRIPTION_FACTOR_ID']))
+        raise ValueError(
+            'Transcription Factor ID {} does not exist.'.format(metadata.loc['TRANSCRIPTION_FACTOR_ID', 'data']))
 
     if not metadata.index.contains('EDGE_TYPE'):
         raise ValueError('Please assign an EDGE_TYPE to the metadata.')
@@ -105,7 +109,7 @@ def insert_data(data_file, metadata_file, sep=','):
 
     AnalysisData.objects.bulk_create(
         [AnalysisData(analysis=analysis, key_id=meta_key_frame.at[key, 'id'], value=val)
-         for key, val in metadata.iteritems()])
+         for key, val in metadata['data'].iteritems()])
 
     anno = pd.DataFrame(Annotation.objects.filter(
         gene_id__in=data.iloc[:, 0]

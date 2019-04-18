@@ -1,13 +1,9 @@
-import gzip
-import os.path
-import pickle
 import sys
 from collections import OrderedDict
 from functools import partial, reduce
 from io import BytesIO
 from itertools import chain, count, cycle, starmap, tee
 from operator import itemgetter, methodcaller, or_
-from threading import Thread
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
@@ -17,19 +13,17 @@ import pandas as pd
 import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from django.conf import settings
-from django.core.cache import caches
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from querytgdb.utils import annotations, cache_result, clear_data, column_string, split_name, \
+from querytgdb.utils import annotations, clear_data, column_string, split_name, \
     svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import MotifData, Region
 
 sns.set()
-
-cache = caches['file']
 
 MOTIF = MotifData(settings.MOTIF_ANNOTATION)
 

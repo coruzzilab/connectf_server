@@ -79,12 +79,12 @@ class InterestingNetworksView(View):
 class KeyView(View):
     @method_decorator(ensure_csrf_cookie)
     def get(self, request):
-        tfs = set(request.GET.getlist('tf'))
+        tfs = set(filter(None, request.GET.getlist('tf')))
 
         if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
 
-        queryset = ['has_column']
+        queryset = []
 
         if tfs:
             if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
@@ -110,7 +110,7 @@ class KeyView(View):
 class ValueView(View):
     @method_decorator(ensure_csrf_cookie)
     def get(self, request, key: str) -> JsonResponse:
-        tfs = set(request.GET.getlist('tf'))
+        tfs = set(filter(None, request.GET.getlist('tf')))
 
         if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
@@ -128,18 +128,6 @@ class ValueView(View):
                 return JsonResponse(queryset, safe=False)
 
             queryset.extend(EdgeType.objects.distinct().values_list('name', flat=True))
-            return JsonResponse(queryset, safe=False)
-        elif key == 'HAS_COLUMN':
-            queryset.append('EDGE')
-
-            if tfs:
-                if any(map(check_regulation, Analysis.objects.filter(tf__gene_id__in=tfs))):
-                    queryset.extend(('Pvalue', 'Log2FC'))
-                if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
-                    queryset.append('additional_edge')
-            else:
-                queryset.extend(('Pvalue', 'Log2FC', 'additional_edge'))
-
             return JsonResponse(queryset, safe=False)
         else:
             if tfs:

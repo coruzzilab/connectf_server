@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-from django.core.cache import caches
+from django.core.cache import cache
 from sklearn.metrics import auc
 
 from querytgdb.utils import annotations
@@ -18,9 +18,7 @@ from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import data_to_edges, get_size
 from ...utils.network.utils import COLOR, COLOR_SHAPE
 
-cache = caches['file']
-
-GENE_TYPE = annotations()[['Name', 'Type']]
+GENE_TYPE = annotations()[['Name', 'Type', 'id']]
 SIZE = 20
 GAP = 10
 TF_GAP = 50
@@ -76,9 +74,13 @@ def get_network_json(uid: Union[str, UUID],
 
     df = cached_data[df_key]
 
-    analyses = Analysis.objects.filter(
-        pk__in=df.columns.get_level_values(1)
-    ).prefetch_related('tf')
+    analyses = (pd.DataFrame(
+        Analysis.objects.filter(
+            pk__in=df.columns.get_level_values(1).unique()
+        ).values_list('pk', 'tf_id').iterator(),
+        columns=['analysis_id', 'id'])
+                .merge(GENE_TYPE['id'].reset_index(), how='inner', on='id')
+                .set_index('analysis_id'))
 
     try:
         data, network_table = cached_data[network_key]
@@ -86,7 +88,7 @@ def get_network_json(uid: Union[str, UUID],
         network_table = data_to_edges(df)
 
         def get_tf(idx):
-            return analyses.get(pk=idx).tf.gene_id
+            return analyses.at[idx, 'TARGET']
 
         network_table = network_table.rename(columns=get_tf, level=1)
         network_table.columns = network_table.columns.droplevel(0)
@@ -111,7 +113,7 @@ def get_network_json(uid: Union[str, UUID],
         tf_grid = np.array(np.meshgrid(np.arange(s_tfs), np.arange(s_tfs), indexing='ij')).reshape(
             (2, -1), order='F').T * (SIZE + TF_GAP) + SIZE / 2
 
-        data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index], tf_grid, True))
+        data = list(make_nodes(GENE_TYPE.loc[tf_nodes.index, ['Name', 'Type']], tf_grid, True))
 
         data.extend({
                         'group': 'edges',
@@ -168,7 +170,7 @@ def get_network_json(uid: Union[str, UUID],
 
                 data.extend(
                     make_nodes(
-                        GENE_TYPE.loc[e_group.index.unique(), :].sort_values('Type', kind='mergesort'),
+                        GENE_TYPE.loc[e_group.index.unique(), ['Name', 'Type']].sort_values('Type', kind='mergesort'),
                         e_grid))
 
                 data.extend({
@@ -191,7 +193,7 @@ def get_network_json(uid: Union[str, UUID],
         edge_types = pd.DataFrame(
             EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
             columns=['edge_id', 'edge', 'directional'])
-        tf_ids = set(analyses.values_list('tf_id', flat=True))
+        tf_ids = set(analyses['id'])
         edge_data = pd.DataFrame(
             EdgeData.objects.filter(
                 type_id__in=edge_types['edge_id'],
