@@ -15,8 +15,6 @@ from querytgdb.utils.sif import get_network
 logger = logging.getLogger(__name__)
 
 nan_regex = re.compile(r'^n/?an?$', flags=re.I)
-searchable = ['EXPERIMENT_TYPE', 'TECHNOLOGY', 'EDGE_TYPE', 'GENOTYPE', 'DATA_SOURCE', 'CONTROL',
-              'TISSUE/SAMPLE']
 
 
 class UnkownGeneWarning(Warning):
@@ -35,7 +33,7 @@ def process_meta_file(f: TextIO) -> pd.DataFrame:
                 .set_index(0, verify_integrity=True))
 
     metadata.index = metadata.index.str.upper().str.replace(' ', '_')
-    metadata['special'] = metadata.index.str.extract(r'^([^a-z])', flags=re.I, expand=False)
+    metadata['special'] = metadata.index.str.extract(r'^([^a-z])', flags=re.I, expand=False).fillna('')
     metadata.index = metadata.index.str.replace(r'^[^a-z]+', '', flags=re.I)
     metadata.columns = ['data', 'special']
 
@@ -100,8 +98,9 @@ def insert_data(data_file, metadata_file, sep=','):
     analysis = Analysis(tf=tf)
     analysis.save()
 
-    meta_keys = [MetaKey.objects.get_or_create(name=n, defaults={'searchable': n in searchable})
-                 for n in metadata.index]
+    meta_keys = [MetaKey.objects.get_or_create(name=n, defaults={'searchable': s})
+                 for n, s in zip(metadata.index,
+                                 metadata['special'].str.contains('*', regex=False))]
 
     meta_key_frame = pd.DataFrame(((m.id, m.name, m.searchable, c) for m, c in meta_keys),
                                   columns=['id', 'name', 'searchable', 'created'])
