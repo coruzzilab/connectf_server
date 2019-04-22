@@ -60,7 +60,7 @@ class InterestingListsView(View):
         try:
             directories, files = gene_lists_storage.listdir('./')
 
-            return JsonResponse(list(get_lists(files)), safe=False)
+            return JsonResponse(sorted(get_lists(files)), safe=False)
         except FileNotFoundError:
             return JsonResponse([], safe=False)
 
@@ -71,7 +71,7 @@ class InterestingNetworksView(View):
         try:
             directories, files = networks_storage.listdir('./')
 
-            return JsonResponse(list(get_lists(files)), safe=False)
+            return JsonResponse(sorted(get_lists(files)), safe=False)
         except FileNotFoundError:
             return JsonResponse([], safe=False)
 
