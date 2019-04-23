@@ -56,7 +56,7 @@ class TargetSeries(pd.Series):
         return TargetFrame
 
 
-name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:')
+name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:/\\')
 
 point = pp.Literal('.')
 e = pp.CaselessLiteral('e')
