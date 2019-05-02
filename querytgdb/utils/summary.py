@@ -23,8 +23,9 @@ def get_summary(df: pd.DataFrame, size_limit: int = 50) -> Dict[str, Any]:
 
     errors = []
 
-    if len(df.columns.levels[0]) > size_limit:
-        top_tfs = list(islice(map(itemgetter(0), groupby(df.columns.get_level_values(0))), 0, size_limit))
+    top_tfs = list(islice(map(itemgetter(0), groupby(df.columns.get_level_values(0))), 0, size_limit))
+
+    if len(top_tfs) == size_limit:
         df = df.loc[:, (top_tfs, slice(None))]
         errors.append(f'Only showing top {size_limit} TFs based on edge count!')
 

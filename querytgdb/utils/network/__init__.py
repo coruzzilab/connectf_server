@@ -548,6 +548,9 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, uid: Uni
         cache.set(figure_cache, (fig, gs, cell_text))
         cache.set(data_cache, (recall, precision, g))
 
+    if not hasattr(gs, '_layoutbox'):  # weird issue with pickling
+        gs._layoutbox = None
+
     if precision_cutoff is not None:
         cell_text[3][0] = str(precision_cutoff)
 
@@ -589,9 +592,6 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, uid: Uni
             ["{:,}".format(data["source"].nunique())],
             ["{:,}".format(data["target"].nunique())]
         ]
-
-    if not hasattr(gs, '_layoutbox'):  # weird issue with pickling
-        gs._layoutbox = None
 
     plt.subplot(gs[0])
     plt.table(
