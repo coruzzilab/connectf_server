@@ -710,7 +710,7 @@ def get_query_result(query: str,
     cache.set(f'{uid}/tabular_output_unfiltered', result)
 
     if user_lists is not None:
-        result = result[result.index.isin(user_lists[0].index)].dropna(axis=1, how='all')
+        result = result[result.index.str.upper().isin(user_lists[0].index.str.upper())].dropna(axis=1, how='all')
         result = reorder_data(result)  # reorder again here due to filtering
 
         if result.empty:
@@ -737,7 +737,10 @@ def get_query_result(query: str,
     result.insert(0, 'TF Count', counts)
 
     if user_lists:
-        result = user_lists[0].merge(result, left_index=True, right_index=True, how='inner')
+        result = user_lists[0].merge(result,
+                                     left_on=user_lists[0].index.str.upper(),
+                                     right_on=result.index.str.upper(), how='inner')
+        result = result.rename(columns={'key_0': 'TARGET'}).set_index('TARGET')
         result = result.sort_values(['User List Count', 'User List'])
     else:
         result.insert(0, 'User List Count', np.nan)

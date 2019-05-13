@@ -78,7 +78,7 @@ def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
                 list_name = line.lstrip('>').strip()
             else:
                 gene_to_name.setdefault(line, set()).add(list_name)
-                name_to_gene.setdefault(list_name, set()).add(line)
+                name_to_gene.setdefault(list_name, set()).add(line.upper())
 
     if not gene_to_name:
         raise BadFile("Target Gene list empty")

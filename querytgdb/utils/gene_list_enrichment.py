@@ -3,7 +3,7 @@ import sys
 from itertools import count, product
 from operator import itemgetter
 from typing import Any, Dict, Optional, Union
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,11 +95,11 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     targets = {}
 
     for (name, analysis_id), column in query_result.iteritems():
-        analysis_targets = set(column.dropna().index)
+        analysis_targets = set(column.dropna().index.str.upper())
 
         name, criterion = split_name(name)
 
-        targets[(name, criterion, analysis_id, len(analysis_targets), uuid4())] = analysis_targets
+        targets[(name, criterion, analysis_id, len(analysis_targets))] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
@@ -130,7 +130,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
 
         indices = []
 
-        for (name, criterion, analysis_id, l, _uid), col_name in orig_index:
+        for (name, criterion, analysis_id, l), col_name in orig_index:
             tf = analyses.get(pk=analysis_id).tf
             indices.append('{} — {}{} ({})'.format(col_name, tf.gene_id, ' ' + tf.name if tf.name else '', l))
 
@@ -140,7 +140,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
             result = []
 
             for idx, col_label in orig_index:
-                name, criterion, analysis_id, l, _uid = idx
+                name, criterion, analysis_id, l = idx
 
                 info = {'name': name, 'filter': criterion}
                 analysis = analyses.get(pk=analysis_id)
@@ -183,8 +183,8 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
 
     result = []
 
-    for ((name, criterion, analysis_id, l, uid), *row), count_row in zip(data.itertuples(name=None),
-                                                                         counts.itertuples(name=None, index=False)):
+    for ((name, criterion, analysis_id, l), *row), count_row in zip(data.itertuples(name=None),
+                                                                    counts.itertuples(name=None, index=False)):
         info = {'filter': criterion, 'targets': l}
         try:
             analysis = analyses.get(pk=analysis_id)

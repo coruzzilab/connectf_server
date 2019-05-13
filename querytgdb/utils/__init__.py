@@ -243,7 +243,7 @@ class Annotations:
         return self.annotation
 
     @property
-    def annotation(self):
+    def annotation(self) -> pd.DataFrame:
         with self.lock:
             if self._anno is None:
                 self.task.join()
@@ -254,12 +254,13 @@ class Annotations:
     def genes(self) -> Set:
         return set(self.annotation.index)
 
+    @property
+    def genes_upper(self) -> Set:
+        return set(annotations.annotation.index.str.upper())
+
 
 annotations = Annotations()
 
 
 def check_annotations(genes):
-    if isinstance(genes, set):
-        return genes - annotations.genes
-
-    return set(genes) - annotations.genes
+    return set(map(methodcaller('upper'), genes)) - annotations.genes_upper
