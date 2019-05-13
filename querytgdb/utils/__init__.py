@@ -5,7 +5,6 @@ import math
 import pkgutil
 import re
 import sys
-import warnings
 from functools import wraps
 from operator import methodcaller
 from threading import Lock, Thread
@@ -208,10 +207,6 @@ def get_size(func: Callable[..., Sized]) -> Callable[..., Sized]:
     return wrapper
 
 
-class DatabaseWarning(UserWarning):
-    pass
-
-
 class Annotations:
     def __init__(self):
         self._anno: pd.DataFrame = None
@@ -231,8 +226,6 @@ class Annotations:
                 columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
             anno = anno.set_index('TARGET')
         except DatabaseError:
-            warnings.warn(DatabaseWarning("No annotation data."))
-
             anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
             anno.index.name = 'TARGET'
 
