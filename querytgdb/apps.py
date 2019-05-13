@@ -2,8 +2,6 @@ import os
 
 from django.apps import AppConfig
 
-from .models import Annotation
-
 
 class QuerytgdbConfig(AppConfig):
     name = 'querytgdb'
@@ -11,6 +9,7 @@ class QuerytgdbConfig(AppConfig):
     def ready(self):
         from django.core.checks import register, Error, Warning
         from django.conf import settings
+        from .models import Annotation
 
         @register()
         def check_annotations(app_configs, **kwargs):
