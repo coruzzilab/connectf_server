@@ -16,7 +16,7 @@ class QuerytgdbConfig(AppConfig):
             errors = []
 
             if not Annotation.objects.exists():
-                errors.append(Warning('No annotations loaded.'))
+                errors.append(Warning('No annotations loaded.', id='querytgdb.W003'))
 
             return errors
 

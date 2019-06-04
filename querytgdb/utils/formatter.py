@@ -121,8 +121,7 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
     method = None
     edge = None
     ind_rep = None
-    for i, col in enumerate(islice(zip(*columns), data_col_len, None)):
-        j = i + data_col_len
+    for i, col in enumerate(islice(zip(*columns), data_col_len, None), data_col_len):
         try:
             if col[0:2] != prev[0:2]:
                 name, _, uuid_ = col[0].rpartition(' ')
@@ -151,16 +150,16 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
                 except KeyError:
                     ind_rep = None
 
-            columns[0][j] = name
-            columns[1][j] = tech
-            columns[2][j] = method
-            columns[3][j] = edge
-            columns[4][j] = ind_rep
+            columns[0][i] = name
+            columns[1][i] = tech
+            columns[2][i] = method
+            columns[3][i] = edge
+            columns[4][i] = ind_rep
         except KeyError:
             pass
 
         if col[-1] == 'DAP':
-            columns[2][j] = columns[1][i] = None
+            columns[2][i] = columns[1][i] = None
         prev = col
 
     merged_cells = get_merge_cells(columns)

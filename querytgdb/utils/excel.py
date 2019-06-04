@@ -61,8 +61,8 @@ def write_data(data: List[Sized], writer: pd.ExcelWriter):
 
     bold_font = workbook.add_format({'bold': True, 'font_size': 13, 'border': 1, 'align': 'center'})
 
-    for i, row in enumerate(data[6:]):
-        worksheet.write_row(i + 6, 0, row)
+    for i, row in enumerate(data[6:], 6):
+        worksheet.write_row(i, 0, row)
 
     worksheet.set_column(0, col_num - 1, 15)
     worksheet.set_column(6, 7, None, bold_font)
