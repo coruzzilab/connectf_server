@@ -14,7 +14,7 @@ from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequ
 from django.utils.datastructures import MultiValueDictKeyError
 from django.views.generic import View
 
-from querytgdb.utils.excel import create_export_zip
+from querytgdb.utils.export import create_export_zip, export_csv, write_excel
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, convert_float, \
     metadata_to_dict, svg_font_adder
@@ -24,7 +24,7 @@ from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_networ
 from .utils.formatter import format_data
 from .utils.motif_enrichment import MOTIF, NoEnrichedMotif, get_motif_enrichment_heatmap, \
     get_motif_enrichment_heatmap_table, get_motif_enrichment_json
-from .utils.network import get_auc_figure, get_network_json, get_network_stats, get_pruned_network
+from .utils.network import get_auc_figure, get_network_json, get_network_sif, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
 
@@ -240,6 +240,24 @@ class NetworkJSONView(View):
             return HttpResponseNotFound(content_type="application/json")
 
 
+class NetworkSifView(View):
+    def get(self, request, request_id):
+        try:
+            edges = request.GET.getlist('edges')
+            precision = convert_float(request.GET.get('precision'))
+
+            resp = HttpResponse(content_type='text/plain')
+            resp['Content-Disposition'] = f'attachment; filename="{request_id}.sif"'
+
+            get_network_sif(request_id, edges=edges, precision_cutoff=precision, buffer=resp)
+
+            return resp
+        except ValueError:
+            return HttpResponseBadRequest("Network too large", content_type="text/plain")
+        except KeyError:
+            return HttpResponseNotFound(content_type="text/plain")
+
+
 class FileExportView(View):
     def get(self, request, request_id):
         try:
@@ -258,6 +276,38 @@ class FileExportView(View):
 
         except KeyError:
             return HttpResponseNotFound(content_type='application/zip')
+
+
+class ExcelExportView(View):
+    def get(self, request, request_id):
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.xlsx') as f:
+                write_excel(request_id, f.name)
+                f.seek(0)
+
+                response = HttpResponse(
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                response['Content-Disposition'] = 'attachment; filename="output.xlsx"'
+                shutil.copyfileobj(f, response)
+
+                return response
+        except KeyError:
+            return HttpResponseNotFound(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+class CsvExportView(View):
+    def get(self, request, request_id):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="output.csv"'
+
+        try:
+            df = export_csv(request_id)
+            df.to_csv(response)
+
+            return response
+        except KeyError:
+            return HttpResponseNotFound(content_type='text/csv')
 
 
 class ListEnrichmentSVGView(View):

@@ -12,7 +12,7 @@ from django.core.cache import cache
 from ..utils import column_string, data_to_edges
 from ..utils.parser import expand_ref_ids
 
-__all__ = ('create_export_zip',)
+__all__ = ('create_export_zip', 'write_excel', 'export_csv')
 
 
 def create_export_zip(uid: Union[str, UUID], out_dir):
@@ -20,13 +20,15 @@ def create_export_zip(uid: Union[str, UUID], out_dir):
     df = cached_data[f'{uid}/tabular_output']
     create_sifs(df, out_dir)
     create_all_tf_genelists(df, out_dir)
+
     with open(os.path.join(out_dir, 'query.txt'), 'w') as f:
         f.write(cached_data[f'{uid}/query'])
-    write_excel(uid, out_dir)
+
+    write_excel(uid, os.path.join(out_dir, 'tabular_output.xlsx'))
 
 
-def write_excel(uid: Union[str, UUID], out_dir):
-    with pd.ExcelWriter(os.path.join(out_dir, 'tabular_output.xlsx'), engine='xlsxwriter') as writer:
+def write_excel(uid: Union[str, UUID], out_file):
+    with pd.ExcelWriter(out_file, engine='xlsxwriter') as writer:
         cached_data = cache.get_many([f'{uid}/formatted_tabular_output', f'{uid}/metadata'])
         data = cached_data[f'{uid}/formatted_tabular_output']
         metadata = cached_data[f'{uid}/metadata']
@@ -174,3 +176,14 @@ def create_all_tf_genelists(result: pd.DataFrame, output):
     with open(os.path.join(output, 'genelists_all_tf.fa'), 'w') as f:
         for name, group in group_res:
             f.write('>{}\n{}\n'.format(name, '\n'.join(group.index)))
+
+
+def export_csv(uid: Union[UUID, str]) -> pd.DataFrame:
+    df = cache.get(f'{uid}/tabular_output')
+
+    if df is None:
+        raise KeyError('Not found')
+
+    df = df.stack([0, 1]).reorder_levels([1, 2, 'TARGET']).sort_index(level=0)
+
+    return df

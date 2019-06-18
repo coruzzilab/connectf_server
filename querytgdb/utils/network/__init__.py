@@ -1,6 +1,6 @@
 import gzip
 import math
-from io import BytesIO
+from io import BytesIO, StringIO
 from operator import itemgetter, methodcaller
 from typing import Any, Dict, Generator, IO, Iterable, List, Optional, Sized, SupportsInt, Tuple, Union
 from uuid import UUID, uuid4
@@ -68,9 +68,10 @@ def get_network_json(uid: Union[str, UUID],
     :return:
     """
     network_key = f'{uid}/network'
+    network_data_key = f'{uid}/network_data'
     df_key = f'{uid}/tabular_output'
 
-    cached_data = cache.get_many([df_key, network_key])
+    cached_data = cache.get_many([df_key, network_key, network_data_key])
 
     df = cached_data[df_key]
 
@@ -82,10 +83,11 @@ def get_network_json(uid: Union[str, UUID],
                 .merge(GENE_TYPE['id'].reset_index(), how='inner', on='id')
                 .set_index('analysis_id'))
 
+    # network data cached separately. @todo: utilize the caching better
     try:
-        data, network_table = cached_data[network_key]
+        data, network_table = itemgetter(network_data_key, network_key)(cached_data)
     except KeyError:
-        network_table = data_to_edges(df)
+        network_table = df.pipe(data_to_edges)
 
         def get_tf(idx):
             return analyses.at[idx, 'TARGET']
@@ -185,7 +187,7 @@ def get_network_json(uid: Union[str, UUID],
                                 }
                             } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
 
-        cache.set(network_key, (data, network_table))
+        cache.set_many({network_key: network_table, network_data_key: data})
 
     # additional edges
     if edges:
@@ -278,6 +280,108 @@ def get_network_json(uid: Union[str, UUID],
             pass
 
     return data
+
+
+def concat_cols(df, sep=' ', end='\n'):
+    return df.iloc[:, 0].str.cat(df.iloc[:, 1:], sep=sep) + end
+
+
+def get_network_sif(uid: Union[str, UUID],
+                    edges: Optional[List[str]] = None,
+                    precision_cutoff: Optional[float] = None,
+                    buffer: Optional[StringIO] = None) -> StringIO:
+    """
+    Get cytoscape network SIF from queried data.
+    """
+    network_key = f'{uid}/network'
+    df_key = f'{uid}/tabular_output'
+
+    cached_data = cache.get_many([df_key, network_key])
+
+    df = cached_data[df_key]
+
+    analyses = (pd.DataFrame(
+        Analysis.objects.filter(
+            pk__in=df.columns.get_level_values(1).unique()
+        ).values_list('pk', 'tf_id').iterator(),
+        columns=['analysis_id', 'id'])
+                .merge(GENE_TYPE['id'].reset_index(), how='inner', on='id')
+                .set_index('analysis_id'))
+
+    try:
+        network_table = cached_data[network_key]
+    except KeyError:
+        def get_tf(idx):
+            return analyses.at[idx, 'TARGET']
+
+        network_table = df.pipe(data_to_edges).rename(columns=get_tf, level=1)
+        network_table.columns = network_table.columns.droplevel(0)
+
+    if buffer is None:
+        buffer = StringIO()
+
+    network = network_table.stack().reset_index().groupby(['level_1', 0]).apply(
+        lambda x: x['TARGET'].str.cat(sep=' '))
+    network.index.names = (None, None)
+    network = network.reset_index().pipe(concat_cols)
+
+    buffer.writelines(network)
+
+    # additional edges
+    if edges:
+        anno = annotations()['id'].reset_index()
+        edge_types = pd.DataFrame(
+            EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
+            columns=['edge_id', 'edge', 'directional'])
+        tf_ids = set(analyses['id'])
+        edge_data = pd.DataFrame(
+            EdgeData.objects.filter(
+                type_id__in=edge_types['edge_id'],
+                tf_id__in=tf_ids
+            ).values_list('tf_id', 'target_id', 'type_id').iterator(),
+            columns=['source', 'target', 'edge_id']
+        )
+        edge_data = (edge_data
+                     .merge(edge_types, on='edge_id')
+                     .drop('edge_id', axis=1))
+        edge_data = (edge_data
+                     .merge(anno, left_on='source', right_on='id')
+                     .merge(anno, left_on='target', right_on='id'))
+        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge', 'directional']]
+        edge_data.columns = ['TF', 'TARGET', 'EDGE', 'DIRECTIONAL']
+
+        edge_data = edge_data.loc[edge_data['TARGET'].isin(network_table.index), :]
+        edge_data = (edge_data.groupby(['TF', 'EDGE'])
+                     .apply(lambda x: x['TARGET'].str.cat(sep=' '))
+                     .reset_index()
+                     .pipe(concat_cols))
+
+        buffer.writelines(edge_data)
+
+    if precision_cutoff is not None:
+        try:
+            try:
+                recall, precision, g = cache.get(f'{uid}/figure_data')
+            except TypeError:
+                name, network_data = cache.get(f"{uid}/target_network")
+                network_data = network_data.sort_values('rank')
+                df_unf = cache.get(f'{uid}/tabular_output_unfiltered')
+
+                if df_unf is None:
+                    raise
+
+                pred_auc, recall, precision, g = get_prediction_data(df_unf, network_data)[:-1]
+
+            rank = get_cutoff_info(g, precision, recall, precision_cutoff)[0]
+
+            g = g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].groupby(['source', 'edge']).apply(
+                lambda x: x['target'].str.cat(sep=' ')).reset_index().pipe(concat_cols)
+
+            buffer.writelines(g)
+        except (ValueError, TypeError):
+            pass
+
+    return buffer
 
 
 @get_size
