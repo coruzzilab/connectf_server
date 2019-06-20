@@ -1,8 +1,10 @@
+import io
 import os
 import re
+import tarfile
 from itertools import groupby
 from operator import itemgetter
-from typing import List, Sized, Union
+from typing import IO, List, Sized, Union
 from uuid import UUID
 
 import numpy as np
@@ -178,12 +180,34 @@ def create_all_tf_genelists(result: pd.DataFrame, output):
             f.write('>{}\n{}\n'.format(name, '\n'.join(group.index)))
 
 
-def export_csv(uid: Union[UUID, str]) -> pd.DataFrame:
-    df = cache.get(f'{uid}/tabular_output')
+def export_csv(uid: Union[UUID, str], buff=None) -> IO:
+    data = cache.get_many([f'{uid}/tabular_output', f'{uid}/metadata'])
 
-    if df is None:
-        raise KeyError('Not found')
+    df = data[f'{uid}/tabular_output']
 
     df = df.stack([0, 1]).reorder_levels([1, 2, 'TARGET']).sort_index(level=0)
+    df.index.names = ("TF", "ANALYSIS", "TARGET")
 
-    return df
+    df_buff = io.StringIO()
+    df.to_csv(df_buff)
+    df_info = tarfile.TarInfo("table.csv")
+    df_bytes = df_buff.getvalue().encode()
+    df_info.size = len(df_bytes)
+
+    metadata = data[f'{uid}/metadata']
+    metadata = metadata.T
+    metadata_buff = io.StringIO()
+    metadata.to_csv(metadata_buff)
+    metadata_info = tarfile.TarInfo("metadata.csv")
+    metadata_bytes = metadata_buff.getvalue().encode()
+    metadata_info.size = len(metadata_bytes)
+
+    if buff is None:
+        buff = io.BytesIO()
+
+    archive = tarfile.open(fileobj=buff, mode='w|gz')
+
+    archive.addfile(tarinfo=df_info, fileobj=io.BytesIO(df_bytes))
+    archive.addfile(tarinfo=metadata_info, fileobj=io.BytesIO(metadata_bytes))
+
+    return buff

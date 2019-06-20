@@ -298,16 +298,15 @@ class ExcelExportView(View):
 
 class CsvExportView(View):
     def get(self, request, request_id):
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="output.csv"'
+        response = HttpResponse(content_type='application/gzip')
+        response['Content-Disposition'] = 'attachment; filename="output.tar.gz"'
 
         try:
-            df = export_csv(request_id)
-            df.to_csv(response)
+            export_csv(request_id, response)
 
             return response
         except KeyError:
-            return HttpResponseNotFound(content_type='text/csv')
+            return HttpResponseNotFound(content_type='application/gzip')
 
 
 class ListEnrichmentSVGView(View):

@@ -23,7 +23,7 @@ urlpatterns = [
     path('network/<uuid:request_id>.sif', views.NetworkSifView.as_view()),
     path('stats/<uuid:request_id>/', views.StatsView.as_view()),
     path('export/<uuid:request_id>.xlsx', views.ExcelExportView.as_view()),
-    path('export/<uuid:request_id>.csv', views.CsvExportView.as_view()),
+    path('export/<uuid:request_id>.tar.gz', views.CsvExportView.as_view()),
     path('list_enrichment/<uuid:request_id>.svg',
          views.ListEnrichmentSVGView.as_view()),
     path('list_enrichment/<uuid:request_id>/',
