@@ -19,8 +19,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.models import Analysis
-from querytgdb.utils import annotations, clear_data, column_string, split_name, \
-    svg_font_adder
+from querytgdb.utils import annotations, clear_data, column_string, get_metadata, split_name, svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import MotifData, Region
 
 sns.set()
@@ -212,17 +211,26 @@ def get_motif_enrichment_json(uid: Union[str, UUID],
     }
 
 
-def make_motif_enrichment_heatmap_columns(res) -> List[str]:
-    names, analysis_ids = zip(*res.keys())
+def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] = None) -> List[str]:
+    analyses = Analysis.objects.filter(pk__in=map(itemgetter(1), res.keys())).prefetch_related('tf')
 
-    analyses = Analysis.objects.filter(pk__in=analysis_ids)
+    metadata = None
+    if fields:
+        metadata = get_metadata(analyses, fields)
 
     columns = []
 
     for (name, analysis_id), col_name in zip(res.keys(), map(column_string, count(1))):
         try:
             tf = analyses.get(pk=analysis_id).tf
-            columns.append('{1} — {0}{2}'.format(tf.gene_id, col_name, f' ({tf.name})' if tf.name else ''))
+            col = '{0} — {1}{2}'.format(col_name, tf.gene_id, f' ({tf.name})' if tf.name else '')
+
+            try:
+                col += f" [{metadata.loc[analysis_id, :].fillna('None').str.cat(sep=', ')}]"
+            except (AttributeError, KeyError):
+                pass
+
+            columns.append(col)
         except Analysis.DoesNotExist:
             columns.append('{} — {}'.format(col_name, name))
 
@@ -231,9 +239,10 @@ def make_motif_enrichment_heatmap_columns(res) -> List[str]:
 
 def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  regions: Optional[List[str]] = None,
-                                 alpha=0.05,
-                                 lower_bound=None,
-                                 upper_bound=None) -> BytesIO:
+                                 alpha: float = 0.05,
+                                 lower_bound: Optional[float] = None,
+                                 upper_bound: Optional[float] = None,
+                                 fields: Optional[Iterable[str]] = None) -> BytesIO:
     res = get_analysis_gene_list(uid)
     regions, df = motif_enrichment(res, regions, uid, alpha=alpha)
 
@@ -242,16 +251,20 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
 
     df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
 
-    columns = make_motif_enrichment_heatmap_columns(res)
+    columns = make_motif_enrichment_heatmap_columns(res, fields)
 
     df.columns = starmap(lambda r, x: f'{x} {r}',
                          zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
 
     df = df.T
 
+    opts = {}
+
     rows, cols = df.shape
 
-    opts = {}
+    opts['row_cluster'] = rows > 1
+    opts['col_cluster'] = cols > 1
+
     if rows > 1:
         opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
         if len(regions) > 1:
@@ -267,21 +280,21 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                    cbar_kws={'label': 'Enrichment (-log10 p)'},
                                    xticklabels=1,
                                    yticklabels=1,
-                                   row_cluster=rows > 1,
-                                   col_cluster=cols > 1,
                                    vmin=lower_bound,
                                    vmax=upper_bound,
                                    **opts)
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
+    if fields:
+        heatmap_graph.ax_heatmap.set_ylabel(f'Additional fields: [{", ".join(fields)}]', rotation=270, labelpad=15)
 
-    buff = BytesIO()
-    heatmap_graph.savefig(buff)
+    buffer = BytesIO()
+    heatmap_graph.savefig(buffer)
     plt.close()
-    buff.seek(0)
-    svg_font_adder(buff)
+    buffer.seek(0)
+    svg_font_adder(buffer)
 
-    return buff
+    return buffer
 
 
 TableRow = Tuple[Dict, str, str, str, str, str]

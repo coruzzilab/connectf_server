@@ -1,9 +1,15 @@
+import csv
 import warnings
 from collections import OrderedDict
+from io import StringIO
 from itertools import combinations
-from typing import Dict, Tuple
+from operator import itemgetter
+from typing import Dict, Optional, Tuple, Union
+from uuid import UUID
 
 import pandas as pd
+from django.core.cache import cache
+from django.http import HttpResponse
 from scipy.special import comb
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import fdrcorrection
@@ -31,7 +37,12 @@ def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, 
     return (analysis.tf.gene_name_symbol, *split_col_name(col_name)[1:])
 
 
-def analysis_enrichment(df: pd.DataFrame, size_limit: int = 100, raise_warning: bool = False) -> Dict:
+def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warning: bool = False) -> Dict:
+    df = cache.get(f'{uid}/tabular_output')
+
+    if df is None:
+        raise AnalysisEnrichmentError("Please make a new query")
+
     df = clear_data(df)
 
     if df.shape[1] < 2:
@@ -93,3 +104,37 @@ def analysis_enrichment(df: pd.DataFrame, size_limit: int = 100, raise_warning: 
         'data': data,
         'info': info
     }
+
+
+def analysis_enrichment_csv(uid: Union[str, UUID],
+                            buffer: Optional[Union[StringIO, HttpResponse]] = None,
+                            size_limit: int = 100,
+                            raise_warning: bool = False):
+    if buffer is None:
+        buffer = StringIO()
+
+    enrichment = cache.get(f'{uid}/analysis_enrichment')
+
+    if enrichment is None:
+        enrichment = analysis_enrichment(uid, size_limit, raise_warning)
+        cache.set(f'{uid}/analysis_enrichment', enrichment)
+
+    info = dict(enrichment['info'])
+
+    fieldnames = ['tf1', 'query1', 'analysis1', 'count1',
+                  'tf2', 'query2', 'analysis2', 'count2',
+                  'intersection_count', 'less', 'less_adj', 'greater', 'greater_adj', 'genes']
+
+    writer = csv.DictWriter(buffer,
+                            dialect='unix',
+                            quoting=csv.QUOTE_MINIMAL,
+                            fieldnames=fieldnames)
+
+    writer.writeheader()
+
+    for p, d, g in zip(enrichment['columns'],
+                       map(itemgetter('less', 'less_adj', 'greater', 'greater_adj'), enrichment['data']),
+                       map(lambda x: (len(x['genes']), ','.join(x['genes'])), enrichment['data'])):
+        writer.writerow(dict(zip(fieldnames, p[0] + (info[p[0]]['Count'],) + p[1] + (info[p[1]]['Count'],) + d + g)))
+
+    return buffer

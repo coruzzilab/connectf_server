@@ -11,6 +11,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from django.core.cache import cache
+from django.http import HttpResponse
 from sklearn.metrics import auc
 
 from querytgdb.utils import annotations
@@ -289,7 +290,8 @@ def concat_cols(df, sep=' ', end='\n'):
 def get_network_sif(uid: Union[str, UUID],
                     edges: Optional[List[str]] = None,
                     precision_cutoff: Optional[float] = None,
-                    buffer: Optional[StringIO] = None) -> StringIO:
+                    expand: bool = False,
+                    buffer: Optional[Union[StringIO, HttpResponse]] = None) -> StringIO:
     """
     Get cytoscape network SIF from queried data.
     """
@@ -320,10 +322,21 @@ def get_network_sif(uid: Union[str, UUID],
     if buffer is None:
         buffer = StringIO()
 
-    network = network_table.stack().reset_index().groupby(['level_1', 0]).apply(
-        lambda x: x['TARGET'].str.cat(sep=' '))
+    network = network_table.stack()
     network.index.names = (None, None)
-    network = network.reset_index().pipe(concat_cols)
+    network = network.reorder_levels([1, 0])
+
+    if not expand:
+        network = network.reset_index().groupby(['level_0', 0]).apply(
+            lambda x: x['level_1'].str.cat(sep=' '))
+        network.index.names = (None, None)
+        network = network.reset_index()
+    else:
+        network = network.reset_index().iloc[:, [0, 2, 1]]
+
+    print(network)
+
+    network = network.pipe(concat_cols)
 
     buffer.writelines(network)
 
@@ -331,8 +344,8 @@ def get_network_sif(uid: Union[str, UUID],
     if edges:
         anno = annotations()['id'].reset_index()
         edge_types = pd.DataFrame(
-            EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
-            columns=['edge_id', 'edge', 'directional'])
+            EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
+            columns=['edge_id', 'edge'])
         tf_ids = set(analyses['id'])
         edge_data = pd.DataFrame(
             EdgeData.objects.filter(
@@ -347,14 +360,15 @@ def get_network_sif(uid: Union[str, UUID],
         edge_data = (edge_data
                      .merge(anno, left_on='source', right_on='id')
                      .merge(anno, left_on='target', right_on='id'))
-        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge', 'directional']]
-        edge_data.columns = ['TF', 'TARGET', 'EDGE', 'DIRECTIONAL']
+        edge_data = edge_data[['TARGET_x', 'TARGET_y', 'edge']]
+        edge_data.columns = ['TF', 'TARGET', 'EDGE']
 
-        edge_data = edge_data.loc[edge_data['TARGET'].isin(network_table.index), :]
-        edge_data = (edge_data.groupby(['TF', 'EDGE'])
-                     .apply(lambda x: x['TARGET'].str.cat(sep=' '))
-                     .reset_index()
-                     .pipe(concat_cols))
+        edge_data = edge_data.loc[edge_data['TARGET'].isin(network_table.index), ['TF', 'EDGE', 'TARGET']]
+
+        if not expand:
+            edge_data = edge_data.groupby(['TF', 'EDGE']).apply(lambda x: x['TARGET'].str.cat(sep=' ')).reset_index()
+
+        edge_data = edge_data.pipe(concat_cols)
 
         buffer.writelines(edge_data)
 

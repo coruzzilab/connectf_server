@@ -18,7 +18,7 @@ from querytgdb.utils.export import create_export_zip, export_csv, write_excel
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, convert_float, \
     metadata_to_dict, svg_font_adder
-from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment
+from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment, analysis_enrichment_csv
 from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
@@ -245,11 +245,12 @@ class NetworkSifView(View):
         try:
             edges = request.GET.getlist('edges')
             precision = convert_float(request.GET.get('precision'))
+            expand = request.GET.get('expand')
 
             resp = HttpResponse(content_type='text/plain')
             resp['Content-Disposition'] = f'attachment; filename="{request_id}.sif"'
 
-            get_network_sif(request_id, edges=edges, precision_cutoff=precision, buffer=resp)
+            get_network_sif(request_id, edges=edges, precision_cutoff=precision, expand=expand, buffer=resp)
 
             return resp
         except ValueError:
@@ -298,28 +299,30 @@ class ExcelExportView(View):
 
 class CsvExportView(View):
     def get(self, request, request_id):
-        response = HttpResponse(content_type='application/gzip')
-        response['Content-Disposition'] = 'attachment; filename="output.tar.gz"'
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="output.csv"'
 
         try:
             export_csv(request_id, response)
 
             return response
         except KeyError:
-            return HttpResponseNotFound(content_type='application/gzip')
+            return HttpResponseNotFound(content_type='text/csv')
 
 
-class ListEnrichmentSVGView(View):
+class ListEnrichmentHeatmapView(View):
     def get(self, request, request_id):
         try:
             upper = convert_float(request.GET.get('upper'))
             lower = convert_float(request.GET.get('lower'))
+            fields = request.GET.getlist('fields')
 
             buff = gene_list_enrichment(
                 request_id,
                 draw=True,
                 lower=lower,
-                upper=upper
+                upper=upper,
+                fields=fields
             )
             svg_font_adder(buff)
 
@@ -374,7 +377,7 @@ class MotifEnrichmentJSONView(View):
                         regions,
                         alpha=alpha),
                     encoder=PandasJSONEncoder)
-            except (FileNotFoundError, NoEnrichedMotif) as e:
+            except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
                 raise Http404 from e
             except (ValueError, TypeError) as e:
                 return JsonResponse({'error': str(e)}, status=400)
@@ -393,17 +396,19 @@ class MotifEnrichmentHeatmapView(View):
                 regions = request.GET.getlist('regions')
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
+                fields = request.GET.getlist('fields')
 
                 buff = get_motif_enrichment_heatmap(
                     request_id,
                     regions,
                     upper_bound=upper,
                     lower_bound=lower,
-                    alpha=alpha
+                    alpha=alpha,
+                    fields=fields
                 )
 
                 return FileResponse(buff, content_type='image/svg+xml')
-            except (FileNotFoundError, NoEnrichedMotif):
+            except (FileNotFoundError, NoEnrichedMotif, KeyError):
                 return HttpResponseNotFound(content_type='image/svg+xml')
             except (ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')
@@ -424,10 +429,14 @@ class MotifEnrichmentHeatmapTableView(View):
 
 class MotifEnrichmentInfo(View):
     def get(self, request):
-        return GzipFileResponse(open(settings.MOTIF_CLUSTER, 'rb'),
-                                content_type="text/csv",
-                                filename="cluster_info.csv",
-                                as_attachment=True)
+        with open(settings.MOTIF_CLUSTER, 'rb') as f:
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="cluster_info.csv"'
+            response["Content-Encoding"] = 'gzip'
+
+            shutil.copyfileobj(f, response)
+
+            return response
 
 
 class MotifEnrichmentRegions(View):
@@ -444,17 +453,26 @@ class AnalysisEnrichmentView(View):
             result = cache.get(f'{request_id}/analysis_enrichment')
 
             if result is None:
-                df = cache.get(f'{request_id}/tabular_output')
-
-                if df is None:
-                    return HttpResponseNotFound("Please make a new query")
-
-                result = analysis_enrichment(df)
+                result = analysis_enrichment(request_id)
                 cache.set(f'{request_id}/analysis_enrichment', result)
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
         except AnalysisEnrichmentError as e:
             return HttpResponseBadRequest(e)
+
+
+class AnalysisEnrichmentCsvView(View):
+    def get(self, request, request_id):
+        response = HttpResponse(content_type='text/csv')
+        response["Content-Disposition"] = 'attachment; filename="analysis_enrichment.csv"'
+
+        try:
+            analysis_enrichment_csv(request_id, buffer=response)
+
+            return response
+        except AnalysisEnrichmentError:
+            response.status_code = 404
+            return response
 
 
 class SummaryView(View):

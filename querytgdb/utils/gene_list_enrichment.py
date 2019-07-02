@@ -2,7 +2,7 @@ import io
 import sys
 from itertools import count, product
 from operator import itemgetter
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 import matplotlib.pyplot as plt
@@ -14,8 +14,8 @@ from django.core.cache import cache
 from scipy.stats import fisher_exact
 
 from querytgdb.utils import annotations
-from ..models import Analysis
-from ..utils import clear_data, column_string, split_name
+from ..models import Analysis, AnalysisData
+from ..utils import clear_data, column_string, split_name, get_metadata
 
 sns.set()
 
@@ -51,7 +51,7 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
 
 
 def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None, draw=True, legend=False,
-                         upper=None, lower=None):
+                         upper=None, lower=None, fields: Optional[List[str]] = None):
     """
     Draws gene list enrichment heatmap from cached query
 
@@ -61,6 +61,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     :param legend:
     :param upper:
     :param lower:
+    :param fields:
     :return:
     """
     # raising exception here if target genes are not uploaded by the user
@@ -128,11 +129,23 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
 
+        metadata = None
+
+        if fields:
+            metadata = get_metadata(analyses, fields)
+
         indices = []
 
         for (name, criterion, analysis_id, l), col_name in orig_index:
             tf = analyses.get(pk=analysis_id).tf
-            indices.append('{} — {}{} ({})'.format(col_name, tf.gene_id, ' ' + tf.name if tf.name else '', l))
+            idx = '{} — {}{} ({})'.format(col_name, tf.gene_id, f' {tf.name}' if tf.name else '', l)
+
+            try:
+                idx += f" [{metadata.loc[analysis_id, :].fillna('None').str.cat(sep=', ')}]"
+            except (KeyError, AttributeError):
+                pass
+
+            indices.append(idx)
 
         list_enrichment_pvals.index = indices
 
@@ -160,6 +173,11 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         else:
             scaled_pvals = scale_df(list_enrichment_pvals)
             sns_heatmap = draw_heatmap(scaled_pvals, vmin=lower, vmax=upper)
+
+            if fields:
+                sns_heatmap.ax_heatmap.set_ylabel(f'Addational fields: [{", ".join(fields)}]',
+                                                  rotation=270,
+                                                  labelpad=15)
 
             buff = io.BytesIO()
 

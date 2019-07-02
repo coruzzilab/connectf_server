@@ -8,7 +8,7 @@ import sys
 from functools import wraps
 from operator import methodcaller
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, Optional, Set, Sized, Tuple, TypeVar
+from typing import Any, Callable, Dict, Optional, Set, Sized, Tuple, TypeVar, Iterable
 from uuid import UUID
 
 import numpy as np
@@ -143,6 +143,7 @@ def clear_data(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
     """
     Remove unneeded columns when doing later calculations
     :param df:
+    :param drop:
     :return:
     """
     df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
@@ -257,3 +258,12 @@ annotations = Annotations()
 
 def check_annotations(genes):
     return set(map(methodcaller('upper'), genes)) - annotations.genes_upper
+
+
+def get_metadata(analyses, fields: Iterable[str]) -> pd.DataFrame:
+    analysis_data = AnalysisData.objects.filter(analysis__in=analyses, key__name__in=fields).prefetch_related(
+        'key')
+    metadata = pd.DataFrame(
+        analysis_data.values_list('analysis_id', 'key__name', 'value').iterator(),
+        columns=['id', 'key', 'value'])
+    return metadata.set_index(['id', 'key'])['value'].unstack()

@@ -188,26 +188,19 @@ def export_csv(uid: Union[UUID, str], buff=None) -> IO:
     df = df.stack([0, 1]).reorder_levels([1, 2, 'TARGET']).sort_index(level=0)
     df.index.names = ("TF", "ANALYSIS", "TARGET")
 
-    df_buff = io.StringIO()
-    df.to_csv(df_buff)
-    df_info = tarfile.TarInfo("table.csv")
-    df_bytes = df_buff.getvalue().encode()
-    df_info.size = len(df_bytes)
-
     metadata = data[f'{uid}/metadata']
     metadata = metadata.T
-    metadata_buff = io.StringIO()
-    metadata.to_csv(metadata_buff)
-    metadata_info = tarfile.TarInfo("metadata.csv")
-    metadata_bytes = metadata_buff.getvalue().encode()
-    metadata_info.size = len(metadata_bytes)
+
+    df = df.merge(metadata, left_on='ANALYSIS', right_index=True).reset_index().drop('EDGE', axis=1)
+
+    try:
+        df.insert(1, 'EDGE_TYPE', df.pop('EDGE_TYPE'))
+    except KeyError:
+        df.insert(1, 'EDGE_TYPE', 'edge')
 
     if buff is None:
         buff = io.BytesIO()
 
-    archive = tarfile.open(fileobj=buff, mode='w|gz')
-
-    archive.addfile(tarinfo=df_info, fileobj=io.BytesIO(df_bytes))
-    archive.addfile(tarinfo=metadata_info, fileobj=io.BytesIO(metadata_bytes))
+    df.to_csv(buff, index=False)
 
     return buff

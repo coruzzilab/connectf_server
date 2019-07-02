@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Generator, Iterable, List
 
@@ -80,6 +81,10 @@ class KeyView(View):
     @method_decorator(ensure_csrf_cookie)
     def get(self, request):
         tfs = set(filter(None, request.GET.getlist('tf')))
+        try:
+            all_keys = json.loads(request.GET.get('all', 'false'))
+        except json.JSONDecodeError:
+            all_keys = False
 
         if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
@@ -87,22 +92,33 @@ class KeyView(View):
         queryset = []
 
         if tfs:
-            if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
-                queryset.append('additional_edge')
-
             analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
 
-            if any(analysis.regulation_set.exists() for analysis in analyses):
-                queryset[0:0] = ['log2fc', 'pvalue']
+            if all_keys:
+                meta_qs = MetaKey.objects.filter(
+                    analysisdata__analysis__in=analyses
+                )
+            else:
+                if EdgeData.objects.filter(tf__gene_id__in=tfs).exists():
+                    queryset.append('additional_edge')
+                if any(analysis.regulation_set.exists() for analysis in analyses):
+                    queryset[0:0] = ['log2fc', 'pvalue']
 
-            queryset.extend(
-                MetaKey.objects.filter(
+                meta_qs = MetaKey.objects.filter(
                     analysisdata__analysis__in=analyses,
                     searchable=True
-                ).distinct().values_list('name', flat=True))
+                )
+
+            queryset.extend(
+                meta_qs.distinct().values_list('name', flat=True))
         else:
-            queryset[0:0] = ['log2fc', 'pvalue', 'additional_edge']
-            queryset.extend(MetaKey.objects.filter(searchable=True).values_list('name', flat=True))
+            if all_keys:
+                meta_qs = MetaKey.objects
+            else:
+                queryset[0:0] = ['log2fc', 'pvalue', 'additional_edge']
+                meta_qs = MetaKey.objects.filter(searchable=True)
+
+            queryset.extend(meta_qs.values_list('name', flat=True))
 
         return JsonResponse(queryset, safe=False)
 

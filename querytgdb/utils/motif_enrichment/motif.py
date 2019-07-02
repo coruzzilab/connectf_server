@@ -63,10 +63,7 @@ class MotifData:
     def register(self, region_cls: Type['Region']) -> Type['Region']:
         region = region_cls()
 
-        if region.name:
-            name = region.name
-        else:
-            name = region_cls.__name__.lower()
+        name = region.name
 
         self._regions[name] = region
         self.cache[name] = region.get_region(self.annotation)
@@ -94,6 +91,10 @@ class Region(ABC):
     default: bool = False
     name: str = ''
     description: str = ''
+
+    def __init__(self):
+        if not self.name:
+            self.name = self.__class__.__name__.lower()
 
     @abstractmethod
     def get_region(self, annotation: pd.DataFrame) -> pd.DataFrame:
