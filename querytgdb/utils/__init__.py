@@ -8,7 +8,7 @@ import sys
 from functools import wraps
 from operator import methodcaller
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, Optional, Set, Sized, Tuple, TypeVar, Iterable
+from typing import Any, Callable, Dict, Iterable, Optional, Set, Sized, Tuple, TypeVar
 from uuid import UUID
 
 import numpy as np
@@ -19,8 +19,7 @@ from django.http import FileResponse
 from fontTools.ttLib import TTFont
 from lxml import etree
 
-from querytgdb.models import Annotation
-from ..models import AnalysisData
+from querytgdb.models import AnalysisData, Annotation
 
 logger = logging.getLogger(__name__)
 
@@ -260,10 +259,24 @@ def check_annotations(genes):
     return set(map(methodcaller('upper'), genes)) - annotations.genes_upper
 
 
-def get_metadata(analyses, fields: Iterable[str]) -> pd.DataFrame:
-    analysis_data = AnalysisData.objects.filter(analysis__in=analyses, key__name__in=fields).prefetch_related(
+def get_metadata(analyses, fields: Iterable[str] = None) -> pd.DataFrame:
+    opts = {}
+
+    if fields is not None:
+        opts['key__name__in'] = fields
+
+    genes = pd.DataFrame(analyses.values_list('id', 'tf__gene_id', 'tf__name').iterator(),
+                         columns=['id', 'gene_id', 'gene_name'])
+    genes = genes.set_index('id')
+
+    analysis_data = AnalysisData.objects.filter(analysis__in=analyses, **opts).prefetch_related(
         'key')
     metadata = pd.DataFrame(
         analysis_data.values_list('analysis_id', 'key__name', 'value').iterator(),
         columns=['id', 'key', 'value'])
-    return metadata.set_index(['id', 'key'])['value'].unstack()
+    metadata = metadata.set_index(['id', 'key'])['value'].unstack().fillna('None')
+    metadata = metadata.merge(genes, left_index=True, right_index=True)
+
+    metadata['analysis_id'] = metadata.index.astype(str)
+
+    return metadata
