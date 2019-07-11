@@ -1,6 +1,6 @@
 from django.urls import path, register_converter
 
-import sungear.views
+import sungear_app.views
 from . import views
 
 
@@ -44,5 +44,5 @@ urlpatterns = [
     path('summary/<uuid:request_id>/', views.SummaryView.as_view()),
     path('aupr/<uuid:request_id>/', views.NetworkAuprView.as_view()),
     path('aupr/<uuid:request_id>/pruned/<float:cutoff>/', views.NetworkPrunedView.as_view()),
-    path('sungear/<uuid:request_id>/', sungear.views.SungearView.as_view())
+    path('sungear/<uuid:request_id>/', sungear_app.views.SungearView.as_view())
 ]
