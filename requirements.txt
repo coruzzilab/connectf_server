@@ -25,3 +25,4 @@ statsmodels
 typed-ast
 XlsxWriter
 sungear
+pyyaml
