@@ -36,7 +36,8 @@ setup(
         'statsmodels',
         'scikit-learn',
         'gunicorn',
-        'pyyaml'
+        'pyyaml',
+        'sungear'
     ],
     python_requires='>=3.5'
 )
