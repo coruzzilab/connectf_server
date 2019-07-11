@@ -265,18 +265,21 @@ def get_metadata(analyses, fields: Iterable[str] = None) -> pd.DataFrame:
     if fields is not None:
         opts['key__name__in'] = fields
 
-    genes = pd.DataFrame(analyses.values_list('id', 'tf__gene_id', 'tf__name').iterator(),
-                         columns=['id', 'gene_id', 'gene_name'])
-    genes = genes.set_index('id')
-
     analysis_data = AnalysisData.objects.filter(analysis__in=analyses, **opts).prefetch_related(
         'key')
     metadata = pd.DataFrame(
         analysis_data.values_list('analysis_id', 'key__name', 'value').iterator(),
         columns=['id', 'key', 'value'])
     metadata = metadata.set_index(['id', 'key'])['value'].unstack().fillna('None')
+
+    genes = pd.DataFrame(analyses.values_list('id', 'tf__gene_id', 'tf__name').iterator(),
+                         columns=['id', 'gene_id', 'gene_name'])
+    genes = genes.set_index('id')
     metadata = metadata.merge(genes, left_index=True, right_index=True)
 
     metadata['analysis_id'] = metadata.index.astype(str)
+
+    if fields:
+        metadata = metadata.loc[:, fields]
 
     return metadata
