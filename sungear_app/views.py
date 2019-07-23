@@ -19,6 +19,10 @@ class SungearNotFound(SungearException):
     pass
 
 
+class FilterListNotFound(SungearException):
+    pass
+
+
 def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
     df = cache.get(f'{uid}/tabular_output')
     if df is None:
@@ -49,7 +53,7 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
     return {
                **result,
                'metadata': metadata.to_dict('index')
-           }, finished
+           }, finished and not filter_genes
 
 
 # Create your views here.
@@ -71,8 +75,12 @@ class SungearView(View):
         try:
             try:
                 genes = json.loads(request.body)['genes']
+
+                if not genes:
+                    raise FilterListNotFound('empty genes')
+
                 res, can_cache = get_sungear(request_id, genes)
-            except (json.JSONDecodeError, KeyError):
+            except (json.JSONDecodeError, KeyError, FilterListNotFound):
                 res = cache.get(f'{request_id}/sungear')
                 if res is None:
                     res, can_cache = get_sungear(request_id)
