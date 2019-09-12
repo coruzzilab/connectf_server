@@ -52,4 +52,5 @@ build/
 dist/
 *.egg-info/
 
+/connectf/config.yaml
 config.yaml
