@@ -27,14 +27,14 @@ class AnalysisEnrichmentWarning(AnalysisEnrichmentError, UserWarning):
     pass
 
 
-def split_col_name(col_name: Tuple[str, int]) -> Tuple[str, str, int]:
+def split_col_name(col_name: Tuple[str, int]) -> Tuple[str, str, str, int]:
     name, analysis_id = col_name
 
     return split_name(name) + (analysis_id,)
 
 
-def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, str, int]:
-    return (analysis.tf.gene_name_symbol, *split_col_name(col_name)[1:])
+def make_col_tuple(col_name: Tuple[str, int], analysis: Analysis) -> Tuple[str, str, str, int]:
+    return (analysis.tf.gene_name_symbol,) + split_col_name(col_name)[1:]
 
 
 def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warning: bool = False) -> Dict:

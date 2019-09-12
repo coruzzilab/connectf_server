@@ -45,14 +45,16 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
     metadata = get_metadata(analyses)
 
     gene_lists = OrderedDict(
-        (name[1], col.index[col.notna()]) for name, col in df.iteritems()
+        (name, col.index[col.notna()]) for name, col in df.iteritems()
     )
 
     result, finished = sungear(gene_lists)
 
     return {
                **result,
-               'metadata': metadata.to_dict('index')
+               'metadata': [
+                   (c, metadata.loc[c[1], :].to_dict()) for c in df.columns
+               ]
            }, finished and not filter_genes
 
 

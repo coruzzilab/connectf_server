@@ -187,7 +187,7 @@ def get_motif_enrichment_json(uid: Union[str, UUID],
     columns = []
 
     for (tf, analysis_id), value in res.items():
-        name, criterion = split_name(tf)
+        name, criterion, _uid = split_name(tf)
 
         data = OrderedDict([('name', name), ('filter', criterion)])
         try:
@@ -310,7 +310,7 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[Table
     col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
     for (name, analysis_id), col_str in zip(df.columns, col_strings):
-        name, criterion = split_name(name)
+        name, criterion, _uid = split_name(name)
 
         info = OrderedDict([('name', name), ('filter', criterion)])
 

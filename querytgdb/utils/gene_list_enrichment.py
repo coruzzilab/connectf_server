@@ -98,7 +98,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     for (name, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index.str.upper())
 
-        name, criterion = split_name(name)
+        name, criterion, _uid = split_name(name)
 
         targets[(name, criterion, analysis_id, len(analysis_targets))] = analysis_targets
 
