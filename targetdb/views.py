@@ -89,7 +89,7 @@ class KeyView(View):
         if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
             tfs = set()
 
-        queryset = []
+        queryset = ['targeted_by']
 
         if tfs:
             analyses = Analysis.objects.filter(tf__gene_id__in=tfs)
@@ -135,7 +135,7 @@ class ValueView(View):
 
         queryset: List[str] = []
 
-        if key in ('PVALUE', 'LOG2FC'):
+        if key in ('PVALUE', 'LOG2FC', 'TARGETED_BY'):
             return JsonResponse(queryset, safe=False)
         elif key == 'ADDITIONAL_EDGE':
             if tfs:

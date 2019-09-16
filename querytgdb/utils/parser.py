@@ -1,4 +1,5 @@
 import logging
+import operator
 import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -159,6 +160,13 @@ def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
         return mask
 
 
+def match_id(df: TargetFrame, analysis_id: Union[str, int]):
+    mask = pd.DataFrame(False, columns=df.columns, index=df.index)
+    mask.loc[:, (slice(None), df.columns.get_level_values(1) == int(analysis_id), slice(None))] = True
+
+    return mask
+
+
 COL_TRANSLATE = {
     'PVALUE': 'Pvalue',
     'LOG2FC': 'Log2FC',
@@ -196,6 +204,52 @@ def apply_has_add_edges(df: TargetFrame, analyses, anno_ids, value) -> pd.DataFr
     return mask
 
 
+OPERS = {
+    '>': operator.gt,
+    '>=': operator.ge,
+    '<': operator.lt,
+    '<=': operator.le,
+    '=': operator.eq,
+    '!=': operator.ne
+}
+
+
+def match_targeted_by(df, oper, value):
+    mask = pd.DataFrame(False, columns=df.columns, index=df.index)
+
+    cleared = df.pipe(clear_data)
+
+    frac = False
+    if '%' in value:
+        value = float(value.rstrip('% ')) / 100
+        frac = True
+    else:
+        value = float(value)
+
+    if 0 <= value < 1:
+        frac = True
+
+    targeted_count = cleared.count(axis=1)
+
+    op_func = OPERS[oper]
+
+    if frac:
+        rows = op_func(targeted_count / cleared.shape[1], value)
+    else:
+        rows = op_func(targeted_count, value)
+
+    mask.loc[rows, :] = True
+
+    return mask
+
+
+MATCH_PVALUE = re.compile(r'^pvalue$', flags=re.I)
+MATCH_LOG2FC = re.compile(r'^log2fc$', flags=re.I)
+MATCH_ADD_EDGE = re.compile(r'^additional_edge$', flags=re.I)
+MATCH_ID = re.compile(r'^id$', flags=re.I)
+MATCH_TARGETED = re.compile(r'^targeted_by$', flags=re.I)
+
+
 def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.DataFrame:
     """
     Get ref_id from modifier to filter TF dataframe
@@ -228,20 +282,21 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             oper = query['oper']
             value = query['value']
 
-            if re.match(r'^pvalue$', key, flags=re.I):
+            if MATCH_PVALUE.match(key):
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
-            elif re.match(r'^log2fc$', key, flags=re.I):
+            elif MATCH_LOG2FC.match(key):
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
-            elif re.match(r'^additional_edge$', key, flags=re.I):
+            elif MATCH_ADD_EDGE.match(key):
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
                 anno_ids = annotations().loc[df.index, 'id']
                 return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges,
                                                               analyses=analyses,
                                                               anno_ids=anno_ids,
                                                               value=value)
-            # elif re.match(r'^has_column$', key, flags=re.I):
-            #     value = value.upper()
-            #     return df.groupby(level=[0, 1], axis=1).apply(apply_has_column, value=value)
+            elif MATCH_ID.match(key):
+                return match_id(df, value)
+            elif MATCH_TARGETED.match(key):
+                return match_targeted_by(df, oper, value)
             else:
                 return query_metadata(df, key, value)
     return query
