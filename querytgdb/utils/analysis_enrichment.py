@@ -16,7 +16,7 @@ from statsmodels.stats.multitest import fdrcorrection
 
 from querytgdb.utils import annotations
 from ..models import Analysis
-from ..utils import clear_data, split_name
+from ..utils import clear_data, get_metadata, split_name
 
 
 class AnalysisEnrichmentError(ValueError):
@@ -43,7 +43,7 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
     if df is None:
         raise AnalysisEnrichmentError("Please make a new query")
 
-    df = clear_data(df)
+    df = df.pipe(clear_data)
 
     if df.shape[1] < 2:
         raise AnalysisEnrichmentError('Analysis enrichment requires more than 1 queried analysis')
@@ -61,22 +61,21 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
 
     background = annotations().shape[0]
 
-    analysis_ids = df.columns.get_level_values(1)
+    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
 
-    analyses = Analysis.objects.filter(pk__in=analysis_ids).prefetch_related('analysisdata_set', 'tf')
+    metadata = get_metadata(analyses)
 
     for col_name in df.columns:
-        analysis = analyses.get(pk=col_name[1])
         d = OrderedDict(Count=df[col_name].count())
-        d.update(analysis.meta_dict)
+        d.update(metadata.loc[col_name[1], :].to_dict())
 
-        info.append((make_col_tuple(col_name, analysis), d))
+        info.append((split_col_name(col_name), d))
 
     for (name1, col1), (name2, col2) in combinations(((name, col.index[col.notna()])
                                                       for name, col in df.iteritems()), 2):
         columns.append((
-            make_col_tuple(name1, analyses.get(pk=name1[1])),
-            make_col_tuple(name2, analyses.get(pk=name2[1]))
+            split_col_name(name1),
+            split_col_name(name2)
         ))
 
         common = col1.intersection(col2).sort_values()
@@ -106,6 +105,12 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
     }
 
 
+get_name_fields = itemgetter(0, 1, 3)
+fieldnames = ['tf1', 'query1', 'analysis1', 'count1',
+              'tf2', 'query2', 'analysis2', 'count2',
+              'less', 'less_adj', 'greater', 'greater_adj', 'intersection_count', 'genes']
+
+
 def analysis_enrichment_csv(uid: Union[str, UUID],
                             buffer: Optional[Union[StringIO, HttpResponse]] = None,
                             size_limit: int = 100,
@@ -121,10 +126,6 @@ def analysis_enrichment_csv(uid: Union[str, UUID],
 
     info = dict(enrichment['info'])
 
-    fieldnames = ['tf1', 'query1', 'analysis1', 'count1',
-                  'tf2', 'query2', 'analysis2', 'count2',
-                  'intersection_count', 'less', 'less_adj', 'greater', 'greater_adj', 'genes']
-
     writer = csv.DictWriter(buffer,
                             dialect='unix',
                             quoting=csv.QUOTE_MINIMAL,
@@ -135,6 +136,9 @@ def analysis_enrichment_csv(uid: Union[str, UUID],
     for p, d, g in zip(enrichment['columns'],
                        map(itemgetter('less', 'less_adj', 'greater', 'greater_adj'), enrichment['data']),
                        map(lambda x: (len(x['genes']), ','.join(x['genes'])), enrichment['data'])):
-        writer.writerow(dict(zip(fieldnames, p[0] + (info[p[0]]['Count'],) + p[1] + (info[p[1]]['Count'],) + d + g)))
+        writer.writerow(dict(zip(
+            fieldnames,
+            get_name_fields(p[0]) + (info[p[0]]['Count'],) + get_name_fields(p[1]) + (info[p[1]]['Count'],) + d + g
+        )))
 
     return buffer
