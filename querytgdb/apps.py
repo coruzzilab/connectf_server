@@ -10,13 +10,17 @@ class QuerytgdbConfig(AppConfig):
         from django.core.checks import register, Error, Warning
         from django.conf import settings
         from .models import Annotation
+        from django.db.utils import DatabaseError
 
         @register()
         def check_annotations(app_configs, **kwargs):
             errors = []
 
-            if not Annotation.objects.exists():
-                errors.append(Warning('No annotations loaded.', id='querytgdb.W003'))
+            try:
+                if not Annotation.objects.exists():
+                    errors.append(Warning('No annotations loaded.', id='querytgdb.W003'))
+            except DatabaseError:
+                pass
 
             return errors
 
