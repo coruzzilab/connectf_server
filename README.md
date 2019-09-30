@@ -8,6 +8,13 @@ This is the API backend for ConnecTF.
 
 ```bash
 pip install -r requirements.txt
+```
+
+A MySQL database instance is required. Details of the database should be configured in the [`config.yaml`](#configyaml) file in the 
+`./connectf/` folder, alongside `settings.py`. You can edit `settings.py` directly if you are more comfortable in
+configuring a Django project.
+
+```bash
 python manage.py migrate
 ```
 
@@ -16,12 +23,32 @@ python manage.py migrate
 Import data before starting the server.
 
 ```bash
-python manage.py import_annotation annotation.csv
-python manage.py import_data data.csv metadata.txt
-python manage.py import_edges additional_edges.txt
+python manage.py import_annotation annotation.csv  # import gene annotations
+python manage.py import_data data.csv metadata.txt  # import data/metadata
+python manage.py import_edges additional_edges.txt  # import additional edges
 ```
 
 Sample files can be found at:
+
+## Configuration
+
+### config.yaml
+
+A sample `config.yaml` file:
+
+```yaml
+SECRET_KEY: 'django_secret_key'  # see https://docs.djangoproject.com/en/2.2/ref/settings/#secret-key
+DEBUG: True
+DATABASE:
+  NAME: 'db_name'
+  USER: 'db_username'
+  PASSWORD: 'db_password'
+  HOST: 'localhost'
+MOTIF_ANNOTATION: '/path/to/file'
+MOTIF_CLUSTER: '/path/to/file'
+GENE_LISTS: '/path/to/folder'
+TARGET_NETWORKS: '/path/to/folder'
+```
 
 ## Deploying
 
@@ -47,7 +74,7 @@ This binds the server to a unix socket, which can then be connected to from a re
 ### Sample Nginx Server Configuration
 
 This listens to an HTTPS connection. Remember to include certificates and private keys in the configuration, 
-or use an HTTP confuration instead.
+or use an HTTP configuration instead.
 
 ```text
 server {
