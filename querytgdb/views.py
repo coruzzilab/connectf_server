@@ -153,8 +153,8 @@ class QueryView(View):
             return HttpResponseBadRequest(e)
         except ValueError as e:
             raise Http404(f'Query not available: {e}') from e
-        except MultiValueDictKeyError:
-            return HttpResponseBadRequest("Problem with query.")
+        except MultiValueDictKeyError as e:
+            return HttpResponseBadRequest(f"Problem with query: {e}")
 
 
 class NetworkAuprView(View):

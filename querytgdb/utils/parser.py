@@ -59,15 +59,6 @@ class TargetSeries(pd.Series):
 
 name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:/\\')
 
-point = pp.Literal('.')
-e = pp.CaselessLiteral('e')
-number = pp.Word(pp.nums)
-plusorminus = pp.Literal('+') | pp.Literal('-')
-integer = pp.Combine(pp.Optional(plusorminus) + number)
-
-floatnum = pp.Combine(integer + pp.Optional(point + pp.Optional(number)) + pp.Optional(e + integer)).setParseAction(
-    lambda toks: float(toks[0]))
-
 and_ = pp.CaselessKeyword('and')
 or_ = pp.CaselessKeyword('or')
 
@@ -77,10 +68,26 @@ opers = [
     (or_, 2, pp.opAssoc.LEFT)
 ]
 
+mod_comp = pp.oneOf('< = > >= <= !=')
+
 quoted_name = pp.QuotedString('"', escChar='\\') | pp.QuotedString("'", escChar='\\')
 
-modname = pp.Group((name | quoted_name)('key') + pp.oneOf('< = > >= <= !=')('oper') + (name | quoted_name)('value'))(
-    'mod')
+pvalue = pp.CaselessKeyword('pvalue')
+log2fc = pp.CaselessKeyword('log2fc')
+id_ = pp.CaselessKeyword('id')
+
+number_keywords = (pvalue | log2fc | id_).setParseAction(lambda toks: toks[0].lower())
+
+additional_edge = pp.CaselessKeyword('additional_edge')
+targeted_by = pp.CaselessKeyword('targeted_by')
+
+string_keywords = (additional_edge | targeted_by).setParseAction(lambda toks: toks[0].lower())
+
+modname = pp.Group(
+    (number_keywords('key') + mod_comp('oper') + pp.pyparsing_common.number('value')) |
+    (string_keywords('key') + mod_comp('oper') + (name | quoted_name)('value')) |
+    ((name | quoted_name)('key') + mod_comp('oper') + (name | quoted_name)('value'))
+)('mod')
 
 modifier = pp.Group(pp.Suppress('[') + pp.infixNotation(modname, opers) + pp.Suppress(']'))('modifier')
 
@@ -103,8 +110,11 @@ is_mod = partial(is_name, 'mod')
 def mod_to_str(curr: pp.ParseResults) -> str:
     if isinstance(curr, str):
         return curr
-    else:
+
+    try:
         return ' '.join(map(mod_to_str, curr))
+    except TypeError:
+        return str(curr)
 
 
 def query_metadata(df: TargetFrame, key: str, value: str) -> pd.DataFrame:
@@ -122,32 +132,31 @@ def query_metadata(df: TargetFrame, key: str, value: str) -> pd.DataFrame:
     return mask
 
 
-def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: Union[float, str]) -> pd.DataFrame:
+OPERS = {
+    '>': operator.gt,
+    '>=': operator.ge,
+    '<': operator.lt,
+    '<=': operator.le,
+    '=': operator.eq,
+    '!=': operator.ne
+}
+
+
+def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: float) -> pd.DataFrame:
     """
     apply Pvalue and Log2FC (fold change)
     """
-    value = float(value)
     try:
-        c = df[(*df.name, key)]
+        c = df.loc[:, (*df.name, key)]
     except KeyError:
         return pd.DataFrame(False, columns=df.columns, index=df.index)
 
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
 
-    if oper == '=':
-        return mask.where(c == value, False)
-    elif oper == '>=':
-        return mask.where(c >= value, False)
-    elif oper == '<=':
-        return mask.where(c <= value, False)
-    elif oper == '>':
-        return mask.where(c > value, False)
-    elif oper == '<':
-        return mask.where(c < value, False)
-    elif oper == '!=':
-        return mask.where(c != value, False)
-    else:
-        raise ValueError('invalid operator: {}'.format(oper))
+    try:
+        return mask.where(OPERS[oper](c, value), False)
+    except KeyError as e:
+        raise ValueError('invalid operator: {}'.format(oper)) from e
 
 
 def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
@@ -204,21 +213,7 @@ def apply_has_add_edges(df: TargetFrame, analyses, anno_ids, value) -> pd.DataFr
     return mask
 
 
-OPERS = {
-    '>': operator.gt,
-    '>=': operator.ge,
-    '<': operator.lt,
-    '<=': operator.le,
-    '=': operator.eq,
-    '!=': operator.ne
-}
-
-
 def match_targeted_by(df, oper, value):
-    mask = pd.DataFrame(False, columns=df.columns, index=df.index)
-
-    cleared = df.pipe(clear_data)
-
     frac = False
     if '%' in value:
         value = float(value.rstrip('% ')) / 100
@@ -228,6 +223,10 @@ def match_targeted_by(df, oper, value):
 
     if 0 <= value < 1:
         frac = True
+
+    mask = pd.DataFrame(False, columns=df.columns, index=df.index)
+
+    cleared = df.pipe(clear_data)
 
     targeted_count = cleared.count(axis=1)
 
@@ -241,13 +240,6 @@ def match_targeted_by(df, oper, value):
     mask.loc[rows, :] = True
 
     return mask
-
-
-MATCH_PVALUE = re.compile(r'^pvalue$', flags=re.I)
-MATCH_LOG2FC = re.compile(r'^log2fc$', flags=re.I)
-MATCH_ADD_EDGE = re.compile(r'^additional_edge$', flags=re.I)
-MATCH_ID = re.compile(r'^id$', flags=re.I)
-MATCH_TARGETED = re.compile(r'^targeted_by$', flags=re.I)
 
 
 def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.DataFrame:
@@ -278,24 +270,21 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             except StopIteration:
                 return get_mod(df, stack.pop())
         else:
-            key = query['key']
-            oper = query['oper']
-            value = query['value']
-
-            if MATCH_PVALUE.match(key):
+            key, oper, value = itemgetter('key', 'oper', 'value')(query)
+            if key == 'pvalue':
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
-            elif MATCH_LOG2FC.match(key):
+            elif key == 'log2fc':
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
-            elif MATCH_ADD_EDGE.match(key):
+            elif key == 'additional_edge':
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
                 anno_ids = annotations().loc[df.index, 'id']
                 return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges,
                                                               analyses=analyses,
                                                               anno_ids=anno_ids,
                                                               value=value)
-            elif MATCH_ID.match(key):
+            elif key == 'id':
                 return match_id(df, value)
-            elif MATCH_TARGETED.match(key):
+            elif key == 'targeted_by':
                 return match_targeted_by(df, oper, value)
             else:
                 return query_metadata(df, key, value)
@@ -561,9 +550,10 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                 if curr in ('and', 'or'):
                     prec, succ = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list), \
                                  get_tf(next(it), edges, tf_filter_list, target_filter_list)
-                    uniq_cols = prec.columns.get_level_values(0).intersection(succ.columns.get_level_values(0)).unique()
-                    if uniq_cols.any():
-                        prec, succ = rename_suffix(prec, uniq_cols), rename_suffix(succ, uniq_cols)
+                    intersect_cols = prec.columns.get_level_values(0).intersection(
+                        succ.columns.get_level_values(0)).unique()
+                    if intersect_cols.any():
+                        prec, succ = rename_suffix(prec, intersect_cols), rename_suffix(succ, intersect_cols)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
@@ -614,10 +604,8 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                 elif is_modifier(curr):
                     prec = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list)
                     mod = get_mod(prec, curr)
-                    prec = prec[mod].dropna(how='all')
+                    prec = prec[mod].dropna(how='all').dropna(how='all', axis=1)  # filter out empty tfs
 
-                    # filter out empty tfs
-                    prec = prec.groupby(level=[0, 1], axis=1).filter(lambda x: x.notna().any(axis=None))
                     prec.filter_string += f'[{mod_to_str(curr)}]'
 
                     stack.append(prec)
@@ -715,6 +703,7 @@ def parse_query(query: str,
         parse = expr.parseString(query, parseAll=True)
 
         result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
+        result.columns = result.columns.set_levels(result.columns.levels[1].astype(int), level=1)  # ensure integer type
 
         if result.empty or not result.include:
             raise QueryError('empty query')
