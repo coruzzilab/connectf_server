@@ -88,10 +88,10 @@ def insert_data(data_file, metadata_file, sep=','):
         raise ValueError(
             'Transcription Factor ID {} does not exist.'.format(metadata.loc['TRANSCRIPTION_FACTOR_ID', 'data']))
 
-    if not metadata.index.contains('EDGE_TYPE'):
+    if 'EDGE_TYPE' not in metadata.index:
         raise ValueError('Please assign an EDGE_TYPE to the metadata.')
 
-    if not metadata.index.contains('EXPERIMENT_TYPE'):
+    if 'EXPERIMENT_TYPE' not in metadata.index:
         raise ValueError('Please assign an EXPERIMENT_TYPE to the metadata. Typically Expression or Binding.')
 
     # Insert Analysis
