@@ -26,3 +26,5 @@ typed-ast
 XlsxWriter
 sungear
 pyyaml
+boto3
+requests
