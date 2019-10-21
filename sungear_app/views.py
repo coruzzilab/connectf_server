@@ -32,11 +32,10 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
 
     if filter_genes:
         df = df.loc[df.index.isin(filter_genes), :].dropna(how='all', axis=1)
-
-    df = pd.concat([df.iloc[:, ::2], df.iloc[:, 1::2]], axis=1)  # splitting odd and even rows
-
     if df.shape[1] < 2:
         raise SungearException("Sungear needs at least 2 analyses.")
+
+    df = pd.concat([df.iloc[:, ::2], df.iloc[:, 1::2]], axis=1)  # splitting odd and even rows
 
     analyses = Analysis.objects.filter(
         pk__in=df.columns.get_level_values(1)
