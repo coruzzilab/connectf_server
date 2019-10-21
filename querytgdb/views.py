@@ -1,8 +1,11 @@
 import logging
+import mimetypes
 import os
+import re
 import shutil
 import tempfile
 import warnings
+from itertools import chain
 from threading import Lock
 from uuid import uuid4
 
@@ -488,3 +491,31 @@ class SummaryView(View):
             cache.set(f'{request_id}/summary', result)
 
         return JsonResponse(result, encoder=PandasJSONEncoder)
+
+
+class ListDownloadView(View):
+    def head(self, request, list_name):
+        files = chain(gene_lists_storage.listdir('.')[1], networks_storage.listdir('.')[1])
+
+        name_regex = re.compile('^' + re.escape(list_name + os.path.extsep))
+
+        if any(filter(name_regex.search, files)):
+            return HttpResponse()
+        else:
+            return HttpResponseNotFound()
+
+    def get(self, request, list_name):
+        files = chain(gene_lists_storage.listdir('.')[1], networks_storage.listdir('.')[1])
+
+        name_regex = re.compile('^' + re.escape(list_name + os.path.extsep))
+
+        try:
+            file = next(filter(name_regex.search, files))
+            storage = next(filter(lambda s: os.path.isfile(s.path(file)), (gene_lists_storage, networks_storage)))
+
+            if mimetypes.guess_type(file)[1] == 'gzip':
+                return GzipFileResponse(storage.open(file, 'rb'), as_attachment=True)
+
+            return FileResponse(storage.open(file, 'rb'), as_attachment=True)
+        except (StopIteration, FileNotFoundError) as e:
+            raise Http404('gene list not found') from e
