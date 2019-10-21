@@ -18,8 +18,9 @@ CHARSET = 'UTF-8'
 
 def aws_send_email(instance: models.Feedback):
     client = boto3.client('sns',
-                          aws_access_key_id="AKIA2SRH3KC6XKMPI5M2",
-                          aws_secret_access_key="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")
+                          region_name=settings.AWS_REGION_NAME,
+                          aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                          aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
 
     try:
         # Provide the contents of the email.
