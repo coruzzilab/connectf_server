@@ -261,10 +261,10 @@ def check_annotations(genes):
     return set(map(methodcaller('upper'), genes)) - annotations.genes_upper
 
 
-def get_metadata(analyses, fields: Iterable[str] = None) -> pd.DataFrame:
+def get_metadata(analyses, fields: Optional[Iterable[str]] = None) -> pd.DataFrame:
     opts = {}
 
-    if fields is not None:
+    if fields:
         opts['key__name__in'] = fields
 
     analysis_data = AnalysisData.objects.filter(analysis__in=analyses, **opts).prefetch_related(
@@ -283,5 +283,7 @@ def get_metadata(analyses, fields: Iterable[str] = None) -> pd.DataFrame:
 
     if fields:
         metadata = metadata.loc[:, fields]
+
+    metadata = metadata.fillna('')
 
     return metadata

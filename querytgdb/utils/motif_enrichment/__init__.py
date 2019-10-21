@@ -183,6 +183,7 @@ def get_motif_enrichment_json(uid: Union[str, UUID],
     regions, df = motif_enrichment(res, regions, uid, alpha=alpha, show_reject=False)
 
     analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
+    metadata = get_metadata(analyses)
 
     columns = []
 
@@ -191,12 +192,10 @@ def get_motif_enrichment_json(uid: Union[str, UUID],
 
         data = OrderedDict([('name', name), ('filter', criterion)])
         try:
-            analysis = analyses.get(pk=analysis_id)
-            data['gene_name'] = analysis.tf.name
-            data.update(analysis.meta_dict)
-        except ObjectDoesNotExist:
+            data.update(metadata.loc[analysis_id, :].to_dict())
+        except KeyError:
             if (tf, analysis_id) == ('Target Gene List', None):
-                data['genes'] = ", ".join(value)
+                data['genes'] = ",\n".join(value)
             else:
                 raise
 
@@ -226,7 +225,7 @@ def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] =
             col = '{0} — {1}{2}'.format(col_name, tf.gene_id, f' ({tf.name})' if tf.name else '')
 
             try:
-                col += f" [{metadata.loc[analysis_id, :].fillna('None').str.cat(sep=', ')}]"
+                col += f" [{metadata.loc[analysis_id, :].str.cat(sep=', ')}]"
             except (AttributeError, KeyError):
                 pass
 

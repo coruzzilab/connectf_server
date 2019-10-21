@@ -123,16 +123,19 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         list_enrichment_pvals = list_enrichment_pvals.rename(columns=colnames)
         list_enrichment_count = list_enrichment_count.rename(columns=colnames)
 
+        # bonferroni correction
+        list_enrichment_pvals = list_enrichment_pvals.stack()
+        pvalues = multipletests(list_enrichment_pvals, method='bonferroni')[1]
+        list_enrichment_pvals = pd.Series(pvalues, index=list_enrichment_pvals.index)
+        list_enrichment_pvals = list_enrichment_pvals.unstack()
+
         if not draw:
             return list_enrichment_pvals, list_enrichment_count
 
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
 
-        metadata = None
-
-        if fields:
-            metadata = get_metadata(analyses, fields)
+        metadata = get_metadata(analyses)
 
         indices = []
 
@@ -141,7 +144,8 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
             idx = '{} — {}{} ({})'.format(col_name, tf.gene_id, f' {tf.name}' if tf.name else '', l)
 
             try:
-                idx += f" [{metadata.loc[analysis_id, :].fillna('None').str.cat(sep=', ')}]"
+                if fields:
+                    idx += f" [{metadata.loc[analysis_id, fields].str.cat(sep=', ')}]"
             except (KeyError, AttributeError):
                 pass
 
@@ -156,16 +160,13 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
                 name, criterion, analysis_id, l = idx
 
                 info = {'name': name, 'filter': criterion}
-                analysis = analyses.get(pk=analysis_id)
-
-                gene_id = analysis.tf.gene_id
 
                 try:
-                    gene_name = annotations().at[gene_id, 'Name']
+                    gene_name = metadata.at[analysis_id, 'gene_name']
                 except KeyError:
                     gene_name = ''
 
-                info.update(analysis.analysisdata_set.values_list('key__name', 'value').iterator())
+                info.update(metadata.loc[analysis_id, :].to_dict())
 
                 result.append((info, col_label, name, criterion, l, gene_name, analysis_id))
 
@@ -195,9 +196,8 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
         draw=False,
         legend=False
     )
-    analyses = Analysis.objects.filter(pk__in=map(itemgetter(2), data.index)).prefetch_related('analysisdata_set',
-                                                                                               'analysisdata_set__key',
-                                                                                               'tf')
+    analyses = Analysis.objects.filter(pk__in=map(itemgetter(2), data.index))
+    metadata = get_metadata(analyses)
 
     result = []
 
@@ -205,9 +205,7 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
                                                                     counts.itertuples(name=None, index=False)):
         info = {'filter': criterion, 'targets': l}
         try:
-            analysis = analyses.get(pk=analysis_id)
-            info['name'] = analysis.tf.gene_name_symbol
-            info.update(analysis.meta_dict)
+            info.update(metadata.loc[analysis_id, :].to_dict())
         except Analysis.DoesNotExist:
             pass
 
