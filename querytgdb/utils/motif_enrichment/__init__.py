@@ -1,9 +1,10 @@
+import math
 import sys
 from collections import OrderedDict
-from functools import partial, reduce
+from functools import partial
 from io import BytesIO
 from itertools import chain, count, cycle, starmap, tee
-from operator import itemgetter, methodcaller, or_
+from operator import itemgetter, methodcaller
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
@@ -14,9 +15,8 @@ import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from django.conf import settings
 from django.core.cache import cache
-from django.core.exceptions import ObjectDoesNotExist
 from scipy.stats import fisher_exact
-from statsmodels.stats.multitest import fdrcorrection
+from statsmodels.stats.multitest import multipletests
 
 from querytgdb.models import Analysis
 from querytgdb.utils import annotations, clear_data, column_string, get_metadata, split_name, svg_font_adder
@@ -85,11 +85,7 @@ def get_list_enrichment(gene_list: Iterable[str],
         annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
     ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
 
-    adj_p = fdrcorrection(p_values, is_sorted=True)[1]
-
-    str_index = p_values.index.astype(str)
-
-    return pd.Series(adj_p, index=str_index)
+    return p_values
 
 
 def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
@@ -133,17 +129,17 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
 
     df.columns = columns
 
-    if show_reject:
-        rejects = reduce(or_, map(reject_func, chain.from_iterable(results.values())))
-    else:
-        rejects = pd.concat(map(reject_func, chain.from_iterable(zip(*results.values()))), axis=1, sort=True)
+    # bonferroni correction
+    df = df.stack()
+    pvalues = multipletests(df, method='bonferroni')[1]
+    df = pd.Series(pvalues, index=df.index)
+    df = df.unstack()
 
     if show_reject:
-        rejects = rejects.reindex(df.index)
-        df = df[rejects]
+        df = df[(df <= alpha).any(axis=1)]
     else:
-        rejects.columns = columns
-        df = df.where(rejects).dropna(how='all')
+        df[df > alpha] = np.nan
+        df = df.dropna(how='all')
 
     if df.empty:
         raise NoEnrichedMotif
@@ -282,6 +278,10 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                    vmin=lower_bound,
                                    vmax=upper_bound,
                                    **opts)
+    # bug in matplotlib 3.1.1
+    bottom, top = heatmap_graph.ax_heatmap.get_ylim()
+    heatmap_graph.ax_heatmap.set_ylim(math.ceil(bottom), math.floor(top))
+
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
     if fields:

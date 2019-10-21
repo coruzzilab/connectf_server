@@ -1,4 +1,5 @@
 import io
+import math
 import sys
 from itertools import count, product
 from operator import itemgetter
@@ -12,10 +13,11 @@ import scipy.cluster.hierarchy as hierarchy
 import seaborn as sns
 from django.core.cache import cache
 from scipy.stats import fisher_exact
+from statsmodels.stats.multitest import multipletests
 
 from querytgdb.utils import annotations
-from ..models import Analysis, AnalysisData
-from ..utils import clear_data, column_string, split_name, get_metadata
+from ..models import Analysis
+from ..utils import clear_data, column_string, get_metadata, split_name
 
 sns.set()
 
@@ -42,6 +44,10 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
                                  col_cluster=col_num > 1,
                                  **kwargs,
                                  **opts)
+    # bug in matplotlib 3.1.1
+    bottom, top = heatmap_graph.ax_heatmap.get_ylim()
+    heatmap_graph.ax_heatmap.set_ylim(math.ceil(bottom), math.floor(top))
+
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     # plt.setp(sns_heatmap.ax_heatmap.yaxis.get_label(), text="Analyses", rotation=270)
     plt.setp(sns_heatmap.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)

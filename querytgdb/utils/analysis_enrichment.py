@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.http import HttpResponse
 from scipy.special import comb
 from scipy.stats import fisher_exact
-from statsmodels.stats.multitest import fdrcorrection
+from statsmodels.stats.multitest import multipletests
 
 from querytgdb.utils import annotations
 from ..models import Analysis
@@ -92,7 +92,7 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
         })
 
     p_values = (pd.DataFrame(data)[['less', 'greater']]
-                .apply(lambda x: fdrcorrection(x)[1])
+                .apply(lambda x: multipletests(x, method='bonferroni')[1])
                 .rename(columns=lambda x: x + '_adj'))
 
     for d, adj_p in zip(data, p_values.itertuples(index=False)):
