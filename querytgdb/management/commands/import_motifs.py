@@ -21,7 +21,7 @@ def gz_copy(src, dst, force=False):
         elif enc == 'gzip':
             shutil.copyfile(src, dst)
     else:
-        raise ValueError("Should be csv file")
+        raise ValueError("Should be .csv file")
 
 
 class Command(BaseCommand):
@@ -30,5 +30,5 @@ class Command(BaseCommand):
         parser.add_argument("motif", help="gene to motif matches (.csv)", type=str)
 
     def handle(self, *args, **options):
-        gz_copy(options['desc'], os.path.join(settings.BASE_DIR, 'connectf/static/cluster_info.csv.gz'))
-        gz_copy(options['motif'], os.path.join(settings.BASE_DIR, 'connectf/static/annotated_motifs.csv.gz'))
+        gz_copy(options['desc'], os.path.join(settings.BASE_DIR, 'data/cluster_info.csv.gz'))
+        gz_copy(options['motif'], os.path.join(settings.BASE_DIR, 'data/annotated_motifs.csv.gz'))
