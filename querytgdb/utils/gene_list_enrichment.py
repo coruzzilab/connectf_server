@@ -45,8 +45,8 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
                                  **kwargs,
                                  **opts)
     # bug in matplotlib 3.1.1
-    bottom, top = heatmap_graph.ax_heatmap.get_ylim()
-    heatmap_graph.ax_heatmap.set_ylim(math.ceil(bottom), math.floor(top))
+    bottom, top = sns_heatmap.ax_heatmap.get_ylim()
+    sns_heatmap.ax_heatmap.set_ylim(math.ceil(bottom), math.floor(top))
 
     plt.setp(sns_heatmap.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     # plt.setp(sns_heatmap.ax_heatmap.yaxis.get_label(), text="Analyses", rotation=270)
