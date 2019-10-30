@@ -40,7 +40,7 @@ def process_meta_file(f: TextIO) -> pd.DataFrame:
     date_rows = metadata.index.str.contains(r'_?DATE$')
     try:
         metadata.loc[date_rows, 'data'] = pd.to_datetime(
-            metadata.loc[date_rows, 'data'], infer_datetime_format=True, errors='ignore').dt.strftime('%Y-%m-%d')
+            metadata.loc[date_rows, 'data'], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
     except ValueError as e:
         pass
 
