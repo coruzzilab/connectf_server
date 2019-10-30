@@ -38,10 +38,11 @@ def process_meta_file(f: TextIO) -> pd.DataFrame:
     metadata.columns = ['data', 'special']
 
     date_rows = metadata.index.str.contains(r'_?DATE$')
-
-    if date_rows.any():
+    try:
         metadata.loc[date_rows, 'data'] = pd.to_datetime(
-            metadata.loc[date_rows, 'data'], infer_datetime_format=True).dt.strftime('%Y-%m-%d')
+            metadata.loc[date_rows, 'data'], infer_datetime_format=True, errors='ignore').dt.strftime('%Y-%m-%d')
+    except ValueError as e:
+        pass
 
     return metadata
 
@@ -69,7 +70,7 @@ def process_data(f, sep=',') -> Tuple[pd.DataFrame, bool]:
             "adjusted p-value.")
 
 
-def insert_data(data_file, metadata_file, sep=','):
+def insert_data(data_file, metadata_file, sep=',', dry_run=False):
     data, has_pvals = process_data(data_file, sep=sep)
 
     try:
@@ -93,6 +94,9 @@ def insert_data(data_file, metadata_file, sep=','):
 
     if 'EXPERIMENT_TYPE' not in metadata.index:
         raise ValueError('Please assign an EXPERIMENT_TYPE to the metadata. Typically Expression or Binding.')
+
+    if dry_run:
+        return
 
     # Insert Analysis
     analysis = Analysis(tf=tf)

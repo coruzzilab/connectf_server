@@ -24,6 +24,7 @@ class Command(BaseCommand):
         parser.add_argument('data', help='Data file or folder for an experiment')
         parser.add_argument('metadata', help='Metadata file or folder for an experiment')
         parser.add_argument('--sep', type=str, help="specify separator for csv. [default: ',']", default=',')
+        parser.add_argument('-d', '--dry-run', action='store_true', help="dry run")
 
     def handle(self, *args, **options):
         with atomic():
@@ -42,10 +43,10 @@ class Command(BaseCommand):
 
                     for row in df.itertuples():
                         self.stdout.write("inserting {0[1]} {0[3]}\n".format(row))
-                        insert_data(row[1], row[3], sep=options["sep"])
+                        insert_data(row[1], row[3], sep=options["sep"], dry_run=options['dry_run'])
                 else:
                     self.stdout.write("inserting {0[data]} {0[metadata]}\n".format(options))
-                    insert_data(options['data'], options['metadata'], sep=options["sep"])
+                    insert_data(options['data'], options['metadata'], sep=options["sep"], dry_run=options['dry_run'])
             except ValueError as e:
                 raise CommandError(e) from e
             except KeyError as e:
