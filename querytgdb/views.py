@@ -25,7 +25,7 @@ from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichm
 from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
-from .utils.motif_enrichment import MOTIF, NoEnrichedMotif, get_motif_enrichment_heatmap, \
+from .utils.motif_enrichment import MOTIF, MotifEnrichmentError, NoEnrichedMotif, get_motif_enrichment_heatmap, \
     get_motif_enrichment_heatmap_table, get_motif_enrichment_json
 from .utils.network import get_auc_figure, get_network_json, get_network_sif, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
@@ -155,7 +155,7 @@ class QueryView(View):
         except (QueryError, BadFile) as e:
             return HttpResponseBadRequest(e)
         except ValueError as e:
-            raise Http404(f'Query not available: {e}') from e
+            return HttpResponseNotFound(f'Query not available: {e}', content_type='text/plain')
         except MultiValueDictKeyError as e:
             return HttpResponseBadRequest(f"Problem with query: {e}")
 
@@ -382,7 +382,7 @@ class MotifEnrichmentJSONView(View):
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
                 raise Http404 from e
-            except (ValueError, TypeError) as e:
+            except (MotifEnrichmentError, ValueError, TypeError) as e:
                 return JsonResponse({'error': str(e)}, status=400)
 
 
@@ -413,7 +413,7 @@ class MotifEnrichmentHeatmapView(View):
                 return FileResponse(buff, content_type='image/svg+xml')
             except (FileNotFoundError, NoEnrichedMotif, KeyError):
                 return HttpResponseNotFound(content_type='image/svg+xml')
-            except (ValueError, TypeError, FloatingPointError):
+            except (MotifEnrichmentError, ValueError, TypeError, FloatingPointError):
                 return HttpResponseBadRequest(content_type='image/svg+xml')
 
 

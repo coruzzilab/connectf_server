@@ -19,7 +19,7 @@ from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interacti
 from querytgdb.utils import annotations
 from ..utils import clear_data
 
-__all__ = ['get_query_result', 'expand_ref_ids']
+__all__ = ['get_query_result', 'expand_ref_ids', 'QueryError']
 
 logger = logging.getLogger(__name__)
 
@@ -703,10 +703,11 @@ def parse_query(query: str,
         parse = expr.parseString(query, parseAll=True)
 
         result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
-        result.columns = result.columns.set_levels(result.columns.levels[1].astype(int), level=1)  # ensure integer type
 
         if result.empty or not result.include:
             raise QueryError('empty query')
+
+        result.columns = result.columns.set_levels(result.columns.levels[1].astype(int), level=1)  # ensure integer type
 
         result = reorder_data(result)
 
