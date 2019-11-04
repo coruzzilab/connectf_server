@@ -43,6 +43,9 @@ class MotifData:
 
         raise AttributeError(item)
 
+    def __getitem__(self, item) -> 'Region':
+        return self._regions[item]
+
     def dedup(self, region):
         try:
             return self.cache[region + '_dedup']
@@ -79,23 +82,34 @@ class MotifData:
         return [key for key, val in self._regions.items() if val.default]
 
     @property
-    def region_desc(self) -> Dict[str, str]:
+    def region_desc(self) -> Dict[str, Dict]:
         """
         Include discription of each region
         :return:
         """
-        return OrderedDict((key, val.description) for key, val in self._regions.items())
+        return OrderedDict((key, val.to_dict()) for key, val in self._regions.items())
 
 
 class Region(ABC):
     default: bool = False
     name: str = ''
     description: str = ''
+    group: List = []
 
     def __init__(self):
         if not self.name:
             self.name = self.__class__.__name__.lower()
 
+    def __repr__(self):
+        return f'<Region: {self.name}>'
+
     @abstractmethod
     def get_region(self, annotation: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError("Should implement a region filter.")
+
+    def to_dict(self) -> Dict:
+        return {
+            'name': self.name,
+            'description': self.description,
+            'group': self.group
+        }

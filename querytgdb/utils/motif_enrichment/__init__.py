@@ -1,10 +1,10 @@
 import math
 import sys
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from functools import partial
 from io import BytesIO
 from itertools import chain, count, cycle, starmap, tee
-from operator import itemgetter, methodcaller
+from operator import attrgetter, itemgetter
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
@@ -30,17 +30,19 @@ MOTIF = MotifData(settings.MOTIF_ANNOTATION)
 @MOTIF.register
 class Promoter(Region):
     default = True
-    name = 'promoter'
+    name = 'promoter_1kb'
     description = '1000bp upstream promoter region'
+    group = [1]
 
     def get_region(self, annotation: pd.DataFrame):
-        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']) < 0]
+        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']).between(-1000, -1)]
 
 
 @MOTIF.register
 class Body(Region):
-    name = 'body'
+    name = 'gene_body'
     description = 'gene body'
+    group = [2]
 
     def get_region(self, annotation: pd.DataFrame):
         return annotation[annotation['dist'] > 0]
@@ -48,8 +50,9 @@ class Body(Region):
 
 @MOTIF.register
 class Promoter500(Region):
-    name = 'promoter_500'
+    name = 'promoter_500bp'
     description = '500bp upstream promoter region'
+    group = [1]
 
     def get_region(self, annotation: pd.DataFrame):
         return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']).between(-500, -1)]
@@ -63,7 +66,11 @@ CLUSTER_INFO = pd.read_csv(
 COLORS = dict(zip(MOTIF.regions, sns.color_palette("husl", len(MOTIF.regions))))
 
 
-class NoEnrichedMotif(ValueError):
+class MotifEnrichmentError(ValueError):
+    pass
+
+
+class NoEnrichedMotif(MotifEnrichmentError):
     pass
 
 
@@ -98,6 +105,10 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
     else:
         regions = sorted(set(MOTIF.regions) & set(regions), key=MOTIF.regions.index)
 
+    if any(filter(lambda c: c > 1,
+                  Counter(chain.from_iterable(map(attrgetter('group'), map(MOTIF.__getitem__, regions)))).values())):
+        raise MotifEnrichmentError("Overlapping regions selected. Cannot have regions from the same group.")
+
     results: Dict[str, List[pd.Series]] = OrderedDict()
 
     cached_region = cache.get_many([f'{uid}/{r}_enrich' for r in regions])
@@ -114,8 +125,6 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
             cache.set(f'{uid}/{region}_enrich', region_enrich)
 
         results[region] = region_enrich
-
-    reject_func = methodcaller('le', alpha)
 
     df = pd.concat(chain.from_iterable(zip(*results.values())), axis=1, sort=True)
 
