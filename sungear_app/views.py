@@ -1,6 +1,8 @@
 import json
 import logging
 from collections import OrderedDict
+from functools import reduce
+from operator import or_
 from typing import Dict, List, Tuple
 
 import pandas as pd
@@ -10,7 +12,7 @@ from django.views import View
 from sungear import SungearException, sungear
 
 from querytgdb.models import Analysis
-from querytgdb.utils import PandasJSONEncoder, clear_data, get_metadata
+from querytgdb.utils import PandasJSONEncoder, annotations, clear_data, get_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +49,18 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
         (name, col.index[col.notna()]) for name, col in df.iteritems()
     )
 
+    genes = list(reduce(or_, gene_lists.values()))
+    anno = annotations().loc[genes, ['Full Name', 'Name']].rename(columns={'Full Name': 'name', 'Name': 'symbol'})
+    anno = anno[(anno['name'] != "") | (anno['symbol'] != "")]
+
     result, finished = sungear(gene_lists)
 
     return {
                **result,
                'metadata': [
                    (c, metadata.loc[c[1], :].to_dict()) for c in df.columns
-               ]
+               ],
+               'gene_annotation': anno.to_dict('index')
            }, finished and not filter_genes
 
 
