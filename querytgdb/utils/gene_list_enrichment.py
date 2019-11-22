@@ -1,6 +1,7 @@
 import io
 import math
 import sys
+from collections import OrderedDict
 from itertools import count, product
 from operator import itemgetter
 from typing import Any, Dict, List, Optional, Union
@@ -99,19 +100,21 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     ).distinct().prefetch_related('tf')
 
     # save targets for each TF into a dict
-    targets = {}
+    targets = OrderedDict()
 
     for (name, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index.str.upper())
 
         name, criterion, _uid = split_name(name)
 
-        targets[(name, criterion, analysis_id, len(analysis_targets))] = analysis_targets
+        targets[(name, criterion, _uid, analysis_id, len(analysis_targets))] = analysis_targets
 
     list_enrichment_pvals = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.float64)
 
     if not legend:
-        list_enrichment_count = pd.DataFrame(index=targets.keys(), columns=list_to_name.keys(), dtype=np.int_)
+        list_enrichment_count = pd.DataFrame(index=list_enrichment_pvals.index,
+                                             columns=list_enrichment_pvals.columns,
+                                             dtype=np.int_)
 
         colnames = {}
 
@@ -145,9 +148,9 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
 
         indices = []
 
-        for (name, criterion, analysis_id, l), col_name in orig_index:
-            tf = analyses.get(pk=analysis_id).tf
-            idx = '{} — {}{} ({})'.format(col_name, tf.gene_id, f' {tf.name}' if tf.name else '', l)
+        for (name, criterion, _uid, analysis_id, l), col_name in orig_index:
+            tf = metadata.loc[analysis_id, :]
+            idx = '{} — {}{} ({})'.format(col_name, tf['gene_id'], f' {tf["gene_name"]}' if tf["gene_name"] else '', l)
 
             try:
                 if fields:
@@ -202,13 +205,13 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
         draw=False,
         legend=False
     )
-    analyses = Analysis.objects.filter(pk__in=map(itemgetter(2), data.index))
+    analyses = Analysis.objects.filter(pk__in=map(itemgetter(3), data.index))
     metadata = get_metadata(analyses)
 
     result = []
+    print(data, counts)
 
-    for ((name, criterion, analysis_id, l), *row), count_row in zip(data.itertuples(name=None),
-                                                                    counts.itertuples(name=None, index=False)):
+    for (name, criterion, _uid, analysis_id, l), *row in data.itertuples(name=None):
         info = {'filter': criterion, 'targets': l}
         try:
             info.update(metadata.loc[analysis_id, :].to_dict())
@@ -217,7 +220,7 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
 
         result.append({'info': info,
                        'p-value': row,
-                       'count': count_row})
+                       'count': counts.loc[(name, criterion, _uid, analysis_id, l), :]})
 
     return {
         'columns': data.columns,
