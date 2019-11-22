@@ -5,7 +5,7 @@ import re
 from collections import OrderedDict
 from contextlib import closing
 from io import TextIOWrapper
-from typing import Dict, Hashable, IO, Optional, Set, TextIO, Tuple, Union
+from typing import Dict, Hashable, IO, Optional, Set, TextIO, Tuple
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,8 @@ class BadNetwork(BadFile):
     pass
 
 
-def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Union[TextIO, None]:
+def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Tuple[
+    Optional[TextIO], Optional[str]]:
     """
     Get file or file name from the request.
 
@@ -33,7 +34,7 @@ def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = N
     :return:
     """
     if request.FILES and key in request.FILES:
-        return TextIOWrapper(request.FILES[key])
+        return TextIOWrapper(request.FILES[key]), 'post'
     elif key in request.POST and storage is not None:
         try:
             name = request.POST[key]
@@ -44,13 +45,13 @@ def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = N
             file = next(filter(name_regex.search, files))
 
             if mimetypes.guess_type(file)[1] == 'gzip':
-                return gzip.open(storage.path(file), 'rt')
+                return gzip.open(storage.path(file), 'rt'), 'storage'
 
-            return storage.open(file, 'r')
+            return storage.open(file, 'r'), 'storage'
         except (FileNotFoundError, SuspiciousFileOperation, StopIteration):
             pass
 
-    return None
+    return None, None
 
 
 def gene_list_to_df(gene_to_name: Dict[str, Set[str]]) -> pd.DataFrame:

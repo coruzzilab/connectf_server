@@ -5,6 +5,7 @@ import math
 import pkgutil
 import re
 import sys
+from collections import UserDict
 from functools import wraps
 from operator import methodcaller
 from threading import Lock, Thread
@@ -57,6 +58,17 @@ class GzipFileResponse(FileResponse):
     def __init__(self, *args, as_attachment=False, filename='', **kwargs):
         super().__init__(*args, as_attachment=as_attachment, filename=filename, **kwargs)
         self['Content-Encoding'] = 'gzip'
+
+
+class CaselessDict(UserDict):
+    def __init__(self, dict_, **kwargs):
+        super().__init__({k.lower(): v for k, v in dict_.items()}, **kwargs)
+
+    def __getitem__(self, item):
+        return super().__getitem__(item.lower())
+
+    def __setitem__(self, key, value):
+        return super().__setitem__(key.lower(), value)
 
 
 def convert_float(s) -> Optional[float]:

@@ -67,15 +67,15 @@ class QueryView(View):
 
             file_opts = {}
 
-            targetgenes_file = get_file(request, "targetgenes", gene_lists_storage)
-            filter_tfs_file = get_file(request, "filtertfs")
-            target_networks = get_file(request, "targetnetworks", networks_storage)
+            targetgenes_file, targetgenes_source = get_file(request, "targetgenes", gene_lists_storage)
+            filter_tfs_file, filter_tfs_source = get_file(request, "filtertfs")
+            target_networks, networks_source = get_file(request, "targetnetworks", networks_storage)
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
 
                 bad_genes = check_annotations(user_lists[0].index)
-                if bad_genes:
+                if bad_genes and targetgenes_source != 'storage':
                     errors.append(f'Genes in Target Genes File not in database: {", ".join(bad_genes)}')
 
                 if not target_networks:
@@ -88,14 +88,14 @@ class QueryView(View):
                 file_opts["tf_filter_list"] = filter_tfs
 
                 bad_genes = check_annotations(filter_tfs)
-                if bad_genes:
+                if bad_genes and filter_tfs_source != 'storage':
                     errors.append(f'Genes in Filter TFs File not in database: {", ".join(bad_genes)}')
 
             if target_networks:
                 network = get_network(target_networks)
 
                 bad_genes = check_annotations(network[1]['source'].append(network[1]['target']))
-                if bad_genes:
+                if bad_genes and networks_source != 'storage':
                     errors.append(f'Genes in Network File not in database: {", ".join(bad_genes)}')
 
                 try:
