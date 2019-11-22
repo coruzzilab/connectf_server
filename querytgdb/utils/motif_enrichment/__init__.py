@@ -28,34 +28,60 @@ MOTIF = MotifData(settings.MOTIF_ANNOTATION)
 
 
 @MOTIF.register
-class Promoter(Region):
-    default = True
-    name = 'promoter_1kb'
-    description = '1000bp upstream promoter region'
+class Promoter2000(Region):
+    name = '2000bp_promoter'
+    description = '2000bp upstream promoter region'
     group = [1]
-
-    def get_region(self, annotation: pd.DataFrame):
-        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']).between(-1000, -1)]
 
 
 @MOTIF.register
-class Body(Region):
-    name = 'gene_body'
-    description = 'gene body'
-    group = [2]
-
-    def get_region(self, annotation: pd.DataFrame):
-        return annotation[annotation['dist'] > 0]
+class Promoter1000(Region):
+    default = True
+    name = '1000bp_promoter'
+    description = '1000bp upstream promoter region'
+    group = [1]
 
 
 @MOTIF.register
 class Promoter500(Region):
-    name = 'promoter_500bp'
+    name = '500bp_promoter'
     description = '500bp upstream promoter region'
     group = [1]
 
-    def get_region(self, annotation: pd.DataFrame):
-        return annotation[(annotation['stop'] - annotation['start'] + annotation['dist']).between(-500, -1)]
+
+@MOTIF.register
+class FivePrimeUtr(Region):
+    name = 'five_prime_UTR'
+    description = "5' UTR"
+    group = [2]
+
+
+@MOTIF.register
+class Cds(Region):
+    name = 'CDS'
+    description = 'CDS'
+    group = [3]
+
+
+@MOTIF.register
+class Intron(Region):
+    name = 'intron'
+    description = 'intron'
+    group = [4]
+
+
+@MOTIF.register
+class ThreePrimeUtr(Region):
+    name = 'three_prime_UTR'
+    description = "3' UTR"
+    group = [5]
+
+
+@MOTIF.register
+class Exon(Region):
+    name = 'exon'
+    description = 'exon'
+    group = [2, 3, 5]
 
 
 CLUSTER_INFO = pd.read_csv(
@@ -80,16 +106,16 @@ def cluster_fisher(row):
 
 def get_list_enrichment(gene_list: Iterable[str],
                         annotated: pd.DataFrame,
-                        annotated_dedup: pd.DataFrame,
                         ann_cluster_size: pd.DataFrame) -> pd.Series:
-    list_cluster_dedup = annotated[annotated.index.isin(gene_list)].drop_duplicates('match_id')
-    list_cluster_size = list_cluster_dedup.groupby('#pattern name').size()
+    list_cluster_dedup = annotated.loc[annotated.index.get_level_values(0).isin(gene_list), :]
+    list_cluster_size = list_cluster_dedup.groupby(level=2).sum()
+    list_cluster_sum = list_cluster_dedup.sum()
 
     p_values = pd.concat([
         list_cluster_size,
         ann_cluster_size - list_cluster_size,
-        list_cluster_dedup.shape[0] - list_cluster_size,
-        annotated_dedup.shape[0] - list_cluster_dedup.shape[0] - ann_cluster_size + list_cluster_size
+        list_cluster_sum - list_cluster_size,
+        annotated.sum() - list_cluster_sum - ann_cluster_size + list_cluster_size
     ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
 
     return p_values
@@ -119,7 +145,6 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
         except KeyError:
             region_enrich = list(map(partial(get_list_enrichment,
                                              annotated=getattr(MOTIF, region),
-                                             annotated_dedup=getattr(MOTIF, f'{region}_dedup'),
                                              ann_cluster_size=getattr(MOTIF, f'{region}_cluster_size')),
                                      res.values()))
             cache.set(f'{uid}/{region}_enrich', region_enrich)

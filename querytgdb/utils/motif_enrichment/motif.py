@@ -1,6 +1,6 @@
 import pathlib
 import re
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections import OrderedDict
 from threading import Lock, Thread
 from typing import Dict, List, Type, Union
@@ -22,7 +22,7 @@ class MotifData:
         self.cache: Dict[str, pd.DataFrame] = {}
 
     def get_annotation(self):
-        self._annotation = pd.read_csv(self.data_file, index_col=0)
+        self._annotation = pd.read_csv(self.data_file, index_col=[0, 1, 2])
 
     @property
     def annotation(self) -> pd.DataFrame:
@@ -36,9 +36,7 @@ class MotifData:
         try:
             return self.cache[item]
         except KeyError:
-            if item.endswith('_dedup'):
-                return self.dedup(re.sub(r'_dedup$', '', item))
-            elif item.endswith('_cluster_size'):
+            if item.endswith('_cluster_size'):
                 return self.cluster_size(re.sub(r'_cluster_size$', '', item))
 
         raise AttributeError(item)
@@ -46,19 +44,11 @@ class MotifData:
     def __getitem__(self, item) -> 'Region':
         return self._regions[item]
 
-    def dedup(self, region):
-        try:
-            return self.cache[region + '_dedup']
-        except KeyError:
-            dedup = getattr(self, region).drop_duplicates('match_id')
-            self.cache[region + '_dedup'] = dedup
-            return dedup
-
     def cluster_size(self, region):
         try:
             return self.cache[region + '_cluster_size']
         except KeyError:
-            cluster_size = self.dedup(region).groupby('#pattern name').size()
+            cluster_size = self.__getattr__(region).groupby(level=2).sum()
             self.cache[region + '_cluster_size'] = cluster_size
 
             return cluster_size
@@ -103,9 +93,8 @@ class Region(ABC):
     def __repr__(self):
         return f'<Region: {self.name}>'
 
-    @abstractmethod
     def get_region(self, annotation: pd.DataFrame) -> pd.DataFrame:
-        raise NotImplementedError("Should implement a region filter.")
+        return annotation.loc[(slice(None), self.name, slice(None)), :]
 
     def to_dict(self) -> Dict:
         return {
