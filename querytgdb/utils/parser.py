@@ -3,7 +3,7 @@ import operator
 import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
+from functools import partial, reduce
 from operator import itemgetter
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import UUID, uuid4
@@ -11,19 +11,22 @@ from uuid import UUID, uuid4
 import numpy as np
 import pandas as pd
 import pyparsing as pp
+from django.conf import settings
 from django.core.cache import cache, caches
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from querytgdb.utils import annotations
-from ..utils import clear_data
+from ..utils import CaselessDict, clear_data
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'QueryError']
 
 logger = logging.getLogger(__name__)
 
 mem_cache = caches['mem']
+
+NAMED_QUERIES = CaselessDict(getattr(settings, 'NAMED_QUERIES', {}))
 
 
 class QueryError(ValueError):
@@ -91,9 +94,22 @@ modname = pp.Group(
 
 modifier = pp.Group(pp.Suppress('[') + pp.infixNotation(modname, opers) + pp.Suppress(']'))('modifier')
 
-gene = name('gene_name')
+expr = pp.Forward()
 
-expr = pp.infixNotation(gene, [(modifier, 1, pp.opAssoc.LEFT)] + opers)('query')
+all_tfs = pp.CaselessKeyword('all_tfs')
+multitype = pp.CaselessKeyword('multitype')
+
+
+def parse_prebuilt_query(tocs):
+    return expr.parseString(NAMED_QUERIES[tocs[0]], parseAll=True)
+
+
+named_query = reduce(lambda a, b: a | b, map(pp.CaselessKeyword, NAMED_QUERIES.keys())).setParseAction(
+    parse_prebuilt_query)
+
+gene = (all_tfs | multitype | named_query | name)('gene_name')
+
+expr <<= pp.infixNotation(gene, [(modifier, 1, pp.opAssoc.LEFT)] + opers)('query')
 
 
 def is_name(key: str, item: Union[pp.ParseResults, Any]) -> bool:
@@ -616,7 +632,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
     elif isinstance(query, (TargetFrame, TargetSeries)):
         return query
     elif isinstance(query, str):
-        if query.lower() in {'andalltfs', 'oralltfs', 'multitype'}:
+        if query.lower() in {'andalltfs', 'all_tfs', 'multitype'}:
             return get_all_tf(query.lower(), edges, tf_filter_list, target_filter_list)
 
         return get_tf_data(query, edges, tf_filter_list, target_filter_list)

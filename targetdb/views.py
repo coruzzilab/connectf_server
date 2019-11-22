@@ -14,6 +14,7 @@ from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeT
 
 gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
 networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
+NAMED_QUERIES = getattr(settings, 'NAMED_QUERIES', {})
 
 
 def get_lists(files: Iterable) -> Generator[str, None, None]:
@@ -31,10 +32,12 @@ class TFView(View):
         all_genes = request.GET.get('all', '1')
 
         if all_genes == '1':
-            queryset = [{'value': 'oralltfs'},
-                        # remove andalltfs because it is not useful beyond a handfull of datasets
-                        # OrderedDict([('gene_id', 'andalltfs')]),
-                        {'value': 'multitype'}]
+            queryset = [
+                *({'value': k, 'name': v} for k, v in NAMED_QUERIES.items()),
+                {'value': 'multitype'},
+                {'value': 'all_tfs'}
+            ]
+            # remove andalltfs because it is not useful beyond a handfull of datasets
         else:
             queryset = []
 
@@ -86,7 +89,7 @@ class KeyView(View):
         except json.JSONDecodeError:
             all_keys = False
 
-        if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
+        if tfs & {'all_tfs', 'andalltfs', 'multitype', *NAMED_QUERIES.keys()}:
             tfs = set()
 
         queryset = ['targeted_by']
@@ -128,7 +131,7 @@ class ValueView(View):
     def get(self, request, key: str) -> JsonResponse:
         tfs = set(filter(None, request.GET.getlist('tf')))
 
-        if tfs & {'oralltfs', 'andalltfs', 'multitype'}:
+        if tfs & {'all_tfs', 'andalltfs', 'multitype', *NAMED_QUERIES.keys()}:
             tfs = set()
 
         key = key.upper()
