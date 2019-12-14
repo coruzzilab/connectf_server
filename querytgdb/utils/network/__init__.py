@@ -14,12 +14,12 @@ from django.core.cache import cache
 from django.http import HttpResponse
 from sklearn.metrics import auc
 
-from querytgdb.utils import annotations
+from querytgdb.utils import async_loader
 from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import data_to_edges, get_size
 from ...utils.network.utils import COLOR, COLOR_SHAPE
 
-GENE_TYPE = annotations()[['Name', 'Type', 'id']]
+GENE_TYPE = async_loader['annotations'][['Name', 'Type', 'id']]
 SIZE = 20
 GAP = 10
 TF_GAP = 50
@@ -192,7 +192,7 @@ def get_network_json(uid: Union[str, UUID],
 
     # additional edges
     if edges:
-        anno = annotations()['id'].reset_index()
+        anno = async_loader['annotations']['id'].reset_index()
         edge_types = pd.DataFrame(
             EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
             columns=['edge_id', 'edge', 'directional'])
@@ -342,7 +342,7 @@ def get_network_sif(uid: Union[str, UUID],
 
     # additional edges
     if edges:
-        anno = annotations()['id'].reset_index()
+        anno = async_loader['annotations']['id'].reset_index()
         edge_types = pd.DataFrame(
             EdgeType.objects.filter(name__in=edges).values_list('id', 'name').iterator(),
             columns=['edge_id', 'edge'])

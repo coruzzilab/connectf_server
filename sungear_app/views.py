@@ -12,7 +12,7 @@ from django.views import View
 from sungear import SungearException, sungear
 
 from querytgdb.models import Analysis
-from querytgdb.utils import PandasJSONEncoder, annotations, clear_data, get_metadata
+from querytgdb.utils import PandasJSONEncoder, async_loader, clear_data, get_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
     )
 
     genes = list(reduce(or_, gene_lists.values()))
-    anno = annotations().loc[genes, ['Full Name', 'Name']].rename(columns={'Full Name': 'name', 'Name': 'symbol'})
+    anno = async_loader['annotations'].loc[genes, ['Full Name', 'Name']].rename(
+        columns={'Full Name': 'name', 'Name': 'symbol'})
     anno = anno[(anno['name'] != "") | (anno['symbol'] != "")]
 
     result, finished = sungear(gene_lists)

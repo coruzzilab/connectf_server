@@ -6,10 +6,10 @@ import pkgutil
 import re
 import sys
 from collections import UserDict
+from concurrent.futures import Future, ThreadPoolExecutor
 from functools import wraps
 from operator import methodcaller
-from threading import Lock, Thread
-from typing import Any, Callable, Dict, Iterable, Optional, Set, Sized, Tuple, TypeVar
+from typing import Any, Callable, Dict, Iterable, Optional, Sized, Tuple, TypeVar
 from uuid import UUID
 
 import numpy as np
@@ -221,56 +221,55 @@ def get_size(func: Callable[..., Sized]) -> Callable[..., Sized]:
     return wrapper
 
 
-class Annotations:
+class AsyncDataLoader:
     def __init__(self):
-        self._anno: pd.DataFrame = None
+        self.data = {}
+        self.pool = ThreadPoolExecutor()
 
-        self.lock = Lock()
-        self.task = Thread(target=self.get_annotations)
-        self.task.start()
+    def __setitem__(self, key, value):
+        if callable(value):
+            self.data[key] = self.pool.submit(value)
+        else:
+            self.data[key] = value
 
-    def get_annotations(self):
-        """
-        Loads annotations from the database into memory.
-        """
-        try:
-            anno = pd.DataFrame(
-                Annotation.objects.values_list(
-                    'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
-                columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-            anno = anno.set_index('TARGET')
-        except DatabaseError:
-            anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
-            anno.index.name = 'TARGET'
+    def __getitem__(self, item):
+        if isinstance(self.data[item], Future):
+            result = self.data[item].result()
+            self.data[item] = result
+            return result
 
-        with self.lock:
-            self._anno = anno
+        return self.data[item]
 
-    def __call__(self):
-        return self.annotation
+    def __enter__(self):
+        return self
 
-    @property
-    def annotation(self) -> pd.DataFrame:
-        with self.lock:
-            if self._anno is None:
-                self.task.join()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
-        return self._anno
-
-    @property
-    def genes(self) -> Set:
-        return set(self.annotation.index)
-
-    @property
-    def genes_upper(self) -> Set:
-        return set(annotations.annotation.index.str.upper())
+    def close(self):
+        self.pool.shutdown()
 
 
-annotations = Annotations()
+def get_annotations():
+    try:
+        anno = pd.DataFrame(
+            Annotation.objects.values_list(
+                'gene_id', 'fullname', 'gene_family', 'gene_type', 'name', 'id').iterator(),
+            columns=['TARGET', 'Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+        anno = anno.set_index('TARGET')
+    except DatabaseError:
+        anno = pd.DataFrame(columns=['Full Name', 'Gene Family', 'Type', 'Name', 'id'])
+        anno.index.name = 'TARGET'
+
+    return anno
+
+
+async_loader = AsyncDataLoader()
+async_loader['annotations'] = get_annotations
 
 
 def check_annotations(genes):
-    return set(map(methodcaller('upper'), genes)) - annotations.genes_upper
+    return set(map(methodcaller('upper'), genes)) - set(async_loader['annotations'].index.str.upper())
 
 
 def get_metadata(analyses, fields: Optional[Iterable[str]] = None) -> pd.DataFrame:

@@ -14,7 +14,7 @@ from scipy.special import comb
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
-from querytgdb.utils import annotations
+from querytgdb.utils import async_loader
 from ..models import Analysis
 from ..utils import clear_data, get_metadata, split_name
 
@@ -59,7 +59,7 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
     data = []
     info = []
 
-    background = annotations().shape[0]
+    background = async_loader['annotations'].shape[0]
 
     analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
 

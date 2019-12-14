@@ -16,7 +16,7 @@ from django.core.cache import cache
 from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
-from querytgdb.utils import annotations
+from querytgdb.utils import async_loader
 from ..models import Analysis
 from ..utils import clear_data, column_string, get_metadata, split_name
 
@@ -85,8 +85,8 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         raise ValueError('Query result unavailable') from e
 
     if background is None:
-        if not annotations().empty:
-            background = annotations().shape[0]
+        if not async_loader['annotations'].empty:
+            background = async_loader['annotations'].shape[0]
         else:
             background = 28775
 
@@ -209,7 +209,6 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
     metadata = get_metadata(analyses)
 
     result = []
-    print(data, counts)
 
     for (name, criterion, _uid, analysis_id, l), *row in data.itertuples(name=None):
         info = {'filter': criterion, 'targets': l}

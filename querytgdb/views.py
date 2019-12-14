@@ -1,3 +1,4 @@
+import json
 import logging
 import mimetypes
 import os
@@ -25,8 +26,9 @@ from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichm
 from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
     network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
-from .utils.motif_enrichment import MOTIF, MotifEnrichmentError, NoEnrichedMotif, get_motif_enrichment_heatmap, \
-    get_motif_enrichment_heatmap_table, get_motif_enrichment_json
+from .utils.motif_enrichment import ADD_MOTIFS, MOTIFS, MotifEnrichmentError, NoEnrichedMotif, \
+    get_additional_motif_enrichment_json, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
+    get_motif_enrichment_json
 from .utils.network import get_auc_figure, get_network_json, get_network_sif, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
@@ -378,12 +380,36 @@ class MotifEnrichmentJSONView(View):
                     get_motif_enrichment_json(
                         request_id,
                         regions,
-                        alpha=alpha),
+                        alpha=alpha,
+                        motif_data=MOTIFS),
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
                 raise Http404 from e
             except (MotifEnrichmentError, ValueError, TypeError) as e:
                 return JsonResponse({'error': str(e)}, status=400)
+
+
+class AdditionalMotifEnrichmentJSONView(View):
+    def post(self, request, request_id):
+        try:
+            opts = {}
+            data = json.loads(request.body)
+            regions = data.get('regions', [])
+            if 'motifs' in data:
+                opts['motifs'] = data['motifs']
+
+            return JsonResponse(
+                get_additional_motif_enrichment_json(
+                    request_id,
+                    regions,
+                    use_default_motifs=True,
+                    motif_data=ADD_MOTIFS,
+                    **opts),
+                encoder=PandasJSONEncoder)
+        except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
+            return JsonResponse({'error': str(e)}, status=404)
+        except (MotifEnrichmentError, ValueError, TypeError, json.JSONDecodeError) as e:
+            return JsonResponse({'error': str(e)}, status=400)
 
 
 class MotifEnrichmentHeatmapView(View):
@@ -445,9 +471,23 @@ class MotifEnrichmentInfo(View):
 class MotifEnrichmentRegions(View):
     def get(self, request):
         return JsonResponse({
-            'regions': MOTIF.region_desc,
-            'default_regions': MOTIF.default_regions
+            'regions': MOTIFS.region_desc,
+            'default_regions': MOTIFS.default_regions
         })
+
+
+class MotifEnrichmentMotifs(View):
+    def get(self, request):
+        return JsonResponse({
+            'motifs': MOTIFS.motifs
+        }, encoder=PandasJSONEncoder)
+
+
+class MotifEnrichmentAdditionalMotifs(View):
+    def get(self, request):
+        return JsonResponse({
+            'motifs': ADD_MOTIFS.motifs
+        }, encoder=PandasJSONEncoder)
 
 
 class AnalysisEnrichmentView(View):

@@ -1,36 +1,36 @@
-import pathlib
 import re
 from abc import ABC
 from collections import OrderedDict
-from threading import Lock, Thread
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Type
 
 import pandas as pd
+import seaborn as sns
+from django.conf import settings
+
+from querytgdb.utils import async_loader
+
+
+def get_annotations():
+    return pd.read_csv(settings.MOTIF_ANNOTATION, index_col=[0, 1, 2], header=None)
+
+
+def get_tf_annotations():
+    return pd.read_csv(settings.MOTIF_TF_ANNOTATION, index_col=[0, 1, 2], header=None)
+
+
+async_loader['motifs'] = get_annotations
+async_loader['motifs_tf'] = get_tf_annotations
 
 
 class MotifData:
-    def __init__(self, data_file: Union[str, pathlib.Path]):
-        self.lock = Lock()
-        self.data_file = data_file
-        self._annotation = None
-
-        self.task = Thread(target=self.get_annotation)
-        self.task.start()
-
+    def __init__(self):
         self._regions: Dict[str, 'Region'] = OrderedDict()
-
         self.cache: Dict[str, pd.DataFrame] = {}
-
-    def get_annotation(self):
-        self._annotation = pd.read_csv(self.data_file, index_col=[0, 1, 2])
+        self._colors = None
 
     @property
     def annotation(self) -> pd.DataFrame:
-        with self.lock:
-            if self._annotation is None:
-                self.task.join()
-
-        return self._annotation
+        return async_loader['motifs']
 
     def __getattr__(self, item):
         try:
@@ -39,7 +39,7 @@ class MotifData:
             if item.endswith('_cluster_size'):
                 return self.cluster_size(re.sub(r'_cluster_size$', '', item))
 
-        raise AttributeError(item)
+            return self.get_region(item)
 
     def __getitem__(self, item) -> 'Region':
         return self._regions[item]
@@ -48,10 +48,25 @@ class MotifData:
         try:
             return self.cache[region + '_cluster_size']
         except KeyError:
-            cluster_size = self.__getattr__(region).groupby(level=2).sum()
+            cluster_size = getattr(self, region).groupby(level=2).sum()
             self.cache[region + '_cluster_size'] = cluster_size
 
             return cluster_size
+
+    @property
+    def region_total(self):
+        try:
+            return self.cache['region_total']
+        except KeyError:
+            region_total = self.annotation.groupby(level=1).sum()
+            self.cache['region_total'] = region_total
+            return region_total
+
+    def get_region(self, name):
+        region_matches = self.annotation.loc[(slice(None), self._regions[name].name, slice(None)), :]
+        self.cache[name] = region_matches
+
+        return region_matches
 
     def register(self, region_cls: Type['Region']) -> Type['Region']:
         region = region_cls()
@@ -59,13 +74,23 @@ class MotifData:
         name = region.name
 
         self._regions[name] = region
-        self.cache[name] = region.get_region(self.annotation)
 
         return region_cls
 
     @property
+    def motifs(self) -> pd.Index:
+        return self.annotation.index.levels[2]
+
+    @property
     def regions(self) -> List[str]:
         return list(self._regions.keys())
+
+    @property
+    def colors(self):
+        if self._colors is None:
+            self._colors = dict(zip(self.regions, sns.color_palette("husl", len(self.regions))))
+
+        return self._colors
 
     @property
     def default_regions(self) -> List[str]:
@@ -80,6 +105,12 @@ class MotifData:
         return OrderedDict((key, val.to_dict()) for key, val in self._regions.items())
 
 
+class AdditionalMotifData(MotifData):
+    @property
+    def annotation(self) -> pd.DataFrame:
+        return async_loader['motifs_tf']
+
+
 class Region(ABC):
     default: bool = False
     name: str = ''
@@ -92,9 +123,6 @@ class Region(ABC):
 
     def __repr__(self):
         return f'<Region: {self.name}>'
-
-    def get_region(self, annotation: pd.DataFrame) -> pd.DataFrame:
-        return annotation.loc[(slice(None), self.name, slice(None)), :]
 
     def to_dict(self) -> Dict:
         return {

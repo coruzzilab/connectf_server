@@ -17,7 +17,7 @@ from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db.models import Q
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
-from querytgdb.utils import annotations
+from querytgdb.utils import async_loader
 from ..utils import CaselessDict, clear_data
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'QueryError']
@@ -293,7 +293,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
             elif key == 'additional_edge':
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
-                anno_ids = annotations().loc[df.index, 'id']
+                anno_ids = async_loader['annotations'].loc[df.index, 'id']
                 return df.groupby(level=[0, 1], axis=1).apply(apply_has_add_edges,
                                                               analyses=analyses,
                                                               anno_ids=anno_ids,
@@ -314,7 +314,7 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
     :param edges:
     :return:
     """
-    anno = annotations()['id'].reset_index()
+    anno = async_loader['annotations']['id'].reset_index()
 
     edge_types = pd.DataFrame(
         EdgeType.objects.filter(name__in=edges).values_list('id', 'name', 'directional').iterator(),
@@ -376,7 +376,7 @@ def get_tf_data(query: str,
     :param target_filter_list:
     :return:
     """
-    anno = annotations()
+    anno = async_loader['annotations']
 
     if (tf_filter_list is not None and tf_filter_list.str.contains(rf'^{re.escape(query)}$', flags=re.I).any()) \
             or tf_filter_list is None:
@@ -451,7 +451,7 @@ def get_all_df(query: str,
                tf_filter_list: Optional[pd.Series] = None,
                target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     qs = Interaction.objects.values_list('target_id', 'analysis_id')
-    anno = annotations()
+    anno = async_loader['annotations']
 
     if tf_filter_list is not None:
         qs = qs.filter(analysis__tf_id__in=anno.loc[anno.index.str.upper().isin(tf_filter_list.str.upper()), 'id'])
@@ -807,7 +807,7 @@ def get_query_result(query: str,
         result.insert(0, 'User List Count', np.nan)
         result.insert(0, 'User List', np.nan)
 
-    result = annotations().drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
+    result = async_loader['annotations'].drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
 
     result = result.sort_values('TF Count', ascending=False, kind='mergesort')
 

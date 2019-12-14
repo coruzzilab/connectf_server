@@ -3,7 +3,7 @@ import sys
 from collections import Counter, OrderedDict
 from functools import partial
 from io import BytesIO
-from itertools import chain, count, cycle, starmap, tee
+from itertools import chain, count, cycle, repeat, starmap, tee
 from operator import attrgetter, itemgetter
 from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 from uuid import UUID
@@ -19,22 +19,25 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
 from querytgdb.models import Analysis
-from querytgdb.utils import annotations, clear_data, column_string, get_metadata, split_name, svg_font_adder
-from querytgdb.utils.motif_enrichment.motif import MotifData, Region
+from querytgdb.utils import clear_data, column_string, get_metadata, split_name, svg_font_adder
+from querytgdb.utils.motif_enrichment.motif import AdditionalMotifData, MotifData, Region
 
 sns.set()
 
-MOTIF = MotifData(settings.MOTIF_ANNOTATION)
+MOTIFS = MotifData()
+ADD_MOTIFS = AdditionalMotifData()
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Promoter2000(Region):
     name = '2000bp_promoter'
     description = '2000bp upstream promoter region'
     group = [1]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Promoter1000(Region):
     default = True
     name = '1000bp_promoter'
@@ -42,54 +45,65 @@ class Promoter1000(Region):
     group = [1]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Promoter500(Region):
     name = '500bp_promoter'
     description = '500bp upstream promoter region'
     group = [1]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class FivePrimeUtr(Region):
     name = 'five_prime_UTR'
     description = "5' UTR"
     group = [2]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Cds(Region):
     name = 'CDS'
     description = 'CDS'
     group = [3]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Intron(Region):
     name = 'intron'
     description = 'intron'
     group = [4]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class ThreePrimeUtr(Region):
     name = 'three_prime_UTR'
     description = "3' UTR"
     group = [5]
 
 
-@MOTIF.register
+@MOTIFS.register
+@ADD_MOTIFS.register
 class Exon(Region):
     name = 'exon'
     description = 'exon'
     group = [2, 3, 5]
 
 
+@ADD_MOTIFS.register
+class Mrna(Region):
+    name = 'mrna'
+    description = 'mrna'
+    group = [2, 3, 4, 5]
+
+
 CLUSTER_INFO = pd.read_csv(
     settings.MOTIF_CLUSTER,
     index_col=0
 ).fillna('').to_dict('index')
-
-COLORS = dict(zip(MOTIF.regions, sns.color_palette("husl", len(MOTIF.regions))))
 
 
 class MotifEnrichmentError(ValueError):
@@ -100,23 +114,47 @@ class NoEnrichedMotif(MotifEnrichmentError):
     pass
 
 
+class MotifDict(OrderedDict):
+    def __setitem__(self, key, value):
+        if key in self:
+            raise KeyError(f'{key} already exists')
+        super().__setitem__(key, value)
+
+
 def cluster_fisher(row):
     return fisher_exact((row[:2], row[2:]), alternative='greater')[1]
 
 
 def get_list_enrichment(gene_list: Iterable[str],
+                        motifs: Optional[List[str]],
                         annotated: pd.DataFrame,
-                        ann_cluster_size: pd.DataFrame) -> pd.Series:
-    list_cluster_dedup = annotated.loc[annotated.index.get_level_values(0).isin(gene_list), :]
-    list_cluster_size = list_cluster_dedup.groupby(level=2).sum()
-    list_cluster_sum = list_cluster_dedup.sum()
+                        ann_cluster_size: pd.DataFrame,
+                        total: int) -> pd.Series:
+    if motifs is None:
+        list_cluster_dedup = annotated.loc[annotated.index.get_level_values(0).isin(gene_list), :]
+    else:
+        list_cluster_dedup = annotated.loc[
+                             annotated.index.get_level_values(0).isin(gene_list) &
+                             annotated.index.get_level_values(2).isin(motifs), :]
+        ann_cluster_size = ann_cluster_size[ann_cluster_size.index.isin(motifs)]
+    if list_cluster_dedup.empty:
+        return pd.Series()
 
-    p_values = pd.concat([
+    list_cluster_size = list_cluster_dedup.groupby(level=2).sum()
+
+    if motifs is None:
+        list_cluster_sum = list_cluster_dedup.sum()
+    else:
+        list_cluster_sum = annotated.loc[annotated.index.get_level_values(0).isin(gene_list), :].sum()
+
+    contingency = pd.concat([
         list_cluster_size,
         ann_cluster_size - list_cluster_size,
         list_cluster_sum - list_cluster_size,
-        annotated.sum() - list_cluster_sum - ann_cluster_size + list_cluster_size
-    ], axis=1, sort=False).fillna(0).apply(cluster_fisher, axis=1).sort_values()
+        total - list_cluster_sum - ann_cluster_size + list_cluster_size
+    ], axis=1, sort=False)
+
+    p_values = contingency.fillna(0).apply(cluster_fisher, axis=1).sort_values()
 
     return p_values
 
@@ -124,61 +162,84 @@ def get_list_enrichment(gene_list: Iterable[str],
 def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
                      regions: Optional[List[str]] = None,
                      uid: Optional[Union[str, UUID]] = None,
+                     motif_dict: Optional[Dict[Tuple[str, Union[None, int]], Optional[List[str]]]] = None,
                      alpha: float = 0.05,
-                     show_reject: bool = True) -> Tuple[List[str], pd.DataFrame]:
+                     show_reject: bool = True,
+                     motif_data: MotifData = MOTIFS) -> Tuple[List[str], pd.DataFrame]:
     if not regions:
-        regions = MOTIF.default_regions
+        regions = motif_data.default_regions
     else:
-        regions = sorted(set(MOTIF.regions) & set(regions), key=MOTIF.regions.index)
+        regions = sorted(set(motif_data.regions) & set(regions) & set(motif_data.annotation.index.levels[1]),
+                         key=motif_data.regions.index)
 
     if any(filter(lambda c: c > 1,
-                  Counter(chain.from_iterable(map(attrgetter('group'), map(MOTIF.__getitem__, regions)))).values())):
+                  Counter(
+                      chain.from_iterable(map(attrgetter('group'), map(motif_data.__getitem__, regions)))).values())):
         raise MotifEnrichmentError("Overlapping regions selected. Cannot have regions from the same group.")
+
+    if motif_dict is None:
+        motif_dict = OrderedDict(zip(res.keys(), repeat(None)))
 
     results: Dict[str, List[pd.Series]] = OrderedDict()
 
-    cached_region = cache.get_many([f'{uid}/{r}_enrich' for r in regions])
+    if uid is not None:
+        cached_region = cache.get_many([f'{uid}/{r}_enrich' for r in regions])
+    else:
+        cached_region = {}
+
+    annotated = None
 
     for region in regions:
         try:
             region_enrich = cached_region[f'{uid}/{region}_enrich']
         except KeyError:
+            if annotated is None:
+                genes = set(chain.from_iterable(res.values()))
+                annotated = motif_data.annotation
+                annotated = annotated.loc[(
+                                              annotated.index.get_level_values(0).isin(genes),
+                                              regions,
+                                              slice(None)
+                                          ), :]
             region_enrich = list(map(partial(get_list_enrichment,
-                                             annotated=getattr(MOTIF, region),
-                                             ann_cluster_size=getattr(MOTIF, f'{region}_cluster_size')),
-                                     res.values()))
-            cache.set(f'{uid}/{region}_enrich', region_enrich)
+                                             annotated=annotated.loc[(slice(None), region, slice(None)), :],
+                                             ann_cluster_size=getattr(motif_data, f'{region}_cluster_size'),
+                                             total=motif_data.region_total.loc[region, :].squeeze()),
+                                     res.values(),
+                                     motif_dict.values()))
+            if uid is not None:
+                cache.set(f'{uid}/{region}_enrich', region_enrich)
 
         results[region] = region_enrich
 
-    df = pd.concat(chain.from_iterable(zip(*results.values())), axis=1, sort=True)
+    result_df = pd.concat(chain.from_iterable(zip(*results.values())), axis=1, sort=True)
 
     columns = list(starmap(
-        lambda r, c: c + (r,),
+        lambda r, c: (*c, r),
         zip(
             cycle(regions),
             chain.from_iterable(zip(*tee(res.keys(), len(results))))
         )
     ))
 
-    df.columns = columns
+    result_df.columns = columns
 
     # bonferroni correction
-    df = df.stack()
-    pvalues = multipletests(df, method='bonferroni')[1]
-    df = pd.Series(pvalues, index=df.index)
-    df = df.unstack()
+    result_df = result_df.stack()
+    pvalues = multipletests(result_df, method='bonferroni')[1]
+    result_df = pd.Series(pvalues, index=result_df.index)
+    result_df = result_df.unstack()
 
     if show_reject:
-        df = df[(df <= alpha).any(axis=1)]
+        result_df = result_df[(result_df <= alpha).any(axis=1)]
     else:
-        df[df > alpha] = np.nan
-        df = df.dropna(how='all')
+        result_df[(result_df > alpha)] = np.nan
+        result_df = result_df.dropna(how='all')
 
-    if df.empty:
+    if result_df.empty:
         raise NoEnrichedMotif
 
-    return regions, df
+    return regions, result_df
 
 
 def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
@@ -189,7 +250,7 @@ def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[str, Union[None,
 
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']
-        res[('Target Gene List', None)] = set(chain.from_iterable(target_lists.values()))
+        res[('Target Gene List', 0)] = set(chain.from_iterable(target_lists.values()))
     except KeyError:
         pass
 
@@ -206,37 +267,113 @@ def merge_cluster_info(df):
         yield [info] + row
 
 
-def get_motif_enrichment_json(uid: Union[str, UUID],
-                              regions: Optional[List[str]] = None,
-                              alpha: float = 0.05) -> Dict:
-    res = get_analysis_gene_list(uid)
-    regions, df = motif_enrichment(res, regions, uid, alpha=alpha, show_reject=False)
-
-    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
-    metadata = get_metadata(analyses)
-
+def get_column_info(res, metadata):
     columns = []
 
     for (tf, analysis_id), value in res.items():
         name, criterion, _uid = split_name(tf)
 
         data = OrderedDict([('name', name), ('filter', criterion)])
-        try:
+        if (tf, analysis_id) == ('Target Gene List', 0):
+            data['genes'] = ",\n".join(value)
+        else:
             data.update(metadata.loc[analysis_id, :].to_dict())
-        except KeyError:
-            if (tf, analysis_id) == ('Target Gene List', None):
-                data['genes'] = ",\n".join(value)
-            else:
-                raise
 
         columns.append(data)
 
-    df = df.where(pd.notnull(df), None)
+    return columns
+
+
+def get_motif_enrichment_json(uid: Union[str, UUID],
+                              regions: Optional[List[str]] = None,
+                              alpha: float = 0.05,
+                              motif_data: MotifData = MOTIFS) -> Dict:
+    res = get_analysis_gene_list(uid)
+
+    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
+    metadata = get_metadata(analyses)
+
+    regions, result_df = motif_enrichment(res, regions,
+                                          uid=uid,
+                                          motif_dict=None,
+                                          alpha=alpha,
+                                          show_reject=False,
+                                          motif_data=motif_data)
+
+    columns = get_column_info(res, metadata)
+
+    result_df = result_df.where(pd.notnull(result_df), None)
 
     return {
         'columns': columns,
-        'result': list(merge_cluster_info(df)),
+        'result': list(merge_cluster_info(result_df)),
         'regions': regions
+    }
+
+
+def get_additional_motif_enrichment_json(uid: Union[str, UUID],
+                                         regions: Optional[List[str]] = None,
+                                         motifs: Optional[List[Optional[List[str]]]] = None,
+                                         use_default_motifs: bool = False,
+                                         motif_data: MotifData = MOTIFS) -> Dict:
+    res = get_analysis_gene_list(uid)
+
+    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
+    metadata = get_metadata(analyses)
+
+    if motifs is not None:
+        if len(res) != len(motifs):
+            raise MotifEnrichmentError("Should provide list of motifs for each analysis.")
+    elif motifs is None and use_default_motifs:
+        motifs = []
+        for idx in map(itemgetter(1), res.keys()):
+            try:
+                motifs.append(motif_data.motifs[motif_data.motifs.str.startswith(metadata.at[idx, 'gene_id'])].tolist())
+            except (KeyError, ValueError):
+                motifs.append([])
+    else:
+        motifs = [None] * len(res)
+
+    motif_dict = OrderedDict(zip(res.keys(), motifs))
+
+    regions, result_df = motif_enrichment(res, regions,
+                                          uid=None,
+                                          motif_dict=motif_dict,
+                                          alpha=1,
+                                          show_reject=False,
+                                          motif_data=motif_data)
+
+    result_df.columns = pd.MultiIndex.from_tuples(result_df.columns)
+    result_df = result_df.stack().unstack(level=0).dropna(how='all', axis=1)
+
+    columns = []
+    indeces = []
+
+    for (tf, analysis_id), value in res.items():
+        name, criterion, _uid = split_name(tf)
+
+        data = OrderedDict([('name', name), ('filter', criterion)])
+        motif_list = motif_dict[(tf, analysis_id)]
+        data['motifs'] = motif_list
+
+        if motif_list:
+            for m in motif_list:
+                indeces.append((tf, analysis_id, m))
+        else:
+            indeces.append((tf, analysis_id, None))
+
+        if (tf, analysis_id) == ('Target Gene List', 0):
+            data['genes'] = ",\n".join(value)
+        else:
+            data.update(metadata.loc[analysis_id, :].to_dict())
+
+        columns.append(data)
+
+    result_df = result_df.reindex(columns=pd.MultiIndex.from_tuples(indeces))
+    result_df = result_df.where(pd.notnull(result_df), None)
+    return {
+        'columns': columns,
+        'result': list(result_df.itertuples(name=None, index=True))
     }
 
 
@@ -271,39 +408,41 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  alpha: float = 0.05,
                                  lower_bound: Optional[float] = None,
                                  upper_bound: Optional[float] = None,
-                                 fields: Optional[Iterable[str]] = None) -> BytesIO:
+                                 fields: Optional[Iterable[str]] = None,
+                                 motif_data: MotifData = MOTIFS) -> BytesIO:
     res = get_analysis_gene_list(uid)
-    regions, df = motif_enrichment(res, regions, uid, alpha=alpha)
+    regions, result_df = motif_enrichment(res, regions, uid, alpha=alpha, motif_data=motif_data)
 
-    df = df.clip(lower=sys.float_info.min)
-    df = -np.log10(df)
+    result_df = result_df.clip(lower=sys.float_info.min)
+    result_df = -np.log10(result_df)
 
-    df = df.rename(index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in df.index})
+    result_df = result_df.rename(
+        index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in result_df.index})
 
     columns = make_motif_enrichment_heatmap_columns(res, fields)
 
-    df.columns = starmap(lambda r, x: f'{x} {r}',
-                         zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
+    result_df.columns = starmap(lambda r, x: f'{x} {r}',
+                                zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
 
-    df = df.T
+    result_df = result_df.T
 
     opts = {}
 
-    rows, cols = df.shape
+    rows, cols = result_df.shape
 
     opts['row_cluster'] = rows > 1
     opts['col_cluster'] = cols > 1
 
     if rows > 1:
-        opts['row_linkage'] = hierarchy.linkage(df.values, method='average', optimal_ordering=True)
+        opts['row_linkage'] = hierarchy.linkage(result_df.values, method='average', optimal_ordering=True)
         if len(regions) > 1:
-            opts['row_colors'] = [COLORS[r] for r, s in zip(cycle(regions), df.index)]
+            opts['row_colors'] = [motif_data.colors[r] for r, s in zip(cycle(regions), result_df.index)]
 
     if cols > 1:
-        opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
+        opts['col_linkage'] = hierarchy.linkage(result_df.values.T, method='average', optimal_ordering=True)
 
     plt.figure()
-    heatmap_graph = sns.clustermap(df,
+    heatmap_graph = sns.clustermap(result_df,
                                    method="ward",
                                    cmap="YlGnBu",
                                    cbar_kws={'label': 'Enrichment (-log10 p)'},
@@ -339,6 +478,7 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[Table
     df = clear_data(df)
 
     analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
+    metadata = get_metadata(analyses)
 
     col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
@@ -348,15 +488,11 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[Table
         info = OrderedDict([('name', name), ('filter', criterion)])
 
         try:
-            analysis = analyses.get(pk=analysis_id)
-            gene_id = analysis.tf.gene_id
-
             try:
-                gene_name = annotations().at[gene_id, 'Name']
+                gene_name = metadata.at[analysis_id, 'gene_name']
             except KeyError:
                 gene_name = ''
-
-            info.update(analysis.analysisdata_set.values_list('key__name', 'value'))
+            info.update(metadata.loc[analysis_id, :].to_dict())
         except Analysis.DoesNotExist:
             gene_name = ''
 
