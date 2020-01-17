@@ -35,7 +35,7 @@ from .utils.summary import get_summary
 
 logger = logging.getLogger(__name__)
 
-lock = Lock()
+lock = Lock()  # Ensure all matplotlib functions use this lock
 
 gene_lists_storage = FileSystemStorage(settings.GENE_LISTS)
 networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
@@ -318,20 +318,21 @@ class CsvExportView(View):
 class ListEnrichmentHeatmapView(View):
     def get(self, request, request_id):
         try:
-            upper = convert_float(request.GET.get('upper'))
-            lower = convert_float(request.GET.get('lower'))
-            fields = request.GET.getlist('fields')
+            with lock:
+                upper = convert_float(request.GET.get('upper'))
+                lower = convert_float(request.GET.get('lower'))
+                fields = request.GET.getlist('fields')
 
-            buff = gene_list_enrichment(
-                request_id,
-                draw=True,
-                lower=lower,
-                upper=upper,
-                fields=fields
-            )
-            svg_font_adder(buff)
+                buff = gene_list_enrichment(
+                    request_id,
+                    draw=True,
+                    lower=lower,
+                    upper=upper,
+                    fields=fields
+                )
+                svg_font_adder(buff)
 
-            return FileResponse(buff, content_type='image/svg+xml')
+                return FileResponse(buff, content_type='image/svg+xml')
         except ValueError:
             return HttpResponseNotFound(content_type='image/svg+xml')
 

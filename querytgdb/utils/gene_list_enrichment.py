@@ -165,8 +165,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         if legend:
             result = []
 
-            for idx, col_label in orig_index:
-                name, criterion, analysis_id, l = idx
+            for (name, criterion, _uid, analysis_id, l), col_label in orig_index:
 
                 info = {'name': name, 'filter': criterion}
 
@@ -192,7 +191,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
             buff = io.BytesIO()
 
             sns_heatmap.savefig(buff)
-            plt.close()
+            plt.close(sns_heatmap.fig)
 
             buff.seek(0)
 

@@ -441,7 +441,6 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
     if cols > 1:
         opts['col_linkage'] = hierarchy.linkage(result_df.values.T, method='average', optimal_ordering=True)
 
-    plt.figure()
     heatmap_graph = sns.clustermap(result_df,
                                    method="ward",
                                    cmap="YlGnBu",
@@ -462,7 +461,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
 
     buffer = BytesIO()
     heatmap_graph.savefig(buffer)
-    plt.close()
+    plt.close(heatmap_graph.fig)
     buffer.seek(0)
     svg_font_adder(buffer)
 
