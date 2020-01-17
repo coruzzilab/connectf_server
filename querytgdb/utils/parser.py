@@ -1,10 +1,10 @@
 import logging
 import operator
 import re
-from collections import deque
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial, reduce
-from operator import itemgetter
+from operator import and_, itemgetter, methodcaller, or_
 from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import UUID, uuid4
 
@@ -18,7 +18,7 @@ from django.db.models import Q
 
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from querytgdb.utils import async_loader
-from ..utils import CaselessDict, clear_data
+from ..utils import CaselessDict, clear_data, get_metadata as get_meta_df
 
 __all__ = ['get_query_result', 'expand_ref_ids', 'QueryError']
 
@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 mem_cache = caches['mem']
 
 NAMED_QUERIES = CaselessDict(getattr(settings, 'NAMED_QUERIES', {}))
+
+PVALUE = 'Pvalue'
+LOG2FC = 'Log2FC'
 
 
 class QueryError(ValueError):
@@ -62,13 +65,12 @@ class TargetSeries(pd.Series):
 
 name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:/\\')
 
-and_ = pp.CaselessKeyword('and')
-or_ = pp.CaselessKeyword('or')
+and_oper = pp.CaselessKeyword('and')
+or_oper = pp.CaselessKeyword('or')
 
 opers = [
     (pp.CaselessKeyword("not"), 1, pp.opAssoc.RIGHT),
-    (and_, 2, pp.opAssoc.LEFT),
-    (or_, 2, pp.opAssoc.LEFT)
+    (and_oper | or_oper, 2, pp.opAssoc.LEFT)
 ]
 
 mod_comp = pp.oneOf('< = > >= <= !=')
@@ -94,6 +96,8 @@ modname = pp.Group(
 
 modifier = pp.Group(pp.Suppress('[') + pp.infixNotation(modname, opers) + pp.Suppress(']'))('modifier')
 
+column_filter = pp.Group(pp.Suppress('{') + pp.delimitedList(modname, ',') + pp.Suppress('}'))('column_filter')
+
 expr = pp.Forward()
 
 all_tfs = pp.CaselessKeyword('all_tfs')
@@ -109,7 +113,7 @@ named_query = reduce(lambda a, b: a | b, map(pp.CaselessKeyword, NAMED_QUERIES.k
 
 gene = (all_tfs | multitype | named_query | name)('gene_name')
 
-expr <<= pp.infixNotation(gene, [(modifier, 1, pp.opAssoc.LEFT)] + opers)('query')
+expr <<= pp.infixNotation(gene, [(modifier | column_filter, 1, pp.opAssoc.LEFT)] + opers)('query')
 
 
 def is_name(key: str, item: Union[pp.ParseResults, Any]) -> bool:
@@ -121,6 +125,7 @@ def is_name(key: str, item: Union[pp.ParseResults, Any]) -> bool:
 
 is_modifier = partial(is_name, 'modifier')
 is_mod = partial(is_name, 'mod')
+is_column_filter = partial(is_name, 'column_filter')
 
 
 def mod_to_str(curr: pp.ParseResults) -> str:
@@ -193,8 +198,8 @@ def match_id(df: TargetFrame, analysis_id: Union[str, int]):
 
 
 COL_TRANSLATE = {
-    'PVALUE': 'Pvalue',
-    'LOG2FC': 'Log2FC',
+    'PVALUE': PVALUE,
+    'LOG2FC': LOG2FC,
     'ADDITIONAL_EDGE': 'ADD_EDGES'
 }
 
@@ -288,7 +293,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
         else:
             key, oper, value = itemgetter('key', 'oper', 'value')(query)
             if key == 'pvalue':
-                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Pvalue', oper=oper, value=value)
+                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key=PVALUE, oper=oper, value=value)
             elif key == 'log2fc':
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
             elif key == 'additional_edge':
@@ -305,6 +310,41 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             else:
                 return query_metadata(df, key, value)
     return query
+
+
+def gene_to_ids(metadata, ids):
+    d: Dict[str, set] = defaultdict(set)
+    for idx in ids:
+        d[metadata.at[idx, 'gene_id']].add(idx)
+
+    return d
+
+
+def get_column_filter(df: pd.DataFrame, filter_list):
+    metadata = get_meta_df(Analysis.objects.filter(pk__in=df.columns.get_level_values(1)))
+    metadata.columns = metadata.columns.str.lower()
+    result = []
+    for query in filter_list:
+        key, oper, value = itemgetter('key', 'oper', 'value')(query)
+        key = key.lower()
+
+        if key == 'pvalue':
+            c = OPERS[oper](df.loc[:, (slice(None), slice(None), [PVALUE])], value)
+            result.append(c.columns[c.any(axis=0)].get_level_values(1))
+        elif key == 'log2fc':
+            c = OPERS[oper](df.loc[:, (slice(None), slice(None), [LOG2FC])], value)
+            result.append(c.columns[c.any(axis=0)].get_level_values(1))
+        elif key in metadata.columns:
+            result.append(metadata.index[metadata[key] == value])
+        else:
+            raise QueryError(f"Invalid column filter: {key}")
+
+    result = list(map(partial(gene_to_ids, metadata), result))
+    valid_genes = reduce(and_, map(methodcaller('keys'), result))
+    if not valid_genes:
+        return pd.DataFrame(columns=df.columns, index=df.index)
+
+    return df.loc[:, df.columns.get_level_values(1).isin(reduce(or_, (r[g] for r in result for g in valid_genes)))]
 
 
 def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
@@ -401,7 +441,7 @@ def get_tf_data(query: str,
         reg = TargetFrame(
             Regulation.objects.filter(analysis__in=analyses).values_list(
                 'analysis_id', 'target_id', 'p_value', 'foldchange').iterator(),
-            columns=['ANALYSIS', 'id', 'Pvalue', 'Log2FC'])
+            columns=['ANALYSIS', 'id', PVALUE, LOG2FC])
 
         df.insert(2, 'EDGE', '+')
 
@@ -440,7 +480,7 @@ def get_all_interaction(qs):
 
 
 def get_all_regulation(qs):
-    return TargetFrame(qs.iterator(), columns=['ANALYSIS', 'id', 'Pvalue', 'Log2FC'])
+    return TargetFrame(qs.iterator(), columns=['ANALYSIS', 'id', PVALUE, LOG2FC])
 
 
 def get_all_analyses(qs):
@@ -625,6 +665,11 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     prec.filter_string += f'[{mod_to_str(curr)}]'
 
                     stack.append(prec)
+                elif is_column_filter(curr):
+                    prec = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list)
+                    prec = get_column_filter(prec, curr)
+
+                    stack.append(prec)
                 else:
                     stack.append(curr)
         except StopIteration:
@@ -807,7 +852,8 @@ def get_query_result(query: str,
         result.insert(0, 'User List Count', np.nan)
         result.insert(0, 'User List', np.nan)
 
-    result = async_loader['annotations'].drop('id', axis=1).merge(result, how='right', left_index=True, right_index=True)
+    result = async_loader['annotations'].drop('id', axis=1).merge(result, how='right', left_index=True,
+                                                                  right_index=True)
 
     result = result.sort_values('TF Count', ascending=False, kind='mergesort')
 
