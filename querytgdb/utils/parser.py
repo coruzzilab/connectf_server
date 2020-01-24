@@ -320,7 +320,7 @@ def gene_to_ids(metadata, ids):
     return d
 
 
-def get_column_filter(df: pd.DataFrame, filter_list):
+def get_column_filter(df: TargetFrame, filter_list) -> TargetFrame:
     metadata = get_meta_df(Analysis.objects.filter(pk__in=df.columns.get_level_values(1)))
     metadata.columns = metadata.columns.str.lower()
     result = []
@@ -342,7 +342,7 @@ def get_column_filter(df: pd.DataFrame, filter_list):
     result = list(map(partial(gene_to_ids, metadata), result))
     valid_genes = reduce(and_, map(methodcaller('keys'), result))
     if not valid_genes:
-        return pd.DataFrame(columns=df.columns, index=df.index)
+        return TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
 
     return df.loc[:, df.columns.get_level_values(1).isin(reduce(or_, (r[g] for r in result for g in valid_genes)))]
 
