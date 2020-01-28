@@ -246,8 +246,24 @@ class AsyncDataLoader:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def close(self):
-        self.pool.shutdown()
+    def close(self, *args, **kwargs):
+        self.pool.shutdown(*args, **kwargs)
+
+
+def skip_for_management(func):
+    """
+    Return a noop when not run in WSGI
+    :param func:
+    :return:
+    """
+    if 'django.core.wsgi' in sys.modules:
+        return func
+
+    @wraps(func)
+    def f(*args, **kwargs):
+        return None
+
+    return f
 
 
 def get_annotations():

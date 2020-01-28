@@ -5,7 +5,7 @@ from functools import partial
 from io import BytesIO
 from itertools import chain, count, cycle, repeat, starmap, tee
 from operator import attrgetter, itemgetter
-from typing import Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
 import matplotlib.pyplot as plt
@@ -39,7 +39,6 @@ class Promoter2000(Region):
 @MOTIFS.register
 @ADD_MOTIFS.register
 class Promoter1000(Region):
-    default = True
     name = '1000bp_promoter'
     description = '1000bp upstream promoter region'
     group = [1]
@@ -48,6 +47,7 @@ class Promoter1000(Region):
 @MOTIFS.register
 @ADD_MOTIFS.register
 class Promoter500(Region):
+    default = True
     name = '500bp_promoter'
     description = '500bp upstream promoter region'
     group = [1]
@@ -138,7 +138,11 @@ def get_list_enrichment(gene_list: Iterable[str],
                              annotated.index.get_level_values(2).isin(motifs), :]
         ann_cluster_size = ann_cluster_size[ann_cluster_size.index.isin(motifs)]
     if list_cluster_dedup.empty:
-        return pd.Series()
+        m = motifs if motifs else annotated.index.get_level_values(2).unique()
+        list_cluster_dedup = pd.DataFrame(0,
+                                          index=pd.MultiIndex.from_product(
+                                              [gene_list, annotated.index.get_level_values(1).unique(), m]),
+                                          columns=[3])
 
     list_cluster_size = list_cluster_dedup.groupby(level=2).sum()
 
@@ -352,7 +356,7 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
     for (tf, analysis_id), value in res.items():
         name, criterion, _uid = split_name(tf)
 
-        data = OrderedDict([('name', name), ('filter', criterion)])
+        data: Dict[str, Any] = OrderedDict([('name', name), ('filter', criterion)])
         motif_list = motif_dict[(tf, analysis_id)]
         data['motifs'] = motif_list
 
@@ -371,6 +375,11 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
 
     result_df = result_df.reindex(columns=pd.MultiIndex.from_tuples(indeces))
     result_df = result_df.where(pd.notnull(result_df), None)
+
+    total_regions = ADD_MOTIFS.regions
+
+    result_df.index = sorted(result_df.index, key=total_regions.index)
+
     return {
         'columns': columns,
         'result': list(result_df.itertuples(name=None, index=True))

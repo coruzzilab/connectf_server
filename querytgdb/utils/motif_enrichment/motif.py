@@ -7,13 +7,15 @@ import pandas as pd
 import seaborn as sns
 from django.conf import settings
 
-from querytgdb.utils import async_loader
+from querytgdb.utils import async_loader, skip_for_management
 
 
+@skip_for_management
 def get_annotations():
     return pd.read_csv(settings.MOTIF_ANNOTATION, index_col=[0, 1, 2], header=None)
 
 
+@skip_for_management
 def get_tf_annotations():
     return pd.read_csv(settings.MOTIF_TF_ANNOTATION, index_col=[0, 1, 2], header=None)
 
