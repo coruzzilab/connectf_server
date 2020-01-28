@@ -1,11 +1,11 @@
 import logging
 import operator
 import re
-from collections import defaultdict, deque
+from collections import UserDict, defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial, reduce
 from operator import and_, itemgetter, methodcaller, or_
-from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -64,6 +64,7 @@ class TargetSeries(pd.Series):
 
 
 name = pp.Word(pp.pyparsing_unicode.alphanums + '-_.:/\\')
+pl_name = pp.CaselessKeyword('$filter_tf')('filter_tf')  # placeholder for expansion
 
 and_oper = pp.CaselessKeyword('and')
 or_oper = pp.CaselessKeyword('or')
@@ -113,7 +114,13 @@ named_query = reduce(lambda a, b: a | b, map(pp.CaselessKeyword, NAMED_QUERIES.k
 
 gene = (all_tfs | multitype | named_query | name)('gene_name')
 
-expr <<= pp.infixNotation(gene, [(modifier | column_filter, 1, pp.opAssoc.LEFT)] + opers)('query')
+# additional functions
+
+func_name = pp.Word(pp.pyparsing_unicode.alphas.lower(), pp.pyparsing_unicode.alphanums)('func_name')
+query_func = (func_name + pp.Suppress('(') + pp.delimitedList(quoted_name | pp.Word(pp.alphanums + '$_ '),
+                                                              ',') + pp.Suppress(')'))('function')
+
+expr <<= pp.infixNotation(gene, [(modifier | column_filter, 1, pp.opAssoc.LEFT)] + opers)('query') ^ query_func
 
 
 def is_name(key: str, item: Union[pp.ParseResults, Any]) -> bool:
@@ -756,12 +763,48 @@ def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) ->
     return df
 
 
+class QueryFuncNotFound(KeyError, QueryError):
+    pass
+
+
+class QueryFuncs(UserDict):
+    def __getitem__(self, item):
+        try:
+            return super().__getitem__(item)
+        except KeyError as e:
+            raise QueryFuncNotFound(e) from e
+
+    def register(self, func: Callable):
+        self[func.__name__] = func
+        return func
+
+
+QUERY_FUNCS = QueryFuncs()
+
+
+@QUERY_FUNCS.register
+def expand(query: str, oper: str, *args, tf_filter_list: Optional[pd.Series] = None, **kwargs):
+    if tf_filter_list is None or tf_filter_list.empty:
+        raise QueryError('Filter TF list required')
+
+    result = f" {oper} ".join(query.replace('$filter_tf', t) for t in tf_filter_list)
+
+    return parse_query(result, tf_filter_list=tf_filter_list, **kwargs)
+
+
 def parse_query(query: str,
                 edges: Optional[List[str]] = None,
                 tf_filter_list: Optional[pd.Series] = None,
                 target_filter_list: Optional[pd.Series] = None) -> TargetFrame:
     try:
         parse = expr.parseString(query, parseAll=True)
+
+        if parse.getName() == 'function':
+            fname, *args = parse
+            return QUERY_FUNCS[fname](*args,
+                                      edges=edges,
+                                      tf_filter_list=tf_filter_list,
+                                      target_filter_list=target_filter_list)
 
         result = get_tf(parse.get('query'), edges, tf_filter_list, target_filter_list)
 
