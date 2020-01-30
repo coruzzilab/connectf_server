@@ -5,7 +5,7 @@ from collections import UserDict, defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial, reduce
 from operator import and_, itemgetter, methodcaller, or_
-from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Tuple, Union
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -860,10 +860,11 @@ def get_query_result(query: str,
 
     if user_lists is not None:
         result = result[result.index.str.upper().isin(user_lists[0].index.str.upper())].dropna(axis=1, how='all')
-        result = reorder_data(result)  # reorder again here due to filtering
 
         if result.empty:
             raise QueryError("Empty result (user list too restrictive).")
+
+        result = reorder_data(result)  # reorder again here due to filtering
 
         stats['edge_counts'] = get_total(result)
     else:
