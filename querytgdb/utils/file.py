@@ -114,7 +114,7 @@ def get_network(f: IO) -> Network:
     :return:
     """
     try:
-        df = pd.read_csv(f, delim_whitespace=True, header='infer')
+        df = pd.read_csv(f, delim_whitespace=True, header=None)
     except (ParserError, UnicodeDecodeError, EmptyDataError) as e:
         raise BadNetwork(NETWORK_MSG) from e
 
@@ -170,7 +170,7 @@ def network_to_lists(network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]
 
 
 def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
-                        network: Tuple[str, pd.DataFrame]) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
+                        network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
     """
     Make graphs into user_lists format and merging with user_lists
     :param user_lists:
@@ -184,7 +184,7 @@ def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
     for k, v in user_lists[1].items():
         name_to_gene.setdefault(k, set()).update(v)
 
-    df = graph_lists[0].merge(user_lists[0], left_index=True, right_index=True, how='outer')
+    df = graph_lists[0].merge(user_lists[0], left_index=True, right_index=True, how='inner')
     names = df["User List_x"].str.cat(df["User List_y"], sep=', ', na_rep='').str.strip(', ').rename("User List")
     count = (df["User List Count_x"].fillna(0) + df["User List Count_y"].fillna(0)).astype(int).rename(
         "User List Count")
@@ -202,3 +202,9 @@ def network_to_filter_tfs(network: Tuple[str, pd.DataFrame]) -> pd.Series:
     :return:
     """
     return pd.Series(network[1]['source'].unique())
+
+
+def merge_network_filter_tfs(filter_tfs: pd.Series, network: Network) -> pd.Series:
+    network_filter_tfs = network_to_filter_tfs(network)
+
+    return pd.Series(np.intersect1d(filter_tfs.values, network_filter_tfs.values))

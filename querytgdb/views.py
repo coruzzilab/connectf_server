@@ -23,8 +23,8 @@ from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, convert_float, \
     metadata_to_dict, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment, analysis_enrichment_csv
-from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_lists, \
-    network_to_filter_tfs, network_to_lists
+from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_filter_tfs, \
+    merge_network_lists, network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
 from .utils.motif_enrichment import ADD_MOTIFS, MOTIFS, MotifEnrichmentError, NoEnrichedMotif, \
     get_additional_motif_enrichment_json, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
@@ -109,16 +109,13 @@ class QueryView(View):
 
                 file_opts["user_lists"] = user_lists
 
-                graph_filter_list = network_to_filter_tfs(network)
-
                 try:
                     tf_filter_list = file_opts["tf_filter_list"]
-                    tf_filter_list = tf_filter_list.append(graph_filter_list)
+                    tf_filter_list = merge_network_filter_tfs(tf_filter_list, network)
                 except KeyError:
-                    tf_filter_list = graph_filter_list
+                    tf_filter_list = network_to_filter_tfs(network)
 
-                if not graph_filter_list.empty:
-                    file_opts["tf_filter_list"] = tf_filter_list.drop_duplicates().sort_values()
+                file_opts["tf_filter_list"] = tf_filter_list
 
                 cache.set_many({f'{request_id}/target_network': network,
                                 f'{request_id}/target_genes': user_lists})
