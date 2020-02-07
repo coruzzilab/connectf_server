@@ -115,6 +115,8 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         list_enrichment_count = pd.DataFrame(index=list_enrichment_pvals.index,
                                              columns=list_enrichment_pvals.columns,
                                              dtype=np.int_)
+        list_enrichment_influence = list_enrichment_pvals.copy()
+        list_enrichment_specificity = list_enrichment_pvals.copy()
 
         colnames = {}
 
@@ -128,9 +130,14 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
             ], alternative='greater')
             list_enrichment_pvals.at[analysis_name, name] = pvalue
             list_enrichment_count.at[analysis_name, name] = intersect_len
+            if not draw:
+                list_enrichment_influence.at[analysis_name, name] = intersect_len / len(user_list)
+                list_enrichment_specificity.at[analysis_name, name] = intersect_len / len(analysis_list)
 
         list_enrichment_pvals = list_enrichment_pvals.rename(columns=colnames)
         list_enrichment_count = list_enrichment_count.rename(columns=colnames)
+        list_enrichment_influence = list_enrichment_influence.rename(columns=colnames)
+        list_enrichment_specificity = list_enrichment_specificity.rename(columns=colnames)
 
         # bonferroni correction
         list_enrichment_pvals = list_enrichment_pvals.stack()
@@ -139,7 +146,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
         list_enrichment_pvals = list_enrichment_pvals.unstack()
 
         if not draw:
-            return list_enrichment_pvals, list_enrichment_count
+            return list_enrichment_pvals, list_enrichment_count, list_enrichment_influence, list_enrichment_specificity
 
     if draw or legend:
         orig_index = list(zip(list_enrichment_pvals.index, map(column_string, count(1))))
@@ -199,7 +206,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
 
 
 def gene_list_enrichment_json(uid) -> Dict[str, Any]:
-    data, counts = gene_list_enrichment(
+    data, counts, influence, specificity = gene_list_enrichment(
         uid,
         draw=False,
         legend=False
@@ -213,12 +220,14 @@ def gene_list_enrichment_json(uid) -> Dict[str, Any]:
         info = {'filter': criterion, 'targets': l}
         try:
             info.update(metadata.loc[analysis_id, :].to_dict())
-        except Analysis.DoesNotExist:
+        except KeyError:
             pass
 
         result.append({'info': info,
                        'p-value': row,
-                       'count': counts.loc[(name, criterion, _uid, analysis_id, l), :]})
+                       'count': counts.loc[(name, criterion, _uid, analysis_id, l), :],
+                       'influence': influence.loc[(name, criterion, _uid, analysis_id, l), :],
+                       'specificity': specificity.loc[(name, criterion, _uid, analysis_id, l), :]})
 
     return {
         'columns': data.columns,
