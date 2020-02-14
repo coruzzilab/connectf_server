@@ -50,7 +50,7 @@ class Command(BaseCommand):
                                       ending="\n")
                     analyses.delete()
 
-            elif command is None and options["all"]:
+            elif command is None and options["all"] and not dry_run:
                 analyses = Analysis.objects.all()
 
                 self.stdout.write("deleting everything...", ending="\n")
