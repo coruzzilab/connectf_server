@@ -79,7 +79,7 @@ def convert_float(s) -> Optional[float]:
 
 
 def metadata_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
-    df = df.rename(columns=lambda x: f"ID: {x}").reset_index()
+    df = df.reset_index()
     meta_columns = [{"id": column, "name": column, "field": column} for column in df.columns]
 
     df = df.where(df.notna(), None)

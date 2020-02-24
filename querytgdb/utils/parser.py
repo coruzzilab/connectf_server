@@ -302,7 +302,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
             if key == 'pvalue':
                 return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key=PVALUE, oper=oper, value=value)
             elif key == 'log2fc':
-                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key='Log2FC', oper=oper, value=value)
+                return df.groupby(level=[0, 1], axis=1).apply(apply_comp_mod, key=LOG2FC, oper=oper, value=value)
             elif key == 'additional_edge':
                 analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1)).prefetch_related('tf')
                 anno_ids = async_loader['annotations'].loc[df.index, 'id']
@@ -740,6 +740,16 @@ def get_tf_count(df: TargetFrame) -> TargetSeries:
     return counts
 
 
+def add_tf_count(df: TargetFrame) -> TargetFrame:
+    counts = df.pipe(get_tf_count)
+
+    df = df.copy()
+    df.columns = df.columns.to_flat_index()
+    df.insert(0, 'TF Count', counts)
+
+    return df
+
+
 def expand_ref_ids(df: pd.DataFrame, level: Optional[Union[str, int]] = None) -> pd.DataFrame:
     df = df.copy()
 
@@ -824,15 +834,16 @@ def get_total(df: pd.DataFrame) -> pd.DataFrame:
     return clear_data(df).groupby(level=[0, 1], axis=1).count().sum()
 
 
-def induce_repress_count(s: pd.Series) -> pd.Series:
-    return pd.Series(((s > 0).sum(), (s < 0).sum()),
-                     index=['induced', 'repressed'])
+def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
+    fc_result = result.loc[:, (slice(None), slice(None), ['Log2FC'])]
+    return pd.DataFrame([(fc_result > 0).sum(axis=0), (fc_result < 0).sum(axis=0)], index=['induced', 'repressed'])
 
 
 def get_query_result(query: str,
                      uid: Optional[Union[str, UUID]] = None,
                      user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
                      tf_filter_list: Optional[pd.Series] = None,
+                     target_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
                      size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, Union[str, UUID]]:
     """
@@ -842,6 +853,7 @@ def get_query_result(query: str,
     :param uid:
     :param user_lists:
     :param tf_filter_list:
+    :param target_filter_list:
     :param edges:
     :param size_limit:
     :return:
@@ -849,7 +861,7 @@ def get_query_result(query: str,
     if uid is None:
         uid = uuid4()
 
-    result = parse_query(query, edges, tf_filter_list)
+    result = parse_query(query, edges, tf_filter_list, target_filter_list)
     metadata = get_metadata(result.columns.get_level_values(1))
 
     stats = {
@@ -870,7 +882,7 @@ def get_query_result(query: str,
     else:
         stats['edge_counts'] = stats['total']
 
-    stats['induce_repress_count'] = result.loc[:, (slice(None), slice(None), ['Log2FC'])].apply(induce_repress_count)
+    stats['induce_repress_count'] = result.pipe(induce_repress_count)
 
     cache.set_many({f'{uid}/tabular_output': result,
                     f'{uid}/metadata': metadata})
@@ -880,11 +892,7 @@ def get_query_result(query: str,
     if size_limit is not None and result.size > size_limit:
         raise QueryError("Result too large.")
 
-    counts = get_tf_count(result)
-
-    result = result.copy()
-    result.columns = result.columns.to_flat_index()
-    result.insert(0, 'TF Count', counts)
+    result = result.pipe(add_tf_count)
 
     if user_lists:
         result = user_lists[0].merge(result,
