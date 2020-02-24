@@ -57,13 +57,12 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
     return sns_heatmap
 
 
-def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None, draw=True, legend=False,
+def gene_list_enrichment(uid: Union[str, UUID], draw=True, legend=False,
                          upper=None, lower=None, fields: Optional[List[str]] = None):
     """
     Draws gene list enrichment heatmap from cached query
 
     :param uid:
-    :param background:
     :param draw:
     :param legend:
     :param upper:
@@ -72,7 +71,7 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     :return:
     """
     # raising exception here if target genes are not uploaded by the user
-    cached_data = cache.get_many([f'{uid}/target_genes', f'{uid}/tabular_output_unfiltered'])
+    cached_data = cache.get_many([f'{uid}/target_genes', f'{uid}/tabular_output_unfiltered', f'{uid}/background_genes'])
 
     try:
         name_to_list, list_to_name = cached_data[f'{uid}/target_genes']
@@ -84,14 +83,17 @@ def gene_list_enrichment(uid: Union[str, UUID], background: Optional[int] = None
     except KeyError as e:
         raise ValueError('Query result unavailable') from e
 
-    if background is None:
-        if not async_loader['annotations'].empty:
-            background = async_loader['annotations'].shape[0]
-        else:
-            background = 28775
+    try:
+        # handle user selected background
+        background_genes = cached_data[f'{uid}/background_genes']
+        background_genes = set(background_genes)
 
-    # default background:
-    # A. thaliana columbia tair10 genome(28775 genes(does not include transposable elements and pseudogenes))
+        for name in list_to_name:
+            list_to_name[name] &= background_genes
+
+        background = len(background_genes)
+    except KeyError:
+        background = async_loader['annotations'].shape[0]
 
     query_result = clear_data(query_result)
 

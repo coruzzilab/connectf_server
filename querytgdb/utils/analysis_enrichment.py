@@ -59,7 +59,12 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
     data = []
     info = []
 
-    background = async_loader['annotations'].shape[0]
+    background_genes = cache.get(f'{uid}/background_genes')
+
+    if background_genes is not None:
+        background = background_genes.size
+    else:
+        background = async_loader['annotations'].shape[0]
 
     analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
 

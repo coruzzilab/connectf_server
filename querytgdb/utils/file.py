@@ -14,6 +14,8 @@ from django.core.files.storage import Storage
 from django.http.request import HttpRequest
 from pandas.errors import EmptyDataError, ParserError
 
+from ..utils import async_loader
+
 
 class BadFile(ValueError):
     pass
@@ -90,6 +92,11 @@ def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
 
 
 def get_genes(f: TextIO) -> pd.Series:
+    """
+    Get genes from gene list
+    :param f:
+    :return:
+    """
     with closing(f) as g:
         s = pd.Series(g.readlines())
 
@@ -100,6 +107,19 @@ def get_genes(f: TextIO) -> pd.Series:
     s = s[~(s.str.startswith('>') | s.str.startswith(';'))].reset_index(drop=True)
 
     return s
+
+
+def get_background_genes(f: TextIO) -> pd.Series:
+    """
+    Gets genes from gene list and filters for annotations in the database.
+    :param f:
+    :return:
+    """
+    background_genes = get_genes(f)
+    background_genes = pd.Series(np.intersect1d(async_loader['annotations'].index.str.upper(),
+                                                background_genes.str.upper()))
+
+    return background_genes
 
 
 Network = Tuple[str, pd.DataFrame]

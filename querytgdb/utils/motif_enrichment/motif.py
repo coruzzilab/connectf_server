@@ -1,13 +1,17 @@
 import re
 from abc import ABC
 from collections import OrderedDict
-from typing import Dict, List, Type
+from typing import Dict, List, Optional, Type
 
 import pandas as pd
 import seaborn as sns
 from django.conf import settings
 
 from querytgdb.utils import async_loader, skip_for_management
+
+
+class MotifError(Exception):
+    pass
 
 
 @skip_for_management
@@ -25,14 +29,35 @@ async_loader['motifs_tf'] = get_tf_annotations
 
 
 class MotifData:
-    def __init__(self):
-        self._regions: Dict[str, 'Region'] = OrderedDict()
+    _regions: Dict[str, 'Region'] = OrderedDict()
+
+    def __init__(self, background: Optional[pd.Series] = None):
         self.cache: Dict[str, pd.DataFrame] = {}
         self._colors = None
+        self.background = background
+
+        self._annotation = None
+
+    def get_annotation(self) -> pd.DataFrame:
+        """
+        Override for alternative source of motif annotations
+        :return:
+        """
+        return async_loader['motifs']
 
     @property
     def annotation(self) -> pd.DataFrame:
-        return async_loader['motifs']
+        if self._annotation is not None:
+            return self._annotation
+
+        anno = self.get_annotation()
+
+        if self.background is not None:  # account for background
+            anno = anno[anno.index.get_level_values(0).isin(self.background)]
+
+        self._annotation = anno
+
+        return self._annotation
 
     def __getattr__(self, item):
         try:
@@ -70,12 +95,13 @@ class MotifData:
 
         return region_matches
 
-    def register(self, region_cls: Type['Region']) -> Type['Region']:
+    @classmethod
+    def register(cls, region_cls: Type['Region']) -> Type['Region']:
         region = region_cls()
 
         name = region.name
 
-        self._regions[name] = region
+        cls._regions[name] = region
 
         return region_cls
 
@@ -99,6 +125,13 @@ class MotifData:
         return [key for key, val in self._regions.items() if val.default]
 
     @property
+    def default_region(self) -> str:
+        try:
+            return self.default_regions[0]
+        except IndexError:
+            raise MotifError("No default region")
+
+    @property
     def region_desc(self) -> Dict[str, Dict]:
         """
         Include discription of each region
@@ -108,8 +141,7 @@ class MotifData:
 
 
 class AdditionalMotifData(MotifData):
-    @property
-    def annotation(self) -> pd.DataFrame:
+    def get_annotation(self) -> pd.DataFrame:
         return async_loader['motifs_tf']
 
 

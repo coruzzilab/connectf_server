@@ -20,15 +20,16 @@ from django.views.generic import View
 
 from querytgdb.utils.export import create_export_zip, export_csv, write_excel
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
-from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, convert_float, \
-    metadata_to_dict, svg_font_adder
+from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, \
+    convert_float, metadata_to_dict, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment, analysis_enrichment_csv
-from .utils.file import BadFile, get_file, get_gene_lists, get_genes, get_network, merge_network_filter_tfs, \
-    merge_network_lists, network_to_filter_tfs, network_to_lists
+from .utils.file import BadFile, get_background_genes, get_file, get_gene_lists, get_genes, get_network, \
+    merge_network_filter_tfs, merge_network_lists, network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
 from .utils.motif_enrichment import ADD_MOTIFS, MOTIFS, MotifEnrichmentError, NoEnrichedMotif, \
     get_additional_motif_enrichment_json, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
     get_motif_enrichment_json
+from .utils.motif_enrichment.motif import MotifData, AdditionalMotifData
 from .utils.network import get_auc_figure, get_network_json, get_network_sif, get_network_stats, get_pruned_network
 from .utils.parser import QueryError, get_query_result
 from .utils.summary import get_summary
@@ -72,6 +73,7 @@ class QueryView(View):
             targetgenes_file, targetgenes_source = get_file(request, "targetgenes", gene_lists_storage)
             filter_tfs_file, filter_tfs_source = get_file(request, "filtertfs")
             target_networks, networks_source = get_file(request, "targetnetworks", networks_storage)
+            background_genes_file, background_genes_source = get_file(request, "backgroundgenes")
 
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
@@ -119,6 +121,11 @@ class QueryView(View):
 
                 cache.set_many({f'{request_id}/target_network': network,
                                 f'{request_id}/target_genes': user_lists})
+
+            if background_genes_file:
+                background_genes = get_background_genes(background_genes_file)
+                file_opts['target_filter_list'] = background_genes
+                cache.set(f'{request_id}/background_genes', background_genes)
 
             edges = request.POST.getlist('edges')
             query = request.POST['query']
@@ -374,12 +381,19 @@ class MotifEnrichmentJSONView(View):
                     alpha = 0.05
                 regions = request.GET.getlist('regions')
 
+                background_genes = cache.get(f'{request_id}/background_genes')
+
+                if background_genes is not None:
+                    motif_data = MotifData(background=background_genes)
+                else:
+                    motif_data = MOTIFS
+
                 return JsonResponse(
                     get_motif_enrichment_json(
                         request_id,
                         regions,
                         alpha=alpha,
-                        motif_data=MOTIFS),
+                        motif_data=motif_data),
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
                 raise Http404 from e
@@ -396,12 +410,19 @@ class AdditionalMotifEnrichmentJSONView(View):
             if 'motifs' in data:
                 opts['motifs'] = data['motifs']
 
+            background_genes = cache.get(f'{request_id}/background_genes')
+
+            if background_genes is not None:
+                motif_data = AdditionalMotifData(background=background_genes)
+            else:
+                motif_data = ADD_MOTIFS
+
             return JsonResponse(
                 get_additional_motif_enrichment_json(
                     request_id,
                     regions,
                     use_default_motifs=True,
-                    motif_data=ADD_MOTIFS,
+                    motif_data=motif_data,
                     **opts),
                 encoder=PandasJSONEncoder)
         except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
@@ -425,13 +446,21 @@ class MotifEnrichmentHeatmapView(View):
                 lower = convert_float(request.GET.get('lower'))
                 fields = request.GET.getlist('fields')
 
+                background_genes = cache.get(f'{request_id}/background_genes')
+
+                if background_genes is not None:
+                    motif_data = MotifData(background=background_genes)
+                else:
+                    motif_data = MOTIFS
+
                 buff = get_motif_enrichment_heatmap(
                     request_id,
                     regions,
                     upper_bound=upper,
                     lower_bound=lower,
                     alpha=alpha,
-                    fields=fields
+                    fields=fields,
+                    motif_data=motif_data
                 )
 
                 return FileResponse(buff, content_type='image/svg+xml')

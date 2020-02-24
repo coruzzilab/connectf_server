@@ -28,24 +28,21 @@ MOTIFS = MotifData()
 ADD_MOTIFS = AdditionalMotifData()
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Promoter2000(Region):
     name = '2000bp_promoter'
     description = '2000bp upstream promoter region'
     group = [1]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Promoter1000(Region):
     name = '1000bp_promoter'
     description = '1000bp upstream promoter region'
     group = [1]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Promoter500(Region):
     default = True
     name = '500bp_promoter'
@@ -53,47 +50,42 @@ class Promoter500(Region):
     group = [1]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class FivePrimeUtr(Region):
     name = 'five_prime_UTR'
     description = "5' UTR"
     group = [2]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Cds(Region):
     name = 'CDS'
     description = 'CDS'
     group = [3]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Intron(Region):
     name = 'intron'
     description = 'intron'
     group = [4]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class ThreePrimeUtr(Region):
     name = 'three_prime_UTR'
     description = "3' UTR"
     group = [5]
 
 
-@MOTIFS.register
-@ADD_MOTIFS.register
+@MotifData.register
 class Exon(Region):
     name = 'exon'
     description = 'exon'
     group = [2, 3, 5]
 
 
-@ADD_MOTIFS.register
+@MotifData.register
 class Mrna(Region):
     name = 'mrna'
     description = 'mrna'
@@ -319,7 +311,7 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
                                          regions: Optional[List[str]] = None,
                                          motifs: Optional[List[Optional[List[str]]]] = None,
                                          use_default_motifs: bool = False,
-                                         motif_data: MotifData = MOTIFS) -> Dict:
+                                         motif_data: MotifData = ADD_MOTIFS) -> Dict:
     res = get_analysis_gene_list(uid)
 
     analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
