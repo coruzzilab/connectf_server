@@ -343,7 +343,7 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
     result_df = result_df.stack().unstack(level=0).dropna(how='all', axis=1)
 
     columns = []
-    indeces = []
+    indices = []
 
     for (tf, analysis_id), value in res.items():
         name, criterion, _uid = split_name(tf)
@@ -354,9 +354,9 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
 
         if motif_list:
             for m in motif_list:
-                indeces.append((tf, analysis_id, m))
+                indices.append((tf, analysis_id, m))
         else:
-            indeces.append((tf, analysis_id, None))
+            indices.append((tf, analysis_id, None))
 
         if (tf, analysis_id) == ('Target Gene List', 0):
             data['genes'] = ",\n".join(value)
@@ -365,12 +365,12 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
 
         columns.append(data)
 
-    result_df = result_df.reindex(columns=pd.MultiIndex.from_tuples(indeces))
+    result_df = result_df.reindex(columns=pd.MultiIndex.from_tuples(indices))
     result_df = result_df.where(pd.notnull(result_df), None)
 
     total_regions = ADD_MOTIFS.regions
 
-    result_df.index = sorted(result_df.index, key=total_regions.index)
+    result_df = result_df.reindex(index=sorted(result_df.index, key=total_regions.index))
 
     return {
         'columns': columns,
