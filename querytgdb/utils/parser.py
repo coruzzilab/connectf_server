@@ -74,7 +74,7 @@ opers = [
     (and_oper | or_oper, 2, pp.opAssoc.LEFT)
 ]
 
-mod_comp = pp.oneOf('< = > >= <= !=')
+mod_comp = pp.oneOf('< = > >= <= != <>')
 
 quoted_name = pp.QuotedString('"', escChar='\\') | pp.QuotedString("'", escChar='\\')
 
@@ -166,7 +166,8 @@ OPERS = {
     '<': operator.lt,
     '<=': operator.le,
     '=': operator.eq,
-    '!=': operator.ne
+    '!=': operator.ne,
+    '<>': operator.ne
 }
 
 
@@ -197,9 +198,16 @@ def apply_search_column(df: TargetFrame, key, value) -> pd.DataFrame:
         return mask
 
 
-def match_id(df: TargetFrame, analysis_id: Union[str, int]):
+def match_id(df: TargetFrame, oper: str, analysis_id: Union[str, int]):
+    """
+    Filter dataframe by analysis_id
+    :param df:
+    :param oper:
+    :param analysis_id:
+    :return:
+    """
     mask = pd.DataFrame(False, columns=df.columns, index=df.index)
-    mask.loc[:, (slice(None), df.columns.get_level_values(1) == int(analysis_id), slice(None))] = True
+    mask.loc[:, (slice(None), OPERS[oper](df.columns.get_level_values(1), int(analysis_id)), slice(None))] = True
 
     return mask
 
@@ -311,7 +319,7 @@ def get_mod(df: TargetFrame, query: Union[pp.ParseResults, pd.DataFrame]) -> pd.
                                                               anno_ids=anno_ids,
                                                               value=value)
             elif key == 'id':
-                return match_id(df, value)
+                return match_id(df, oper, value)
             elif key == 'targeted_by':
                 return match_targeted_by(df, oper, value)
             else:
