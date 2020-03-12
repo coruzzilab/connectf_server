@@ -16,6 +16,9 @@ from pandas.errors import EmptyDataError, ParserError
 
 from ..utils import async_loader
 
+UserGeneLists = Tuple[pd.DataFrame, Dict[str, Set[str]]]
+Network = Tuple[str, pd.DataFrame]
+
 
 class BadFile(ValueError):
     pass
@@ -57,13 +60,17 @@ def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = N
 
 
 def gene_list_to_df(gene_to_name: Dict[str, Set[str]]) -> pd.DataFrame:
-    return pd.DataFrame(
+    df = pd.DataFrame(
         ((key, ', '.join(val), len(val)) for key, val in gene_to_name.items()),
         columns=['TARGET', 'User List', 'User List Count']
     ).set_index('TARGET')
 
+    df.index = df.index.str.upper()
 
-def get_gene_lists(f: TextIO) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
+    return df
+
+
+def get_gene_lists(f: TextIO) -> UserGeneLists:
     """
     Get gene lists from the uploaded target genes file.
 
@@ -122,8 +129,6 @@ def get_background_genes(f: TextIO) -> pd.Series:
     return background_genes
 
 
-Network = Tuple[str, pd.DataFrame]
-
 NETWORK_MSG = "Network must have source, edge, target columns. Can have an additional forth column of scores."
 
 
@@ -166,7 +171,7 @@ def get_network(f: IO) -> Network:
     return name, df
 
 
-def network_to_lists(network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
+def network_to_lists(network: Network) -> UserGeneLists:
     """
     Makes network into user_lists format
     :param network:
@@ -189,8 +194,8 @@ def network_to_lists(network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]
     return df, name_to_gene
 
 
-def merge_network_lists(user_lists: Tuple[pd.DataFrame, OrderedDict],
-                        network: Network) -> Tuple[pd.DataFrame, Dict[str, Set[str]]]:
+def merge_network_lists(network: Network,
+                        user_lists: UserGeneLists) -> Tuple[Network, UserGeneLists]:
     """
     Make graphs into user_lists format and merging with user_lists
     :param user_lists:

@@ -19,8 +19,7 @@ from django.db.models import Q
 from querytgdb.models import Analysis, Annotation, EdgeData, EdgeType, Interaction, Regulation
 from querytgdb.utils import async_loader
 from ..utils import CaselessDict, clear_data, get_metadata as get_meta_df
-
-__all__ = ['get_query_result', 'expand_ref_ids', 'QueryError']
+from ..utils.file import UserGeneLists
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +841,7 @@ def parse_query(query: str,
 
 
 def get_total(df: pd.DataFrame) -> pd.DataFrame:
-    return clear_data(df).groupby(level=[0, 1], axis=1).count().sum()
+    return df.pipe(clear_data).groupby(level=[0, 1], axis=1).count().sum()
 
 
 def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
@@ -852,7 +851,7 @@ def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
 
 def get_query_result(query: str,
                      uid: Optional[Union[str, UUID]] = None,
-                     user_lists: Optional[Tuple[pd.DataFrame, Dict]] = None,
+                     user_lists: Optional[UserGeneLists] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      target_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
