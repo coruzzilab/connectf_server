@@ -808,7 +808,7 @@ def expand(query: str, oper: str, *args, tf_filter_list: Optional[pd.Series] = N
     if tf_filter_list is None or tf_filter_list.empty:
         raise QueryError('Filter TF list required')
 
-    result = f" {oper} ".join(f"({query})".replace('$filter_tf', t) for t in tf_filter_list)
+    result = f" {oper} ".join(re.sub(r'\$filter_tf', t, f"({query})", flags=re.I) for t in tf_filter_list)
 
     return parse_query(result, tf_filter_list=tf_filter_list, **kwargs)
 
