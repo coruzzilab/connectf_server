@@ -139,6 +139,9 @@ def mod_to_str(curr: pp.ParseResults) -> str:
     if isinstance(curr, str):
         return curr
 
+    if isinstance(curr, pp.ParseResults) and curr.getName() != 'mod':
+        return '(' + ' '.join(map(mod_to_str, curr)) + ')'
+
     try:
         return ' '.join(map(mod_to_str, curr))
     except TypeError:
@@ -485,7 +488,7 @@ def get_tf_data(query: str,
         query = query.upper()
 
     df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
-    df.filter_string += query
+    df.filter_string = query
 
     return df
 
@@ -656,7 +659,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                             df = prec.merge(succ, how='inner', left_index=True, right_index=True,
                                             suffixes=get_suffix(prec, succ))
                             df.include = False
-                    filter_string += succ.filter_string
+                    filter_string = '(' + filter_string + succ.filter_string + ')'
 
                     try:
                         df = df.dropna(axis=1, how='all')
@@ -677,7 +680,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     mod = get_mod(prec, curr)
                     prec = prec[mod].dropna(how='all').dropna(how='all', axis=1)  # filter out empty tfs
 
-                    prec.filter_string += f'[{mod_to_str(curr)}]'
+                    prec.filter_string += f'[{mod_to_str(curr[0])}]'
 
                     stack.append(prec)
                 elif is_column_filter(curr):
