@@ -37,7 +37,8 @@ setup(
         'scikit-learn',
         'gunicorn',
         'pyyaml',
-        'sungear'
+        'sungear',
+        'jsonschema'
     ],
     python_requires='>=3.5'
 )

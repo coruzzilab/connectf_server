@@ -7,7 +7,9 @@ import shutil
 import tempfile
 import warnings
 from itertools import chain
+from operator import itemgetter
 from threading import Lock
+from typing import Optional
 from uuid import uuid4
 
 import matplotlib
@@ -17,21 +19,22 @@ from django.core.files.storage import FileSystemStorage
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
 from django.utils.datastructures import MultiValueDictKeyError
 from django.views.generic import View
+from jsonschema import ValidationError, validate
 
 from querytgdb.utils.export import create_export_zip, export_csv, write_excel
 from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, \
     convert_float, metadata_to_dict, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment, analysis_enrichment_csv
-from .utils.file import BadFile, get_background_genes, get_file, get_gene_lists, get_genes, get_network, \
-    merge_network_filter_tfs, merge_network_lists, network_to_filter_tfs, network_to_lists
+from .utils.file import BadFile, filter_gene_lists_by_background, get_background_genes, get_file, get_gene_lists, \
+    get_genes, get_network, merge_network_filter_tfs, merge_network_lists, network_to_filter_tfs, network_to_lists
 from .utils.formatter import format_data
 from .utils.motif_enrichment import ADD_MOTIFS, MOTIFS, MotifEnrichmentError, NoEnrichedMotif, \
     get_additional_motif_enrichment_json, get_motif_enrichment_heatmap, get_motif_enrichment_heatmap_table, \
     get_motif_enrichment_json
-from .utils.motif_enrichment.motif import MotifData, AdditionalMotifData
+from .utils.motif_enrichment.motif import AdditionalMotifData, MotifData
 from .utils.network import get_auc_figure, get_network_json, get_network_sif, get_network_stats, get_pruned_network
-from .utils.parser import QueryError, get_query_result
+from .utils.parser import Ids, QueryError, filter_df_by_ids, get_query_result, reorder_data
 from .utils.summary import get_summary
 
 logger = logging.getLogger(__name__)
@@ -43,24 +46,53 @@ networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 
 class QueryView(View):
+    """
+    Enpoint for new query or get cached queries
+    """
+
     def get(self, request, request_id):
-        cached_data = cache.get(f'{request_id}/formatted_tabular_output')
-        if cached_data is None:
-            raise Http404('Query not available')
+        try:
+            cached_data = cache.get_many([f'{request_id}/formatted_tabular_output', f'{request_id}/analysis_ids'])
 
-        columns, merged_cells, result_list, metadata = cached_data
+            columns, merged_cells, result_list, metadata = cached_data[f'{request_id}/formatted_tabular_output']
+            ids = cached_data[f'{request_id}/analysis_ids']
 
-        res = {
-            'result': {
-                'data': result_list,
-                'mergeCells': merged_cells,
-                'columns': columns,
-            },
-            'metadata': metadata,
-            'request_id': request_id
-        }
+            res = {
+                'result': {
+                    'data': result_list,
+                    'mergeCells': merged_cells,
+                    'columns': columns,
+                },
+                'metadata': metadata,
+                'request_id': request_id,
+                'analysis_ids': list(ids.items())
+            }
 
-        return JsonResponse(res, encoder=PandasJSONEncoder)
+            return JsonResponse(res, encoder=PandasJSONEncoder)
+        except KeyError:
+            try:
+                result, metadata, stats, _uid, ids = get_query_result(size_limit=50_000_000,
+                                                                      uid=request_id)
+
+                metadata = metadata_to_dict(metadata)
+                columns, merged_cells, result_list = format_data(result, stats)
+
+                cache.set(f'{request_id}/formatted_tabular_output', (columns, merged_cells, result_list, metadata))
+
+                res = {
+                    'result': {
+                        'data': result_list,
+                        'mergeCells': merged_cells,
+                        'columns': columns
+                    },
+                    'metadata': metadata,
+                    'request_id': request_id,
+                    'analysis_ids': list(ids.items())
+                }
+
+                return JsonResponse(res, encoder=PandasJSONEncoder)
+            except KeyError:
+                raise Http404('Query not available')
 
     def post(self, request, *args, **kwargs):
         errors = []
@@ -75,8 +107,16 @@ class QueryView(View):
             target_networks, networks_source = get_file(request, "targetnetworks", networks_storage)
             background_genes_file, background_genes_source = get_file(request, "backgroundgenes")
 
+            if background_genes_file:
+                background_genes = get_background_genes(background_genes_file)
+                file_opts['target_filter_list'] = background_genes
+                cache.set(f'{request_id}/background_genes', background_genes)
+
             if targetgenes_file:
                 user_lists = get_gene_lists(targetgenes_file)
+
+                if 'target_filter_list' in file_opts:
+                    user_lists = filter_gene_lists_by_background(user_lists, file_opts['target_filter_list'])
 
                 bad_genes = check_annotations(user_lists[0].index)
                 if bad_genes and targetgenes_source != 'storage':
@@ -105,7 +145,7 @@ class QueryView(View):
                 try:
                     user_lists = file_opts["user_lists"]
                     # merge network with current user_lists
-                    user_lists = merge_network_lists(user_lists, network)
+                    network, user_lists = merge_network_lists(network, user_lists)
                 except KeyError:
                     user_lists = network_to_lists(network)
 
@@ -113,7 +153,7 @@ class QueryView(View):
 
                 try:
                     tf_filter_list = file_opts["tf_filter_list"]
-                    tf_filter_list = merge_network_filter_tfs(tf_filter_list, network)
+                    network, tf_filter_list = merge_network_filter_tfs(network, tf_filter_list)
                 except KeyError:
                     tf_filter_list = network_to_filter_tfs(network)
 
@@ -122,27 +162,22 @@ class QueryView(View):
                 cache.set_many({f'{request_id}/target_network': network,
                                 f'{request_id}/target_genes': user_lists})
 
-            if background_genes_file:
-                background_genes = get_background_genes(background_genes_file)
-                file_opts['target_filter_list'] = background_genes
-                cache.set(f'{request_id}/background_genes', background_genes)
-
             edges = request.POST.getlist('edges')
             query = request.POST['query']
 
-            # save the query
-            cache.set(f'{request_id}/query', query.strip() + '\n')
-
-            result, metadata, stats, _uid = get_query_result(query=query,
-                                                             edges=edges,
-                                                             size_limit=50_000_000,
-                                                             uid=request_id,
-                                                             **file_opts)
+            result, metadata, stats, _uid, ids = get_query_result(query=query,
+                                                                  edges=edges,
+                                                                  size_limit=50_000_000,
+                                                                  uid=request_id,
+                                                                  **file_opts)
 
             metadata = metadata_to_dict(metadata)
             columns, merged_cells, result_list = format_data(result, stats)
 
-            cache.set(f'{request_id}/formatted_tabular_output', (columns, merged_cells, result_list, metadata))
+            cache.set_many({
+                f'{request_id}/query': query.strip() + '\n',  # save queries
+                f'{request_id}/formatted_tabular_output': (columns, merged_cells, result_list, metadata),
+            })
 
             res = {
                 'result': {
@@ -151,7 +186,8 @@ class QueryView(View):
                     'columns': columns
                 },
                 'metadata': metadata,
-                'request_id': request_id
+                'request_id': request_id,
+                'analysis_ids': list(ids.items())
             }
 
             if errors:
@@ -166,6 +202,117 @@ class QueryView(View):
             return HttpResponseBadRequest(f"Problem with query: {e}")
 
 
+ANALYSIS_ID_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "array",
+        "items": [
+            {
+                "type": "array",
+                "items": [
+                    {"type": "string"},
+                    {"type": "number"}
+                ]
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "show": {"type": "boolean"},
+                    "name": {"type": "string"}
+                },
+                "additionalProperties": False,
+                "required": ["show", "name"]
+            }
+        ]
+    }
+}
+
+
+class EditQueryView(View):
+    """
+    Endpoints to hide or rename queried analyses
+    """
+
+    def get(self, request, request_id):
+        ids = cache.get(f'{request_id}/analysis_ids')
+
+        if ids is None:
+            return HttpResponseNotFound('Query Analysis Ids not available')
+
+        return JsonResponse(list(ids.items()), safe=False, encoder=PandasJSONEncoder)
+
+    def post(self, request, request_id):
+        try:
+            data = json.loads(request.body)
+            validate(data, ANALYSIS_ID_SCHEMA)
+
+            ids: Optional[Ids] = cache.get(f'{request_id}/analysis_ids')
+
+            if ids is None:
+                return HttpResponseNotFound('Query Analysis Ids not available')
+
+            data = {tuple(idx): opt for idx, opt in data}
+
+            if not any(v['show'] for v in data.values()):
+                return HttpResponseBadRequest("cannot hide all analyses")
+
+            for key in ids:
+                try:
+                    ids[key] = data[key]
+                except KeyError:
+                    pass
+
+            cache.set(f'{request_id}/analysis_ids', ids)
+
+            cached_result = cache.get_many([f'{request_id}/target_genes', f'{request_id}/tabular_output_unfiltered'])
+
+            result = cached_result[f'{request_id}/tabular_output_unfiltered']
+            result = filter_df_by_ids(result, ids)
+
+            try:
+                user_lists = cached_result[f'{request_id}/target_genes']
+                result = result[result.index.str.upper().isin(user_lists[0].index.str.upper())].dropna(axis=1,
+                                                                                                       how='all')
+
+                if result.empty:
+                    raise QueryError("Empty result (user list too restrictive).")
+
+                result = reorder_data(result)
+            except KeyError:
+                pass
+
+            cache.set(f'{request_id}/tabular_output', result)  # refresh filtered tabular output
+
+            # delete cache keys and refresh cache here.
+            cache.delete_many([
+                # formatted output
+                f'{request_id}/formatted_tabular_output',
+                # network
+                f'{request_id}/network',
+                f'{request_id}/network_data',
+                # AUPR curve
+                f'{request_id}/figure',
+                f'{request_id}/figure_data',
+                # network stats
+                f'{request_id}/stats',
+                # Gene list enrichment
+                f'{request_id}/list_enrichment',
+                f'{request_id}/list_enrichment_legend',
+                # motif enrichment
+                *(f'{request_id}/{r}_enrich' for r in MOTIFS.regions),
+                # analysis enrichment
+                f'{request_id}/analysis_enrichment',
+                # summary
+                f'{request_id}/summary'
+            ])
+
+            return JsonResponse(list(ids.items()), status=201, safe=False, encoder=PandasJSONEncoder)
+        except (json.JSONDecodeError, ValidationError, QueryError) as e:
+            return HttpResponseBadRequest(e)
+        except KeyError:
+            return HttpResponseNotFound('Query does not exist. Please start a new query.')
+
+
 class NetworkAuprView(View):
     def get(self, request, request_id):
         precision = convert_float(request.GET.get('precision'))
@@ -175,11 +322,20 @@ class NetworkAuprView(View):
                 warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning,
                                         module="matplotlib.figure")
 
-                cached_data = cache.get_many([f'{request_id}/target_network',
-                                              f'{request_id}/tabular_output_unfiltered'])
+                cached_data = cache.get_many([
+                    f'{request_id}/target_network',
+                    f'{request_id}/tabular_output_unfiltered',
+                    f'{request_id}/analysis_ids'
+                ])
+
+                df, ids = itemgetter(
+                    f'{request_id}/tabular_output_unfiltered',
+                    f'{request_id}/analysis_ids'
+                )(cached_data)
+                df = filter_df_by_ids(df, ids)
 
                 result = get_auc_figure(cached_data[f'{request_id}/target_network'],
-                                        cached_data[f'{request_id}/tabular_output_unfiltered'],
+                                        df,
                                         request_id,
                                         precision_cutoff=precision)
 
@@ -190,7 +346,7 @@ class NetworkAuprView(View):
     def head(self, request, request_id):
         if cache.get(f'{request_id}/target_network') is not None:
             return HttpResponse()
-        raise Http404
+        return HttpResponseNotFound()
 
 
 class NetworkPrunedView(View):
@@ -225,7 +381,7 @@ class StatsView(View):
                 try:
                     stats = get_network_stats(cache.get(data_cache))
                 except AttributeError:
-                    raise Http404
+                    raise Http404('Stats not available')
 
                 cache.set(stats_cache, stats)
 

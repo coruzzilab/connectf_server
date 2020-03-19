@@ -19,6 +19,7 @@ from statsmodels.stats.multitest import multipletests
 from querytgdb.utils import async_loader
 from ..models import Analysis
 from ..utils import clear_data, column_string, get_metadata, split_name
+from .parser import filter_df_by_ids
 
 sns.set()
 
@@ -71,7 +72,12 @@ def gene_list_enrichment(uid: Union[str, UUID], draw=True, legend=False,
     :return:
     """
     # raising exception here if target genes are not uploaded by the user
-    cached_data = cache.get_many([f'{uid}/target_genes', f'{uid}/tabular_output_unfiltered', f'{uid}/background_genes'])
+    cached_data = cache.get_many([
+        f'{uid}/target_genes',
+        f'{uid}/tabular_output_unfiltered',
+        f'{uid}/background_genes',
+        f'{uid}/analysis_ids'
+    ])
 
     try:
         name_to_list, list_to_name = cached_data[f'{uid}/target_genes']
@@ -79,7 +85,11 @@ def gene_list_enrichment(uid: Union[str, UUID], draw=True, legend=False,
         raise ValueError('No target genes uploaded') from e
 
     try:
-        query_result = cached_data[f'{uid}/tabular_output_unfiltered']
+        query_result, ids = itemgetter(
+            f'{uid}/tabular_output_unfiltered',
+            f'{uid}/analysis_ids'
+        )(cached_data)
+        query_result = filter_df_by_ids(query_result, ids)
     except KeyError as e:
         raise ValueError('Query result unavailable') from e
 

@@ -849,13 +849,33 @@ def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
     return pd.DataFrame([(fc_result > 0).sum(axis=0), (fc_result < 0).sum(axis=0)], index=['induced', 'repressed'])
 
 
-def get_query_result(query: str,
+Ids = Dict[Tuple[str, int], Dict[str, Any]]
+
+
+def get_result_ids(df: pd.DataFrame) -> Ids:
+    return {c: {'name': "_".join(map(str, c)), 'show': True} for c in df.columns.droplevel(2)}
+
+
+def filter_df_by_ids(df: pd.DataFrame, ids: Ids) -> pd.DataFrame:
+    show_ids = {k for k, v in ids.items() if v['show']}
+
+    if not show_ids:
+        raise ValueError("All analyses hidden")
+
+    if len(show_ids) == len(ids):
+        return df
+
+    return df.loc[:, list(map(lambda c: itemgetter(0, 1)(c) in show_ids, df.columns))]
+
+
+def get_query_result(query: Optional[str] = None,
                      uid: Optional[Union[str, UUID]] = None,
                      user_lists: Optional[UserGeneLists] = None,
                      tf_filter_list: Optional[pd.Series] = None,
                      target_filter_list: Optional[pd.Series] = None,
                      edges: Optional[List[str]] = None,
-                     size_limit: Optional[int] = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict, Union[str, UUID]]:
+                     size_limit: Optional[int] = None) \
+        -> Tuple[pd.DataFrame, pd.DataFrame, Dict, Union[str, UUID], Ids]:
     """
     Get query result from query string or cache
 
@@ -871,14 +891,38 @@ def get_query_result(query: str,
     if uid is None:
         uid = uuid4()
 
-    result = parse_query(query, edges, tf_filter_list, target_filter_list)
-    metadata = get_metadata(result.columns.get_level_values(1))
+    if query is not None:  # Check if cached
+        result = parse_query(query, edges, tf_filter_list, target_filter_list)
+        metadata = get_metadata(result.columns.get_level_values(1))
+        ids = get_result_ids(result)
+
+        cache.set_many({
+            f'{uid}/tabular_output_unfiltered': result,
+            f'{uid}/metadata': metadata,
+            f'{uid}/analysis_ids': ids
+        })
+    else:
+        data = cache.get_many([
+            f'{uid}/tabular_output_unfiltered',
+            f'{uid}/analysis_ids'
+        ])
+
+        result, ids = itemgetter(
+            f'{uid}/tabular_output_unfiltered',
+            f'{uid}/analysis_ids'
+        )(data)
+
+        result = filter_df_by_ids(result, ids)
+        metadata = get_metadata(result.columns.get_level_values(1))
+
+        cache.set(f'{uid}/metadata', metadata)
 
     stats = {
         'total': get_total(result)
     }
 
-    cache.set(f'{uid}/tabular_output_unfiltered', result)
+    if user_lists is None and query is None:
+        user_lists = cache.get(f'{uid}/target_genes')
 
     if user_lists is not None:
         result = result[result.index.str.upper().isin(user_lists[0].index.str.upper())].dropna(axis=1, how='all')
@@ -894,8 +938,7 @@ def get_query_result(query: str,
 
     stats['induce_repress_count'] = result.pipe(induce_repress_count)
 
-    cache.set_many({f'{uid}/tabular_output': result,
-                    f'{uid}/metadata': metadata})
+    cache.set_many({f'{uid}/tabular_output': result})
 
     logger.info(f"Unfiltered Dataframe size: {result.size}")
 
@@ -922,4 +965,4 @@ def get_query_result(query: str,
     logger.info(f"Dataframe size: {result.size}")
 
     # return statistics here as well
-    return result, metadata, stats, uid
+    return result, metadata, stats, uid, ids

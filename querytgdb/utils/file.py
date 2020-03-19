@@ -98,6 +98,16 @@ def get_gene_lists(f: TextIO) -> UserGeneLists:
     return df, name_to_gene
 
 
+def filter_gene_lists_by_background(user_list: UserGeneLists, background: pd.Series) -> UserGeneLists:
+    bg = set(background)
+
+    df, name_to_gene = user_list
+
+    df = df[df.index.isin(bg)]
+
+    return df, {name: bg & genes for name, genes in name_to_gene.items()}
+
+
 def get_genes(f: TextIO) -> pd.Series:
     """
     Get genes from gene list
@@ -216,7 +226,9 @@ def merge_network_lists(network: Network,
 
     df = pd.concat([names, count], axis=1)
 
-    return df, name_to_gene
+    network_df = network[1][network[1]['target'].isin(df.index)]
+
+    return (network[0], network_df), (df, name_to_gene)
 
 
 def network_to_filter_tfs(network: Tuple[str, pd.DataFrame]) -> pd.Series:
@@ -229,7 +241,8 @@ def network_to_filter_tfs(network: Tuple[str, pd.DataFrame]) -> pd.Series:
     return pd.Series(network[1]['source'].unique())
 
 
-def merge_network_filter_tfs(filter_tfs: pd.Series, network: Network) -> pd.Series:
+def merge_network_filter_tfs(network: Network, filter_tfs: pd.Series) -> Tuple[Network, pd.Series]:
     network_filter_tfs = network_to_filter_tfs(network)
+    total_filter_tfs = pd.Series(np.intersect1d(filter_tfs.values, network_filter_tfs.values))
 
-    return pd.Series(np.intersect1d(filter_tfs.values, network_filter_tfs.values))
+    return (network[0], network[1][network[1]['source'].isin(total_filter_tfs)]), total_filter_tfs

@@ -28,3 +28,4 @@ sungear
 pyyaml
 boto3
 requests
+jsonschema

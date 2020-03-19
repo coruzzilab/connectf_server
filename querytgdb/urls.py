@@ -19,6 +19,7 @@ register_converter(FloatConverter, 'float')
 urlpatterns = [
     path('', views.QueryView.as_view(), name="queryapp"),
     path('<uuid:request_id>/', views.QueryView.as_view()),
+    path('ids/<uuid:request_id>/', views.EditQueryView.as_view()),
     path('network/<uuid:request_id>/', views.NetworkJSONView.as_view()),
     path('network/<uuid:request_id>.sif', views.NetworkSifView.as_view()),
     path('stats/<uuid:request_id>/', views.StatsView.as_view()),

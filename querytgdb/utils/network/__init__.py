@@ -15,6 +15,7 @@ from django.http import HttpResponse
 from sklearn.metrics import auc
 
 from querytgdb.utils import async_loader
+from ..parser import filter_df_by_ids
 from ...models import Analysis, Annotation, EdgeData, EdgeType
 from ...utils import data_to_edges, get_size
 from ...utils.network.utils import COLOR, COLOR_SHAPE
@@ -251,12 +252,17 @@ def get_network_json(uid: Union[str, UUID],
             try:
                 recall, precision, g = cache.get(f'{uid}/figure_data')
             except TypeError:
-                name, network_data = cache.get(f"{uid}/target_network")
-                network_data = network_data.sort_values('rank')
-                df_unf = cache.get(f'{uid}/tabular_output_unfiltered')
+                cached_data = cache.get_many([
+                    f"{uid}/target_network",
+                    f'{uid}/tabular_output_unfiltered',
+                    f'{uid}/analysis_ids'
+                ])
 
-                if df_unf is None:
-                    raise
+                name, network_data = cached_data[f"{uid}/target_network"]
+                network_data = network_data.sort_values('rank')
+                df_unf = cached_data[f'{uid}/tabular_output_unfiltered']
+                ids = cached_data[f'{uid}/analysis_ids']
+                df_unf = filter_df_by_ids(df_unf, ids)
 
                 pred_auc, recall, precision, g = get_prediction_data(df_unf, network_data)[:-1]
 
@@ -277,7 +283,7 @@ def get_network_json(uid: Union[str, UUID],
                         } for s, e, t in
                         g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None,
                                                                                                    index=False))
-        except (ValueError, TypeError):
+        except KeyError:
             pass
 
     return data
@@ -334,8 +340,6 @@ def get_network_sif(uid: Union[str, UUID],
     else:
         network = network.reset_index().iloc[:, [0, 2, 1]]
 
-    print(network)
-
     network = network.pipe(concat_cols)
 
     buffer.writelines(network)
@@ -377,12 +381,17 @@ def get_network_sif(uid: Union[str, UUID],
             try:
                 recall, precision, g = cache.get(f'{uid}/figure_data')
             except TypeError:
-                name, network_data = cache.get(f"{uid}/target_network")
-                network_data = network_data.sort_values('rank')
-                df_unf = cache.get(f'{uid}/tabular_output_unfiltered')
+                cached_data = cache.get_many([
+                    f"{uid}/target_network",
+                    f'{uid}/tabular_output_unfiltered',
+                    f'{uid}/analysis_ids'
+                ])
 
-                if df_unf is None:
-                    raise
+                name, network_data = cached_data[f"{uid}/target_network"]
+                network_data = network_data.sort_values('rank')
+                df_unf = cached_data[f'{uid}/tabular_output_unfiltered']
+                ids = cached_data[f'{uid}/analysis_ids']
+                df_unf = filter_df_by_ids(df_unf, ids)
 
                 pred_auc, recall, precision, g = get_prediction_data(df_unf, network_data)[:-1]
 
@@ -392,7 +401,7 @@ def get_network_sif(uid: Union[str, UUID],
                 lambda x: x['target'].str.cat(sep=' ')).reset_index().pipe(concat_cols)
 
             buffer.writelines(g)
-        except (ValueError, TypeError):
+        except KeyError:
             pass
 
     return buffer
@@ -545,10 +554,10 @@ def randomized_aucs(predictions,
     return rand_aucs
 
 
-def get_prediction_data(df: pd.DataFrame, predicted: pd.DataFrame, randomize: bool = False):
+def get_prediction_data(df: pd.DataFrame, predicted_network: pd.DataFrame, randomize: bool = False):
     df = query_to_network(df)
 
-    g = validate_network(predicted, df)
+    g = validate_network(predicted_network, df)
 
     dup = g['rank'].duplicated(keep='last').values  # use ndarray to disregard indices
 
@@ -569,9 +578,13 @@ def get_pruned_network(uid: str, cutoff: float) -> pd.DataFrame:
     try:
         recall, precision, g = cache.get(f'{uid}/figure_data')
     except TypeError:
-        df = cache.get(f'{uid}/tabular_output_unfiltered')
-        if df is None:
-            raise ValueError("Query data not found")
+        try:
+            cached_data = cache.get_many([f'{uid}/tabular_output_unfiltered', f'{uid}/analysis_ids'])
+            df = cached_data[f'{uid}/tabular_output_unfiltered']
+            ids = cached_data[f'{uid}/analysis_ids']
+            df = filter_df_by_ids(df, ids)
+        except KeyError as e:
+            raise ValueError("Query data not found") from e
 
         pred_auc, recall, precision, g = get_prediction_data(df, data)[:-1]
 
@@ -663,8 +676,10 @@ def get_auc_figure(network: Tuple[str, pd.DataFrame], df: pd.DataFrame, uid: Uni
             [format(p_value, '.3f') if p_value else '<0.001']
         ]
 
-        cache.set(figure_cache, (fig, gs, cell_text))
-        cache.set(data_cache, (recall, precision, g))
+        cache.set_many({
+            figure_cache: (fig, gs, cell_text),
+            data_cache: (recall, precision, g)
+        })
 
     if not hasattr(gs, '_layoutbox'):  # weird issue with pickling
         gs._layoutbox = None
