@@ -210,7 +210,14 @@ ANALYSIS_ID_SCHEMA = {
             {
                 "type": "array",
                 "items": [
-                    {"type": "string"},
+                    {
+                        "type": "array",
+                        "items": [
+                            {"type": "string"},
+                            {"type": "string"},
+                            {"type": "string"}
+                        ]
+                    },
                     {"type": "number"}
                 ]
             },
@@ -251,7 +258,7 @@ class EditQueryView(View):
             if ids is None:
                 return HttpResponseNotFound('Query Analysis Ids not available')
 
-            data = {tuple(idx): opt for idx, opt in data}
+            data = {(tuple(idx[0]), idx[1]): opt for idx, opt in data}
 
             if not any(v['show'] for v in data.values()):
                 return HttpResponseBadRequest("cannot hide all analyses")

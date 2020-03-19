@@ -18,7 +18,7 @@ from statsmodels.stats.multitest import multipletests
 
 from querytgdb.utils import async_loader
 from ..models import Analysis
-from ..utils import clear_data, column_string, get_metadata, split_name
+from ..utils import clear_data, column_string, get_metadata
 from .parser import filter_df_by_ids
 
 sns.set()
@@ -117,7 +117,7 @@ def gene_list_enrichment(uid: Union[str, UUID], draw=True, legend=False,
     for (name, analysis_id), column in query_result.iteritems():
         analysis_targets = set(column.dropna().index.str.upper())
 
-        name, criterion, _uid = split_name(name)
+        name, criterion, _uid = name
 
         targets[(name, criterion, _uid, analysis_id, len(analysis_targets))] = analysis_targets
 

@@ -19,7 +19,7 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
 from querytgdb.models import Analysis
-from querytgdb.utils import clear_data, column_string, get_metadata, split_name, svg_font_adder
+from querytgdb.utils import clear_data, column_string, get_metadata, svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import AdditionalMotifData, MotifData, Region
 
 sns.set()
@@ -155,10 +155,10 @@ def get_list_enrichment(gene_list: Iterable[str],
     return p_values
 
 
-def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
+def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
                      regions: Optional[List[str]] = None,
                      uid: Optional[Union[str, UUID]] = None,
-                     motif_dict: Optional[Dict[Tuple[str, Union[None, int]], Optional[List[str]]]] = None,
+                     motif_dict: Optional[Dict[Tuple[Tuple[str, str, str], int], Optional[List[str]]]] = None,
                      alpha: float = 0.05,
                      show_reject: bool = True,
                      motif_data: MotifData = MOTIFS) -> Tuple[List[str], pd.DataFrame]:
@@ -238,7 +238,7 @@ def motif_enrichment(res: Dict[Tuple[str, Union[None, int]], Set[str]],
     return regions, result_df
 
 
-def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[str, Union[None, int]], Set[str]]:
+def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[Tuple[str, str, str], int], Set[str]]:
     cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
     df = cached_data[f'{uid}/tabular_output']
     df = clear_data(df)
@@ -246,7 +246,7 @@ def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[str, Union[None,
 
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']
-        res[('Target Gene List', 0)] = set(chain.from_iterable(target_lists.values()))
+        res[(('Target Gene List', '', ''), 0)] = set(chain.from_iterable(target_lists.values()))
     except KeyError:
         pass
 
@@ -267,10 +267,10 @@ def get_column_info(res, metadata):
     columns = []
 
     for (tf, analysis_id), value in res.items():
-        name, criterion, _uid = split_name(tf)
+        name, criterion, _uid = tf
 
         data = OrderedDict([('name', name), ('filter', criterion)])
-        if (tf, analysis_id) == ('Target Gene List', 0):
+        if (tf, analysis_id) == (('Target Gene List', '', ''), 0):
             data['genes'] = ",\n".join(value)
         else:
             data.update(metadata.loc[analysis_id, :].to_dict())
@@ -346,7 +346,7 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
     indices = []
 
     for (tf, analysis_id), value in res.items():
-        name, criterion, _uid = split_name(tf)
+        name, criterion, _uid = tf
 
         data: Dict[str, Any] = OrderedDict([('name', name), ('filter', criterion)])
         motif_list = motif_dict[(tf, analysis_id)]
@@ -483,7 +483,7 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[Table
     col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
     for (name, analysis_id), col_str in zip(df.columns, col_strings):
-        name, criterion, _uid = split_name(name)
+        name, criterion, _uid = name
 
         info = OrderedDict([('name', name), ('filter', criterion)])
 
@@ -496,7 +496,7 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[Table
         except Analysis.DoesNotExist:
             gene_name = ''
 
-        yield (info, col_str, name, criterion, gene_name, analysis_id)
+        yield info, col_str, name, criterion, gene_name, analysis_id
 
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']

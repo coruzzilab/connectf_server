@@ -124,7 +124,7 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
     for i, col in enumerate(islice(zip(*columns), data_col_len, None), data_col_len):
         try:
             if col[0:2] != prev[0:2]:
-                name, _, uuid_ = col[0].rpartition(' ')
+                name, _, uuid_ = col[0]
                 name = name or uuid_
                 analysis = analyses[col[1]]
 

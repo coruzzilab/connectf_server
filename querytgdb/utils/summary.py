@@ -1,9 +1,8 @@
 import logging
-import re
 from collections import OrderedDict
 from itertools import groupby, islice
 from operator import itemgetter
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,8 +13,8 @@ from ..utils import clear_data, data_to_edges
 logger = logging.getLogger(__name__)
 
 
-def rename_tf(name: str, gene_id: str, gene_name_symbol: str) -> str:
-    return re.sub(r'^' + re.escape(gene_id), gene_name_symbol, name, flags=re.I)
+def rename_tf(name: Tuple[str, str, str], gene_name_symbol: str) -> str:
+    return f'{gene_name_symbol} "{name[1]}" {name[2]}'
 
 
 def get_summary(df: pd.DataFrame, size_limit: int = 50) -> Dict[str, Any]:
@@ -34,12 +33,12 @@ def get_summary(df: pd.DataFrame, size_limit: int = 50) -> Dict[str, Any]:
     ).distinct().prefetch_related('tf')
 
     analysis_data = pd.DataFrame(
-        ((a.pk, a.name, a.tf.gene_id, a.tf.gene_name_symbol) for a in analyses.iterator()),
-        columns=['pk', 'name', 'gene_id', 'symbol']
+        ((a.pk, a.name, a.tf.gene_name_symbol) for a in analyses.iterator()),
+        columns=['pk', 'name', 'symbol']
     ).set_index('pk')
 
     col_names = dict(analysis_data[['name']].itertuples(name=None))
-    tf_names = {t: rename_tf(t, analysis_data.at[a, 'gene_id'], analysis_data.at[a, 'symbol']) for t, a, c in
+    tf_names = {t: rename_tf(t, analysis_data.at[a, 'symbol']) for t, a, c in
                 df.columns}
 
     df = data_to_edges(df)

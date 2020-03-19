@@ -486,7 +486,7 @@ def get_tf_data(query: str,
     except IndexError:
         query = query.upper()
 
-    df.columns = pd.MultiIndex.from_tuples((query, *c) for c in df.columns)
+    df.columns = pd.MultiIndex.from_tuples((initialize_column_name(query), *c) for c in df.columns)
     df.filter_string = query
 
     return df
@@ -551,6 +551,14 @@ def get_all_df(query: str,
     return df
 
 
+def initialize_column_name(col_name) -> Tuple[str, str, str]:
+    return col_name, "", str(uuid4())
+
+
+def replace_filter_str(col: Tuple[str, str, str], filter_string: str) -> Tuple[str, str, str]:
+    return col[0], filter_string, col[2]
+
+
 def get_all_tf(query: str,
                edges: Optional[List[str]] = None,
                tf_filter_list: Optional[pd.Series] = None,
@@ -586,19 +594,12 @@ def get_all_tf(query: str,
           .unstack(level=[0, 1])
           .reorder_levels([1, 2, 0], axis=1)
           .sort_index(axis=1, level=[0, 1], sort_remaining=False)
-          .dropna(how='all', axis=1))
+          .dropna(how='all', axis=1)
+          .rename(columns=initialize_column_name, level=0))
 
     df.filter_string += query
 
     return df
-
-
-def get_suffix(prec: TargetFrame, succ: TargetFrame) -> Tuple[str, str]:
-    return f' "{prec.filter_string}" {uuid4()}', f' "{succ.filter_string}" {uuid4()}'
-
-
-def rename_suffix(df, names):
-    return df.rename(columns={n: f'{n} "{df.filter_string}" {uuid4()}' for n in names}, level=0)
 
 
 def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
@@ -623,40 +624,32 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                 if curr in ('and', 'or'):
                     prec, succ = get_tf(stack.pop(), edges, tf_filter_list, target_filter_list), \
                                  get_tf(next(it), edges, tf_filter_list, target_filter_list)
-                    intersect_cols = prec.columns.get_level_values(0).intersection(
-                        succ.columns.get_level_values(0)).unique()
-                    if intersect_cols.any():
-                        prec, succ = rename_suffix(prec, intersect_cols), rename_suffix(succ, intersect_cols)
 
                     filter_string = prec.filter_string
                     if curr == 'and':
                         filter_string += ' and '
 
                         if prec.include and succ.include:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True,
-                                            suffixes=get_suffix(prec, succ))
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
                         elif not prec.include and succ.include:
                             df = succ.loc[~succ.index.isin(prec.index), :]
                         elif prec.include and not succ.include:
                             df = prec.loc[~prec.index.isin(succ.index), :]
                         else:  # not prec.include and not succ.include
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True,
-                                            suffixes=get_suffix(prec, succ))
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
                             df.include = False
                     else:
                         filter_string += ' or '
 
                         # doesn't make much sense using not with or, but oh well
                         if prec.include and succ.include:
-                            df = prec.merge(succ, how='outer', left_index=True, right_index=True,
-                                            suffixes=get_suffix(prec, succ))
+                            df = prec.merge(succ, how='outer', left_index=True, right_index=True)
                         elif not prec.include and succ.include:
                             df = succ
                         elif prec.include and not succ.include:
                             df = prec
                         else:
-                            df = prec.merge(succ, how='inner', left_index=True, right_index=True,
-                                            suffixes=get_suffix(prec, succ))
+                            df = prec.merge(succ, how='inner', left_index=True, right_index=True)
                             df.include = False
                     filter_string = '(' + filter_string + succ.filter_string + ')'
 
@@ -667,6 +660,10 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                         df = TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
 
                     df.filter_string = filter_string
+
+                    if curr == 'and':
+                        df = df.rename(columns=partial(replace_filter_str, filter_string=filter_string), level=0)
+
                     stack.append(df)
 
                 elif curr == 'not':
@@ -680,6 +677,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     prec = prec[mod].dropna(how='all').dropna(how='all', axis=1)  # filter out empty tfs
 
                     prec.filter_string += f'[{mod_to_str(curr[0])}]'
+                    prec = prec.rename(columns=partial(replace_filter_str, filter_string=prec.filter_string), level=0)
 
                     stack.append(prec)
                 elif is_column_filter(curr):
@@ -849,11 +847,11 @@ def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
     return pd.DataFrame([(fc_result > 0).sum(axis=0), (fc_result < 0).sum(axis=0)], index=['induced', 'repressed'])
 
 
-Ids = Dict[Tuple[str, int], Dict[str, Any]]
+Ids = Dict[Tuple[Tuple[str, str, str], int], Dict[str, Any]]
 
 
 def get_result_ids(df: pd.DataFrame) -> Ids:
-    return {c: {'name': "_".join(map(str, c)), 'show': True} for c in df.columns.droplevel(2)}
+    return {c: {'name': f'{c[0][0]}_{c[0][1]}_{c[1]}', 'show': True} for c in df.columns.droplevel(2)}
 
 
 def filter_df_by_ids(df: pd.DataFrame, ids: Ids) -> pd.DataFrame:

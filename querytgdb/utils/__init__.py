@@ -136,22 +136,6 @@ def svg_font_adder(buff: io.BytesIO) -> io.BytesIO:
     return buff
 
 
-NAME_REGEX = re.compile(
-    r"^([^\"]+)(?:\s*\"([^\"]+)\")?\s*([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12})?",
-    flags=re.I)
-
-
-def split_name(name: str) -> Tuple[str, str, str]:
-    m = NAME_REGEX.match(name)
-
-    if m:
-        name, criterion, uid = map(methodcaller('strip'), m.groups(''))
-    else:
-        criterion = uid = ''
-
-    return name, criterion, uid
-
-
 def clear_data(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
     """
     Remove unneeded columns when doing later calculations
