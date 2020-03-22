@@ -422,6 +422,10 @@ def add_edges(df: pd.DataFrame, edges: List[str]) -> pd.DataFrame:
     return df.merge(edge_data.drop('TF', axis=1), on='id', how='left')
 
 
+def initialize_column_name(col_name) -> Tuple[str, str, str]:
+    return col_name, "", str(uuid4())
+
+
 def get_tf_data(query: str,
                 edges: Optional[List[str]] = None,
                 tf_filter_list: Optional[pd.Series] = None,
@@ -487,7 +491,8 @@ def get_tf_data(query: str,
     except IndexError:
         query = query.upper()
 
-    df.columns = pd.MultiIndex.from_tuples((initialize_column_name(query), *c) for c in df.columns)
+    q = initialize_column_name(query)
+    df.columns = pd.MultiIndex.from_tuples((q, *c) for c in df.columns)
     df.filter_string = query
 
     return df
@@ -550,10 +555,6 @@ def get_all_df(query: str,
         df = df[df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].notna().all(axis=1)]
 
     return df
-
-
-def initialize_column_name(col_name) -> Tuple[str, str, str]:
-    return col_name, "", str(uuid4())
 
 
 def replace_filter_str(col: Tuple[str, str, str], filter_string: str) -> Tuple[str, str, str]:
@@ -717,27 +718,10 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
 
 
 def get_metadata(ids: Sequence) -> TargetFrame:
-    analyses = Analysis.objects.filter(pk__in=ids).prefetch_related('analysisdata_set', 'tf')
-    df = pd.DataFrame(
-        analyses.values_list(
-            'id',
-            'analysisdata__key__name',
-            'analysisdata__value').iterator(),
-        columns=['ANALYSIS', 'KEY', 'VALUE'])
-
-    gene_names = pd.DataFrame(
-        analyses.values_list('id', 'tf__gene_id', 'tf__name').iterator(),
-        columns=['ANALYSIS', 'GENE_ID', 'GENE_NAME']
-    ).set_index('ANALYSIS').unstack().reset_index()
-
-    gene_names.columns = ['KEY', 'ANALYSIS', 'VALUE']
-
-    df = pd.concat([df, gene_names], sort=False, ignore_index=True)
-
-    df = df.dropna(how='all', subset=['KEY', 'VALUE'])
-    df = df.set_index(['ANALYSIS', 'KEY'])
-    df = df.unstack(level=0)
-    df.columns = df.columns.droplevel(level=0)
+    df = get_meta_df(ids)
+    df = df.T
+    df.columns = df.columns.rename('ANALYSIS')
+    df.index = df.index.rename('KEY')
 
     return df
 
