@@ -177,10 +177,9 @@ def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: float) -> pd.Dat
     """
     apply Pvalue and Log2FC (fold change)
     """
-    try:
-        # @todo: obscure bug maybe?
-        c = df.loc[:, df.columns.to_flat_index() == (*df.name, key)]
-    except KeyError:
+    # @todo: obscure bug maybe?
+    c = df.loc[:, df.columns.to_flat_index() == (*df.name, key)].squeeze()
+    if c.empty:
         return pd.DataFrame(False, columns=df.columns, index=df.index)
 
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
