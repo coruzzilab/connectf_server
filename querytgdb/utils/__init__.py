@@ -3,24 +3,24 @@ import io
 import logging
 import math
 import pkgutil
-import re
 import sys
 from collections import UserDict
 from concurrent.futures import Future, ThreadPoolExecutor
 from functools import wraps
 from operator import methodcaller
-from typing import Any, Callable, Dict, Iterable, Optional, Sized, Tuple, TypeVar
+from typing import Any, Callable, Dict, Iterable, Optional, Sized, TypeVar
 from uuid import UUID
 
 import numpy as np
 import pandas as pd
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError
+from django.db.models import QuerySet
 from django.http import FileResponse
 from fontTools.ttLib import TTFont
 from lxml import etree
 
-from querytgdb.models import AnalysisData, Annotation
+from querytgdb.models import Analysis, AnalysisData, Annotation
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +273,9 @@ def check_annotations(genes):
 
 
 def get_metadata(analyses, fields: Optional[Iterable[str]] = None) -> pd.DataFrame:
+    if not isinstance(analyses, QuerySet):
+        analyses = Analysis.objects.filter(pk__in=analyses)
+
     opts = {}
 
     if fields:
