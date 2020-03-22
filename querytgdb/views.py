@@ -22,7 +22,7 @@ from django.views.generic import View
 from jsonschema import ValidationError, validate
 
 from querytgdb.utils.export import create_export_zip, export_csv, write_excel
-from querytgdb.utils.gene_list_enrichment import gene_list_enrichment, gene_list_enrichment_json
+from querytgdb.utils.gene_list_enrichment import gene_list_enrichment
 from .utils import GzipFileResponse, NetworkJSONEncoder, PandasJSONEncoder, check_annotations, \
     convert_float, metadata_to_dict, svg_font_adder
 from .utils.analysis_enrichment import AnalysisEnrichmentError, analysis_enrichment, analysis_enrichment_csv
@@ -74,8 +74,8 @@ class QueryView(View):
                 result, metadata, stats, _uid, ids = get_query_result(size_limit=50_000_000,
                                                                       uid=request_id)
 
+                columns, merged_cells, result_list = format_data(result, stats, metadata, ids)
                 metadata = metadata_to_dict(metadata)
-                columns, merged_cells, result_list = format_data(result, stats)
 
                 cache.set(f'{request_id}/formatted_tabular_output', (columns, merged_cells, result_list, metadata))
 
@@ -170,9 +170,8 @@ class QueryView(View):
                                                                   size_limit=50_000_000,
                                                                   uid=request_id,
                                                                   **file_opts)
-
+            columns, merged_cells, result_list = format_data(result, stats, metadata, ids)
             metadata = metadata_to_dict(metadata)
-            columns, merged_cells, result_list = format_data(result, stats)
 
             cache.set_many({
                 f'{request_id}/query': query.strip() + '\n',  # save queries
@@ -225,7 +224,8 @@ ANALYSIS_ID_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "show": {"type": "boolean"},
-                    "name": {"type": "string"}
+                    "name": {"type": "string"},
+                    "version": {"type": "number"}
                 },
                 "additionalProperties": False,
                 "required": ["show", "name"]
@@ -265,7 +265,10 @@ class EditQueryView(View):
 
             for key in ids:
                 try:
-                    ids[key] = data[key]
+                    if ids[key]['name'] != data[key]['name']:
+                        ids[key] = {**data[key], 'version': ids[key]['version'] + 1}
+                    else:
+                        ids[key] = {**data[key], 'version': ids[key]['version']}
                 except KeyError:
                     pass
 
@@ -488,6 +491,7 @@ class ListEnrichmentHeatmapView(View):
             with lock:
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
+                label = convert_float(request.GET.get('label'))
                 fields = request.GET.getlist('fields')
 
                 buff = gene_list_enrichment(
@@ -495,7 +499,8 @@ class ListEnrichmentHeatmapView(View):
                     draw=True,
                     lower=lower,
                     upper=upper,
-                    fields=fields
+                    fields=fields,
+                    use_labels=label
                 )
                 svg_font_adder(buff)
 
@@ -507,11 +512,8 @@ class ListEnrichmentHeatmapView(View):
 class ListEnrichmentLegendView(View):
     def get(self, request, request_id):
         try:
-            result = cache.get(f'{request_id}/list_enrichment_legend')
-
-            if result is None:
-                result = gene_list_enrichment(request_id, legend=True)
-                cache.set(f'{request_id}/list_enrichment_legend', result)
+            label = convert_float(request.GET.get('label'))
+            result = gene_list_enrichment(request_id, legend=True, use_labels=label)
 
             return JsonResponse(result, safe=False, encoder=PandasJSONEncoder)
         except ValueError as e:
@@ -521,13 +523,16 @@ class ListEnrichmentLegendView(View):
 class ListEnrichmentTableView(View):
     def get(self, request, request_id):
         try:
-            result = cache.get(f'{request_id}/list_enrichment')
+            with lock:
+                label = convert_float(request.GET.get('label'))
+                result = gene_list_enrichment(
+                    request_id,
+                    draw=False,
+                    legend=False,
+                    use_labels=label
+                )
 
-            if result is None:
-                result = gene_list_enrichment_json(request_id)
-                cache.set(f'{request_id}/list_enrichment', result)
-
-            return JsonResponse(result, encoder=PandasJSONEncoder)
+                return JsonResponse(result, encoder=PandasJSONEncoder)
         except ValueError as e:
             raise Http404(e) from e
 
@@ -543,6 +548,7 @@ class MotifEnrichmentJSONView(View):
                 except ValueError:
                     alpha = 0.05
                 regions = request.GET.getlist('regions')
+                label = convert_float(request.GET.get('label'))
 
                 background_genes = cache.get(f'{request_id}/background_genes')
 
@@ -556,6 +562,7 @@ class MotifEnrichmentJSONView(View):
                         request_id,
                         regions,
                         alpha=alpha,
+                        use_labels=label,
                         motif_data=motif_data),
                     encoder=PandasJSONEncoder)
             except (FileNotFoundError, NoEnrichedMotif, KeyError) as e:
@@ -567,6 +574,7 @@ class MotifEnrichmentJSONView(View):
 class AdditionalMotifEnrichmentJSONView(View):
     def post(self, request, request_id):
         try:
+            label = convert_float(request.GET.get('label'))
             opts = {}
             data = json.loads(request.body)
             regions = data.get('regions', [])
@@ -584,6 +592,7 @@ class AdditionalMotifEnrichmentJSONView(View):
                 get_additional_motif_enrichment_json(
                     request_id,
                     regions,
+                    use_labels=label,
                     use_default_motifs=True,
                     motif_data=motif_data,
                     **opts),
@@ -608,6 +617,7 @@ class MotifEnrichmentHeatmapView(View):
                 upper = convert_float(request.GET.get('upper'))
                 lower = convert_float(request.GET.get('lower'))
                 fields = request.GET.getlist('fields')
+                label = convert_float(request.GET.get('label'))
 
                 background_genes = cache.get(f'{request_id}/background_genes')
 
@@ -622,6 +632,7 @@ class MotifEnrichmentHeatmapView(View):
                     upper_bound=upper,
                     lower_bound=lower,
                     alpha=alpha,
+                    use_labels=label,
                     fields=fields,
                     motif_data=motif_data
                 )
@@ -635,10 +646,13 @@ class MotifEnrichmentHeatmapView(View):
 
 class MotifEnrichmentHeatmapTableView(View):
     def get(self, request, request_id):
+        label = convert_float(request.GET.get('label'))
+
         try:
             return JsonResponse(
                 list(get_motif_enrichment_heatmap_table(
-                    request_id
+                    request_id,
+                    use_labels=label
                 )),
                 safe=False
             )
@@ -691,6 +705,7 @@ class AnalysisEnrichmentView(View):
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
         except AnalysisEnrichmentError as e:
+            raise
             return HttpResponseBadRequest(e)
 
 
@@ -713,11 +728,7 @@ class SummaryView(View):
         result = cache.get(f'{request_id}/summary')
 
         if result is None:
-            df = cache.get(f"{request_id}/tabular_output")
-            if df is None:
-                return HttpResponseNotFound("Please make a new query")
-
-            result = get_summary(df)
+            result = get_summary(request_id)
             cache.set(f'{request_id}/summary', result)
 
         return JsonResponse(result, encoder=PandasJSONEncoder)

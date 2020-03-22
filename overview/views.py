@@ -64,6 +64,7 @@ class OverviewView(View):
         analyses = pd.DataFrame(qs.values_list('pk', 'tf__gene_id', 'tf__name').distinct().iterator(),
                                 columns=['id', 'gene_id', 'gene_name'])
 
+        # new colors in summary
         summary = {
             'tfs': list(map(combine_name,
                             analyses.groupby([

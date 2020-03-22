@@ -15,7 +15,6 @@ from scipy.stats import fisher_exact
 from statsmodels.stats.multitest import multipletests
 
 from querytgdb.utils import async_loader
-from ..models import Analysis
 from ..utils import clear_data, get_metadata
 
 
@@ -33,10 +32,14 @@ def split_col_name(col_name: Tuple[Tuple[str, str, str], int]) -> Tuple[str, str
 
 
 def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warning: bool = False) -> Dict:
-    df = cache.get(f'{uid}/tabular_output')
-
-    if df is None:
-        raise AnalysisEnrichmentError("Please make a new query")
+    try:
+        cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/analysis_ids'])
+        df, ids = itemgetter(
+            f'{uid}/tabular_output',
+            f'{uid}/analysis_ids'
+        )(cached_data)
+    except KeyError as e:
+        raise AnalysisEnrichmentError("Please make a new query") from e
 
     df = df.pipe(clear_data)
 
@@ -61,12 +64,16 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
     else:
         background = async_loader['annotations'].shape[0]
 
-    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
-
-    metadata = get_metadata(analyses)
+    metadata = get_metadata(df.columns.get_level_values(1))
 
     for col_name in df.columns:
         d = OrderedDict(Count=df[col_name].count())
+        try:
+            rename = ids[col_name]
+            d['label'] = rename['name'] if rename['version'] else ''
+        except KeyError as e:
+            raise AnalysisEnrichmentError("Analysis Id data does not exist") from e
+
         d.update(metadata.loc[col_name[1], :].to_dict())
 
         info.append((split_col_name(col_name), d))

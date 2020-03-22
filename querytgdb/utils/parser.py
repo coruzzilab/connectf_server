@@ -177,9 +177,9 @@ def apply_comp_mod(df: TargetFrame, key: str, oper: str, value: float) -> pd.Dat
     """
     apply Pvalue and Log2FC (fold change)
     """
-    # @todo: obscure bug maybe?
-    c = df.loc[:, df.columns.to_flat_index() == (*df.name, key)].squeeze()
-    if c.empty:
+    try:
+        c = df[(*df.name, key)]
+    except KeyError:
         return pd.DataFrame(False, columns=df.columns, index=df.index)
 
     mask = pd.DataFrame(True, columns=df.columns, index=df.index)
@@ -835,7 +835,7 @@ Ids = Dict[Tuple[Tuple[str, str, str], int], Dict[str, Any]]
 
 
 def get_result_ids(df: pd.DataFrame) -> Ids:
-    return {c: {'name': f'{c[0][0]}_{c[0][1]}_{c[1]}', 'show': True} for c in df.columns.droplevel(2)}
+    return {c: {'name': f'{c[0][0]}_{c[0][1]}_{c[1]}', 'show': True, 'version': 0} for c in df.columns.droplevel(2)}
 
 
 def filter_df_by_ids(df: pd.DataFrame, ids: Ids) -> pd.DataFrame:

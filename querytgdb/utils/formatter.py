@@ -1,14 +1,13 @@
 import logging
 import re
-from functools import lru_cache
-from itertools import groupby, islice, takewhile, zip_longest
+from itertools import groupby, islice, zip_longest
 from operator import itemgetter
 from typing import Any, Dict, Iterable, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
-from ..models import Analysis
+from ..utils.parser import Ids
 
 logger = logging.getLogger(__name__)
 
@@ -57,24 +56,36 @@ def get_col_type(s: Union[Tuple, str]) -> str:
         return s
 
 
-@lru_cache()
-def get_tech(a: Analysis) -> str:
-    return 'Data: {0.tech} (ID: {0.pk})'.format(a)
+def get_name(name, a: pd.Series, rename: Dict[str, Any]) -> str:
+    name = re.sub(r'^' + re.escape(a['gene_id']), a['gene_id'], name, 1, re.I)
+    if a['gene_name'] and rename['version']:
+        name += " ({0[gene_name]})\n{1[name]}\n".format(a, rename)
+    elif a['gene_name']:
+        name += "\n({0[gene_name]})\n".format(a)
+    elif rename['version']:
+        name += "\n{[name]}\n".format(rename)
+
+    return name
 
 
-@lru_cache()
-def get_analysis_method(a: Analysis) -> str:
-    return 'Analysis: ' + a.analysis_method
+def get_tech(a: pd.Series) -> str:
+    return 'Data: {} (ID: {})'.format(
+        a.get('EXPERIMENTER', default='') + a.get('DATE', default='').replace('-', '') + '_' + a.get('TECHNOLOGY',
+                                                                                                     default=''),
+        a.get('analysis_id', default='')
+    )
 
 
-@lru_cache()
-def get_edge(a: Analysis) -> str:
-    d = a.meta_dict
-
-    return 'Edges: {0[EDGE_TYPE]} {{}}'.format(d)
+def get_analysis_method(a: pd.Series) -> str:
+    return 'Analysis: ' + a.get('ANALYSIS_METHOD', default='') + '_' + re.sub(r'\s+', '',
+                                                                              a.get('ANALYSIS_CUTOFF', default=''))
 
 
-def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
+def get_edge(a: pd.Series) -> str:
+    return 'Edges: {0} {{}}'.format(a.get('EDGE_TYPE', default=''))
+
+
+def format_data(df: pd.DataFrame, stats: Dict, metadata: pd.DataFrame, ids: Ids) -> Tuple[List, List, List]:
     df = df.reset_index()
     df.insert(7, 'Gene ID', df.pop('TARGET'))
 
@@ -111,10 +122,6 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
                        none_cols.copy(),
                        none_cols.copy()]  # avoid references
 
-    analyses = {a.pk: a for a in
-                Analysis.objects.filter(
-                    pk__in=(c for c in columns[1] if c is not None)
-                ).prefetch_related('analysisdata_set', 'analysisdata_set__key', 'tf')}
     prev = (None,) * 5
     name = None
     tech = None
@@ -125,14 +132,9 @@ def format_data(df: pd.DataFrame, stats: Dict) -> Tuple[List, List, List]:
         try:
             if col[0:2] != prev[0:2]:
                 name, _, uuid_ = col[0]
-                name = name or uuid_
-                analysis = analyses[col[1]]
+                analysis = metadata.loc[:, col[1]]
 
-                tf = analysis.tf
-                if tf.name:
-                    name = re.sub(r'^' + re.escape(tf.gene_id), "{0.gene_id}\n({0.name})\n".format(tf), name, 1, re.I)
-                else:
-                    name = re.sub(r'^' + re.escape(tf.gene_id), tf.gene_id, name, 1, re.I)
+                name = get_name(name, analysis, ids[col[0:2]])
 
                 tech = get_tech(analysis)
                 method = get_analysis_method(analysis)

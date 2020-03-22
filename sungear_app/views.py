@@ -2,7 +2,7 @@ import json
 import logging
 from collections import OrderedDict
 from functools import reduce
-from operator import or_
+from operator import itemgetter, or_
 from typing import Dict, List, Tuple
 
 import pandas as pd
@@ -25,10 +25,26 @@ class FilterListNotFound(SungearException):
     pass
 
 
+def make_meta_dict(col, metadata, ids):
+    info = OrderedDict()
+
+    rename = ids[col]
+    info['label'] = rename['name'] if rename['version'] else ''
+
+    info.update(metadata.loc[col[1], :].to_dict())
+
+    return col, info
+
+
 def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
-    df = cache.get(f'{uid}/tabular_output')
-    if df is None:
-        raise SungearNotFound()
+    try:
+        cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/analysis_ids'])
+        df, ids = itemgetter(
+            f'{uid}/tabular_output',
+            f'{uid}/analysis_ids'
+        )(cached_data)
+    except KeyError as e:
+        raise SungearNotFound() from e
 
     df = clear_data(df)
 
@@ -59,7 +75,7 @@ def get_sungear(uid, filter_genes: List[str] = None) -> Tuple[Dict, bool]:
     return {
                **result,
                'metadata': [
-                   (c, metadata.loc[c[1], :].to_dict()) for c in df.columns
+                   make_meta_dict(c, metadata, ids) for c in df.columns
                ],
                'gene_annotation': anno.to_dict('index')
            }, finished and not filter_genes

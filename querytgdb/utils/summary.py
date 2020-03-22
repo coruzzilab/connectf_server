@@ -2,10 +2,12 @@ import logging
 from collections import OrderedDict
 from itertools import groupby, islice
 from operator import itemgetter
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union
+from uuid import UUID
 
 import numpy as np
 import pandas as pd
+from django.core.cache import cache
 
 from ..models import Analysis
 from ..utils import clear_data, data_to_edges
@@ -17,7 +19,13 @@ def rename_tf(name: Tuple[str, str, str], gene_name_symbol: str) -> str:
     return f'{gene_name_symbol} "{name[1]}" {name[2]}'
 
 
-def get_summary(df: pd.DataFrame, size_limit: int = 50) -> Dict[str, Any]:
+def get_summary(uid: Union[UUID, str], size_limit: int = 50) -> Dict[str, Any]:
+    try:
+        cached_data = cache.get_many([f"{uid}/tabular_output", f"{uid}/analysis_ids"])
+        df, ids = itemgetter(f"{uid}/tabular_output", f"{uid}/analysis_ids")(cached_data)
+    except KeyError as e:
+        raise ValueError('data not found') from e
+
     df = clear_data(df, False)
 
     errors = []
@@ -37,20 +45,21 @@ def get_summary(df: pd.DataFrame, size_limit: int = 50) -> Dict[str, Any]:
         columns=['pk', 'name', 'symbol']
     ).set_index('pk')
 
-    col_names = dict(analysis_data[['name']].itertuples(name=None))
-    tf_names = {t: rename_tf(t, analysis_data.at[a, 'symbol']) for t, a, c in
-                df.columns}
-
     df = data_to_edges(df)
 
     df = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
 
-    chart = (df.reindex(columns=df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, level=0)
-             .rename(columns=col_names, level=1)
-             .rename(columns=tf_names, level=0)
-             .to_dict(into=OrderedDict))
+    chart = (df.reindex(columns=df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, level=0))
+    chart.columns = chart.columns.to_flat_index()
 
-    chart = OrderedDict((','.join(key), value) for key, value in chart.items())
+    tf_names = {
+        (t, a): rename_tf(t, analysis_data.at[a, 'symbol']) + ',' + analysis_data.at[a, 'name'] + (
+            '\n' + ids[(t, a)]['name'] if ids[(t, a)]['version'] else '')
+        for t, a in chart.columns}
+
+    chart = (chart
+             .rename(columns=tf_names)
+             .to_dict(into=OrderedDict))
 
     result = {
         'chart': chart

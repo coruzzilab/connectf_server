@@ -21,6 +21,7 @@ from statsmodels.stats.multitest import multipletests
 from querytgdb.models import Analysis
 from querytgdb.utils import clear_data, column_string, get_metadata, svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import AdditionalMotifData, MotifData, Region
+from querytgdb.utils.parser import Ids
 
 sns.set()
 
@@ -263,7 +264,7 @@ def merge_cluster_info(df):
         yield [info] + row
 
 
-def get_column_info(res, metadata):
+def get_column_info(res, metadata: pd.DataFrame, ids: Ids, use_labels: bool = False):
     columns = []
 
     for (tf, analysis_id), value in res.items():
@@ -273,6 +274,8 @@ def get_column_info(res, metadata):
         if (tf, analysis_id) == (('Target Gene List', '', ''), 0):
             data['genes'] = ",\n".join(value)
         else:
+            rename = ids[(tf, analysis_id)]
+            data['label'] = rename['name'] if rename['version'] or use_labels else ''
             data.update(metadata.loc[analysis_id, :].to_dict())
 
         columns.append(data)
@@ -283,11 +286,15 @@ def get_column_info(res, metadata):
 def get_motif_enrichment_json(uid: Union[str, UUID],
                               regions: Optional[List[str]] = None,
                               alpha: float = 0.05,
+                              use_labels: bool = False,
                               motif_data: MotifData = MOTIFS) -> Dict:
+    ids = cache.get(f'{uid}/analysis_ids')
+    if ids is None:
+        raise ValueError("Analysis not found")
+
     res = get_analysis_gene_list(uid)
 
-    analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
-    metadata = get_metadata(analyses)
+    metadata = get_metadata(map(itemgetter(1), res.keys()))
 
     regions, result_df = motif_enrichment(res, regions,
                                           uid=uid,
@@ -296,7 +303,7 @@ def get_motif_enrichment_json(uid: Union[str, UUID],
                                           show_reject=False,
                                           motif_data=motif_data)
 
-    columns = get_column_info(res, metadata)
+    columns = get_column_info(res, metadata, ids, use_labels)
 
     result_df = result_df.where(pd.notnull(result_df), None)
 
@@ -311,7 +318,12 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
                                          regions: Optional[List[str]] = None,
                                          motifs: Optional[List[Optional[List[str]]]] = None,
                                          use_default_motifs: bool = False,
-                                         motif_data: MotifData = ADD_MOTIFS) -> Dict:
+                                         motif_data: MotifData = ADD_MOTIFS,
+                                         use_labels: bool = False) -> Dict:
+    ids = cache.get(f'{uid}/analysis_ids')
+    if ids is None:
+        raise ValueError("Analysis not found")
+
     res = get_analysis_gene_list(uid)
 
     analyses = Analysis.objects.prefetch_related('tf').filter(pk__in=map(itemgetter(1), res.keys()))
@@ -358,9 +370,11 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
         else:
             indices.append((tf, analysis_id, None))
 
-        if (tf, analysis_id) == ('Target Gene List', 0):
+        if (tf, analysis_id) == (('Target Gene List', '', ''), 0):
             data['genes'] = ",\n".join(value)
         else:
+            rename = ids[(tf, analysis_id)]
+            data['label'] = rename['name'] if rename['version'] or use_labels else ''
             data.update(metadata.loc[analysis_id, :].to_dict())
 
         columns.append(data)
@@ -399,7 +413,7 @@ def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] =
 
             columns.append(col)
         except Analysis.DoesNotExist:
-            columns.append('{} — {}'.format(col_name, name))
+            columns.append('{} — {}'.format(col_name, name[0][0]))
 
     return columns
 
@@ -409,6 +423,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  alpha: float = 0.05,
                                  lower_bound: Optional[float] = None,
                                  upper_bound: Optional[float] = None,
+                                 use_labels: bool = False,
                                  fields: Optional[Iterable[str]] = None,
                                  motif_data: MotifData = MOTIFS) -> BytesIO:
     res = get_analysis_gene_list(uid)
@@ -420,7 +435,23 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
     result_df = result_df.rename(
         index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in result_df.index})
 
-    columns = make_motif_enrichment_heatmap_columns(res, fields)
+    if use_labels:
+        ids = cache.get(f'{uid}/analysis_ids')
+        if ids is None:
+            raise ValueError("Analysis not found")
+
+        columns = []
+
+        for key in res.keys():
+            try:
+                columns.append(ids[key]['name'])
+            except KeyError:
+                if key == (('Target Gene List', '', ''), 0):
+                    columns.append('Target Gene List')
+                else:
+                    raise
+    else:
+        columns = make_motif_enrichment_heatmap_columns(res, fields)
 
     result_df.columns = starmap(lambda r, x: f'{x} {r}',
                                 zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
@@ -457,7 +488,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
 
     plt.setp(heatmap_graph.ax_heatmap.yaxis.get_majorticklabels(), rotation=0)
     plt.setp(heatmap_graph.ax_heatmap.xaxis.get_majorticklabels(), rotation=270)
-    if fields:
+    if fields and not use_labels:
         heatmap_graph.ax_heatmap.set_ylabel(f'Additional fields: [{", ".join(fields)}]', rotation=270, labelpad=15)
 
     buffer = BytesIO()
@@ -472,20 +503,29 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
 TableRow = Tuple[Dict, str, str, str, str, str]
 
 
-def get_motif_enrichment_heatmap_table(uid: Union[str, UUID]) -> Generator[TableRow, None, None]:
-    cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
-    df = cached_data[f'{uid}/tabular_output']
+def get_motif_enrichment_heatmap_table(uid: Union[str, UUID], use_labels: bool = False) -> \
+        Generator[TableRow, None, None]:
+    cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes', f'{uid}/analysis_ids'])
+    df, ids = itemgetter(f'{uid}/tabular_output', f'{uid}/analysis_ids')(cached_data)
     df = clear_data(df)
 
-    analyses = Analysis.objects.filter(pk__in=df.columns.get_level_values(1))
-    metadata = get_metadata(analyses)
+    metadata = get_metadata(df.columns.get_level_values(1))
 
     col_strings = map(column_string, count(1))  # this is an infinite generator lazy evaluation only
 
     for (name, analysis_id), col_str in zip(df.columns, col_strings):
         name, criterion, _uid = name
 
-        info = OrderedDict([('name', name), ('filter', criterion)])
+        try:
+            rename = ids[((name, criterion, _uid), analysis_id)]
+            label = rename['name'] if rename['version'] or use_labels else ''
+        except KeyError:
+            if ((name, criterion, _uid), analysis_id) == (('Target Gene List', '', ''), 0):
+                label = 'Target Gene List'
+            else:
+                raise
+
+        info = OrderedDict([('name', name), ('filter', criterion), ('label', label)])
 
         try:
             try:
