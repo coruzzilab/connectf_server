@@ -595,8 +595,11 @@ def get_all_tf(query: str,
           .unstack(level=[0, 1])
           .reorder_levels([1, 2, 0], axis=1)
           .sort_index(axis=1, level=[0, 1], sort_remaining=False)
-          .dropna(how='all', axis=1)
-          .rename(columns=initialize_column_name, level=0))
+          .dropna(how='all', axis=1))
+
+    col_names = {c: initialize_column_name(c) for c in df.columns.levels[0]}
+
+    df = df.rename(columns=col_names, level=0)
 
     df.filter_string += query
 
