@@ -165,7 +165,7 @@ def import_annotations(annotation_file: str, dry_run: bool = False, delete_exist
     in_anno = read_annotation_file(annotation_file)
     in_anno = in_anno.set_index('gene_id')
 
-    changed = (in_anno.loc[anno.index, ["name", "fullname", "gene_type", "gene_family"]] != anno[
+    changed = (in_anno.reindex(index=anno.index).loc[:, ["name", "fullname", "gene_type", "gene_family"]] != anno[
         ["name", "fullname", "gene_type", "gene_family"]]).any(axis=1)
 
     to_update = pd.concat([
