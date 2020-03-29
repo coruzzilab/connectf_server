@@ -705,7 +705,6 @@ class AnalysisEnrichmentView(View):
 
             return JsonResponse(result, encoder=PandasJSONEncoder)
         except AnalysisEnrichmentError as e:
-            raise
             return HttpResponseBadRequest(e)
 
 

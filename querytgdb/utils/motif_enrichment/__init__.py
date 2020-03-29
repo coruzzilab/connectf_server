@@ -21,7 +21,7 @@ from statsmodels.stats.multitest import multipletests
 from querytgdb.models import Analysis
 from querytgdb.utils import clear_data, column_string, get_metadata, svg_font_adder
 from querytgdb.utils.motif_enrichment.motif import AdditionalMotifData, MotifData, Region
-from querytgdb.utils.parser import Ids
+from querytgdb.utils.parser import Id, Ids
 
 sns.set()
 
@@ -131,7 +131,7 @@ def get_list_enrichment(gene_list: Iterable[str],
                              annotated.index.get_level_values(2).isin(motifs), :]
         ann_cluster_size = ann_cluster_size[ann_cluster_size.index.isin(motifs)]
     if list_cluster_dedup.empty:
-        m = motifs if motifs else annotated.index.get_level_values(2).unique()
+        m = annotated.index.get_level_values(2).unique() if motifs is None else motifs
         list_cluster_dedup = pd.DataFrame(0,
                                           index=pd.MultiIndex.from_product(
                                               [gene_list, annotated.index.get_level_values(1).unique(), m]),
@@ -151,9 +151,25 @@ def get_list_enrichment(gene_list: Iterable[str],
         total - list_cluster_sum - ann_cluster_size + list_cluster_size
     ], axis=1, sort=False)
 
-    p_values = contingency.fillna(0).apply(cluster_fisher, axis=1).sort_values()
+    if contingency.empty:
+        return pd.Series([])
 
+    p_values = contingency.fillna(0).apply(cluster_fisher, axis=1)
     return p_values
+
+
+def correct_pvalues(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Performs Bonferroni Correction
+    :param df:
+    :return:
+    """
+    df = df.stack()
+    pvalues = multipletests(df, method='bonferroni')[1]
+    df = pd.Series(pvalues, index=df.index)
+    df = df.unstack()
+
+    return df
 
 
 def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
@@ -220,12 +236,17 @@ def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
     ))
 
     result_df.columns = columns
+    result_df = result_df.dropna(axis=1, how='all')
 
-    # bonferroni correction
-    result_df = result_df.stack()
-    pvalues = multipletests(result_df, method='bonferroni')[1]
-    result_df = pd.Series(pvalues, index=result_df.index)
-    result_df = result_df.unstack()
+    # Correcting gene list p-values and analysis p-values separately
+    target_gene_cols = np.fromiter(map(lambda c: not c[1], result_df.columns), dtype=np.bool_)
+    if target_gene_cols.any():
+        result_df = pd.concat([
+            correct_pvalues(result_df.loc[:, ~target_gene_cols]),
+            correct_pvalues(result_df.loc[:, target_gene_cols])
+        ], axis=1)
+    else:
+        result_df = correct_pvalues(result_df)
 
     if show_reject:
         result_df = result_df[(result_df <= alpha).any(axis=1)]
@@ -239,7 +260,7 @@ def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
     return regions, result_df
 
 
-def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[Tuple[str, str, str], int], Set[str]]:
+def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Id, Set[str]]:
     cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
     df = cached_data[f'{uid}/tabular_output']
     df = clear_data(df)
@@ -247,7 +268,8 @@ def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Tuple[Tuple[str, str, 
 
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']
-        res[(('Target Gene List', '', ''), 0)] = set(chain.from_iterable(target_lists.values()))
+        for name, genes in target_lists.items():
+            res[((name, '', ''), 0)] = genes
     except KeyError:
         pass
 
@@ -270,10 +292,13 @@ def get_column_info(res, metadata: pd.DataFrame, ids: Ids, use_labels: bool = Fa
     for (tf, analysis_id), value in res.items():
         name, criterion, _uid = tf
 
-        data = OrderedDict([('name', name), ('filter', criterion)])
-        if (tf, analysis_id) == (('Target Gene List', '', ''), 0):
+        data = OrderedDict([('name', name)])
+
+        if not analysis_id:
             data['genes'] = ",\n".join(value)
         else:
+            data['filter'] = criterion
+
             rename = ids[(tf, analysis_id)]
             data['label'] = rename['name'] if rename['version'] or use_labels else ''
             data.update(metadata.loc[analysis_id, :].to_dict())
@@ -360,7 +385,7 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
     for (tf, analysis_id), value in res.items():
         name, criterion, _uid = tf
 
-        data: Dict[str, Any] = OrderedDict([('name', name), ('filter', criterion)])
+        data: Dict[str, Any] = OrderedDict([('name', name)])
         motif_list = motif_dict[(tf, analysis_id)]
         data['motifs'] = motif_list
 
@@ -370,9 +395,10 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
         else:
             indices.append((tf, analysis_id, None))
 
-        if (tf, analysis_id) == (('Target Gene List', '', ''), 0):
+        if not analysis_id:
             data['genes'] = ",\n".join(value)
         else:
+            data['filter'] = criterion
             rename = ids[(tf, analysis_id)]
             data['label'] = rename['name'] if rename['version'] or use_labels else ''
             data.update(metadata.loc[analysis_id, :].to_dict())
@@ -413,7 +439,7 @@ def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] =
 
             columns.append(col)
         except Analysis.DoesNotExist:
-            columns.append('{} — {}'.format(col_name, name[0][0]))
+            columns.append('{} — {}'.format(col_name, name[0]))
 
     return columns
 
@@ -446,8 +472,8 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
             try:
                 columns.append(ids[key]['name'])
             except KeyError:
-                if key == (('Target Gene List', '', ''), 0):
-                    columns.append('Target Gene List')
+                if not key[1]:
+                    columns.append(key[0][0])
                 else:
                     raise
     else:
@@ -520,7 +546,7 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID], use_labels: bool =
             rename = ids[((name, criterion, _uid), analysis_id)]
             label = rename['name'] if rename['version'] or use_labels else ''
         except KeyError:
-            if ((name, criterion, _uid), analysis_id) == (('Target Gene List', '', ''), 0):
+            if not analysis_id:
                 label = 'Target Gene List'
             else:
                 raise
@@ -541,11 +567,10 @@ def get_motif_enrichment_heatmap_table(uid: Union[str, UUID], use_labels: bool =
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']
 
-        name = 'Target Gene List'
-
-        yield (
-            {'name': name, 'genes': ", ".join(set(chain.from_iterable(target_lists.values())))},
-            next(col_strings), name, '', '', ''
-        )
+        for name, genes in target_lists.items():
+            yield (
+                {'name': name, 'genes': ", ".join(genes)},
+                next(col_strings), name, '', '', ''
+            )
     except KeyError:
         pass

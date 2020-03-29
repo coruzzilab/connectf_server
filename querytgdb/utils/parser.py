@@ -834,7 +834,9 @@ def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
     return pd.DataFrame([(fc_result > 0).sum(axis=0), (fc_result < 0).sum(axis=0)], index=['induced', 'repressed'])
 
 
-Ids = Dict[Tuple[Tuple[str, str, str], int], Dict[str, Any]]
+Id = Tuple[Tuple[str, str, str], int]
+Properties = Dict[str, Any]
+Ids = Dict[Id, Properties]
 
 
 def get_result_ids(df: pd.DataFrame) -> Ids:
