@@ -727,8 +727,11 @@ class SummaryView(View):
         result = cache.get(f'{request_id}/summary')
 
         if result is None:
-            result = get_summary(request_id)
-            cache.set(f'{request_id}/summary', result)
+            try:
+                result = get_summary(request_id)
+                cache.set(f'{request_id}/summary', result)
+            except ValueError as e:
+                return HttpResponseNotFound(e)
 
         return JsonResponse(result, encoder=PandasJSONEncoder)
 
