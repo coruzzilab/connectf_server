@@ -12,7 +12,7 @@ def default_shape(*args):
     :return:
     """
     return {
-        'color': '#FF9900',
+        'color': '#CCCCFF',
         'shape': 'roundrectangle'
     }
 
@@ -42,19 +42,19 @@ COLOR = Color()
 
 COLOR_SHAPE = defaultdict(default_shape, {
     'TXNFACTOR': {
-        'color': '#00FF00',
+        'color': '#00CC00',
         'shape': 'triangle'
     },
     'PROTEIN_CODING': {
-        'color': '#AED6F1',
+        'color': '#CCCCFF',
         'shape': 'roundrectangle'
     },
     'METABOLIC': {
-        'color': '#D0ECE7',
+        'color': '#3399FF',
         'shape': 'roundrectangle'
     },
     'MOLECULE': {
-        'color': '#FF9900',
+        'color': '#FFFF00',
         'shape': 'roundrectangle'
     }
 })
