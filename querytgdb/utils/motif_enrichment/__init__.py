@@ -501,7 +501,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
 
     heatmap_graph = sns.clustermap(result_df,
                                    method="ward",
-                                   cmap="YlGnBu",
+                                   cmap="OrRd",
                                    cbar_kws={'label': 'Enrichment (-log10 p)'},
                                    xticklabels=1,
                                    yticklabels=1,

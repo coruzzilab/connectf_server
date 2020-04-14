@@ -38,7 +38,7 @@ def draw_heatmap(df: pd.DataFrame, **kwargs):
         opts['col_linkage'] = hierarchy.linkage(df.values.T, method='average', optimal_ordering=True)
 
     sns_heatmap = sns.clustermap(df,
-                                 cmap="YlGnBu",
+                                 cmap="OrRd",
                                  cbar_kws={'label': 'Enrichment (-log10 p)'},
                                  xticklabels=1,
                                  yticklabels=1,
