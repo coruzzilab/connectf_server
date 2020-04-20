@@ -92,8 +92,13 @@ def insert_data(data_file, metadata_file, sep=',', dry_run=False):
     if 'EDGE_TYPE' not in metadata.index:
         raise ValueError('Please assign an EDGE_TYPE to the metadata.')
 
-    if 'EXPERIMENT_TYPE' not in metadata.index:
-        raise ValueError('Please assign an EXPERIMENT_TYPE to the metadata. Typically Expression or Binding.')
+    try:
+        exp_type = metadata.loc['EXPERIMENT_TYPE', 'data'].upper()
+
+        if exp_type not in ('EXPRESSION', 'BINDING'):
+            raise ValueError('EXPERIMENT_TYPE should be "Expression" or "Binding".')
+    except KeyError:
+        raise ValueError('Please assign an EXPERIMENT_TYPE to the metadata. Should be "Expression" or "Binding".')
 
     if dry_run:
         return
