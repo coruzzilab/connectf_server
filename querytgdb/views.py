@@ -308,6 +308,7 @@ class EditQueryView(View):
                 # Gene list enrichment
                 f'{request_id}/list_enrichment',
                 f'{request_id}/list_enrichment_legend',
+                f'{request_id}/list_enrichment_data',
                 # motif enrichment
                 *(f'{request_id}/{r}_enrich' for r in MOTIFS.regions),
                 # analysis enrichment
