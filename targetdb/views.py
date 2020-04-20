@@ -1,5 +1,7 @@
 import json
 import os
+from itertools import filterfalse
+from operator import methodcaller
 from typing import Generator, Iterable, List
 
 from django.conf import settings
@@ -64,9 +66,9 @@ class InterestingListsView(View):
         try:
             directories, files = gene_lists_storage.listdir('./')
 
-            return JsonResponse(sorted(get_lists(files)), safe=False)
+            return JsonResponse(sorted(get_lists(filterfalse(methodcaller('startswith', '.'), files))), safe=False)
         except FileNotFoundError:
-            return JsonResponse([], safe=False)
+            return JsonResponse([], safe=False, status=404)
 
 
 class InterestingNetworksView(View):
