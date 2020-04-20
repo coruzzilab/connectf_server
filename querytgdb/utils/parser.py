@@ -730,7 +730,7 @@ def get_metadata(ids: Sequence) -> TargetFrame:
 
 def get_tf_count(df: TargetFrame) -> TargetSeries:
     counts = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(axis=1)
-    counts.name = 'TF Count'
+    counts.name = 'Edge Count'
 
     return counts
 
@@ -740,7 +740,7 @@ def add_tf_count(df: TargetFrame) -> TargetFrame:
 
     df = df.copy()
     df.columns = df.columns.to_flat_index()
-    df.insert(0, 'TF Count', counts)
+    df.insert(0, 'Edge Count', counts)
 
     return df
 
@@ -947,7 +947,7 @@ def get_query_result(query: Optional[str] = None,
     result = async_loader['annotations'].drop('id', axis=1).merge(result, how='right', left_index=True,
                                                                   right_index=True)
 
-    result = result.sort_values('TF Count', ascending=False, kind='mergesort')
+    result = result.sort_values('Edge Count', ascending=False, kind='mergesort')
 
     logger.info(f"Dataframe size: {result.size}")
 

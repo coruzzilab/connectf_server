@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def is_numeric_column(cols: np.ndarray) -> np.ndarray:
-    return np.isin(cols, ['User List Count', 'TF Count', 'Pvalue', 'Log2FC'])
+    return np.isin(cols, ['User List Count', 'Edge Count', 'Pvalue', 'Log2FC'])
 
 
 def is_p_value(col: str) -> bool:
