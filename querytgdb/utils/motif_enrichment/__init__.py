@@ -479,7 +479,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
     else:
         columns = make_motif_enrichment_heatmap_columns(res, fields)
 
-    result_df.columns = starmap(lambda r, x: f'{x} {r}',
+    result_df.columns = starmap('{0} {1}'.format,
                                 zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))
 
     result_df = result_df.T
