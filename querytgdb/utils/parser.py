@@ -466,6 +466,14 @@ def get_tf_data(query: str,
 
         df.insert(2, 'EDGE', '+')
 
+        expressions = Analysis.objects.filter(
+            pk__in=analyses,
+            analysisdata__key__name='EXPERIMENT_TYPE',
+            analysisdata__value__iexact='expression'
+        ).values_list('pk', flat=True)
+
+        df.loc[df['ANALYSIS'].isin(expressions), 'EDGE'] = '*'
+
         if not reg.empty:
             df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
             df.loc[df['Log2FC'].notna(), 'EDGE'] = np.nan
@@ -486,7 +494,7 @@ def get_tf_data(query: str,
         df = TargetFrame(columns=[(np.nan, 'EDGE')])
 
     try:
-        query = analyses[0].tf.gene_id
+        query = anno.index[np.argmax(anno['id'] == analyses[0].tf_id)].upper()
     except IndexError:
         query = query.upper()
 
@@ -590,6 +598,13 @@ def get_all_tf(query: str,
 
     df.insert(3, 'EDGE', np.nan)
     df['EDGE'] = df['EDGE'].where(df['Log2FC'].notna(), '+')
+
+    expressions = Analysis.objects.filter(
+        analysisdata__key__name='EXPERIMENT_TYPE',
+        analysisdata__value__iexact='expression'
+    ).values_list('pk', flat=True)
+
+    df.loc[df['Log2FC'].isna() & (df['ANALYSIS'].isin(expressions)), 'EDGE'] = '*'
 
     df = (df.set_index(['TF', 'ANALYSIS', 'TARGET'])
           .unstack(level=[0, 1])

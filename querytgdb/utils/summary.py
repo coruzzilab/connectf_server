@@ -45,9 +45,11 @@ def get_summary(uid: Union[UUID, str], size_limit: int = 50) -> Dict[str, Any]:
         columns=['pk', 'name', 'symbol']
     ).set_index('pk')
 
-    df = data_to_edges(df)
-
-    df = df.apply(lambda x: x.value_counts()).fillna(0).astype(np.int_)
+    df = (df
+          .pipe(data_to_edges)
+          .apply(lambda x: x.value_counts())
+          .fillna(0)
+          .astype(np.int_))
 
     chart = (df.reindex(columns=df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False).index, level=0))
     chart.columns = chart.columns.to_flat_index()

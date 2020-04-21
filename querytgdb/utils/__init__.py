@@ -176,6 +176,8 @@ def data_to_edges(df: pd.DataFrame) -> pd.DataFrame:
             c = c.mask(s < 0, edge_type + ':REPRESSED')
 
             return c
+        elif (s == "*").any():
+            return s.mask(s.notna(), edge_type + ':EXPRESSION')
         else:
             return s.mask(s.notna(), edge_type)
 
