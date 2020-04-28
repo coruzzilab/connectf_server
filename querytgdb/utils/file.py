@@ -28,8 +28,8 @@ class BadNetwork(BadFile):
     pass
 
 
-def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) -> Tuple[
-    Optional[TextIO], Optional[str]]:
+def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = None) \
+        -> Tuple[Optional[TextIO], Optional[str]]:
     """
     Get file or file name from the request.
 
@@ -50,9 +50,9 @@ def get_file(request: HttpRequest, key: Hashable, storage: Optional[Storage] = N
             file = next(filter(name_regex.search, files))
 
             if mimetypes.guess_type(file)[1] == 'gzip':
-                return gzip.open(storage.path(file), 'rt'), 'storage'
+                return gzip.open(storage.path(file), 'rt', encoding='utf-8-sig'), 'storage'
 
-            return storage.open(file, 'r'), 'storage'
+            return open(storage.path(file), 'rt', encoding='utf-8-sig'), 'storage'
         except (FileNotFoundError, SuspiciousFileOperation, StopIteration):
             pass
 
