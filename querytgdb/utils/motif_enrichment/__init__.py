@@ -418,9 +418,8 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
     }
 
 
-def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] = None) -> List[str]:
+def make_motif_enrichment_heatmap_columns(res, ids: Ids, fields: Optional[List[str]] = None) -> List[str]:
     analyses = Analysis.objects.filter(pk__in=map(itemgetter(1), res.keys())).prefetch_related('tf')
-
     metadata = None
     if fields:
         metadata = get_metadata(analyses, fields)
@@ -432,10 +431,16 @@ def make_motif_enrichment_heatmap_columns(res, fields: Optional[Iterable[str]] =
             tf = analyses.get(pk=analysis_id).tf
             col = '{0} — {1}{2}'.format(col_name, tf.gene_id, f' ({tf.name})' if tf.name else '')
 
-            try:
-                col += f" [{metadata.loc[analysis_id, :].str.cat(sep=', ')}]"
-            except (AttributeError, KeyError):
-                pass
+            if fields:
+                try:
+                    m = metadata.loc[analysis_id, :].to_dict(into=OrderedDict)
+
+                    if 'label' in fields:
+                        m['label'] = ids[(name, analysis_id)]['name']
+
+                    col += f" [{', '.join(m.values())}]"
+                except (AttributeError, KeyError):
+                    col += f" [{', ' * len(fields)}]"
 
             columns.append(col)
         except Analysis.DoesNotExist:
@@ -450,7 +455,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  lower_bound: Optional[float] = None,
                                  upper_bound: Optional[float] = None,
                                  use_labels: bool = False,
-                                 fields: Optional[Iterable[str]] = None,
+                                 fields: Optional[List[str]] = None,
                                  motif_data: MotifData = MOTIFS) -> BytesIO:
     res = get_analysis_gene_list(uid)
     regions, result_df = motif_enrichment(res, regions, uid, alpha=alpha, motif_data=motif_data)
@@ -461,11 +466,11 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
     result_df = result_df.rename(
         index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in result_df.index})
 
-    if use_labels:
-        ids = cache.get(f'{uid}/analysis_ids')
-        if ids is None:
-            raise ValueError("Analysis not found")
+    ids = cache.get(f'{uid}/analysis_ids')
+    if ids is None:
+        raise ValueError("Analysis not found")
 
+    if use_labels:
         columns = []
 
         for key in res.keys():
@@ -477,7 +482,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                 else:
                     raise
     else:
-        columns = make_motif_enrichment_heatmap_columns(res, fields)
+        columns = make_motif_enrichment_heatmap_columns(res, ids, fields)
 
     result_df.columns = starmap('{0} {1}'.format,
                                 zip(cycle(regions), chain.from_iterable(zip(*tee(columns, len(regions))))))

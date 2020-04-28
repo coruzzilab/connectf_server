@@ -298,7 +298,7 @@ def get_metadata(analyses, fields: Optional[Iterable[str]] = None) -> pd.DataFra
     metadata.insert(0, 'analysis_id', metadata.index.astype(str))
 
     if fields:
-        metadata = metadata.loc[:, fields]
+        metadata = metadata.reindex(columns=fields)
 
     metadata = metadata.fillna('')
 
