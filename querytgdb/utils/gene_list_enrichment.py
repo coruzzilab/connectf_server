@@ -219,11 +219,18 @@ def gene_list_enrichment(uid: Union[str, UUID], draw=True, legend=False, use_lab
                 idx = '{} — {}{} ({})'.format(
                     col_name, tf['gene_id'], f' {tf["gene_name"]}' if tf["gene_name"] else '', l)
 
-                try:
-                    if fields:
-                        idx += f" [{metadata.loc[analysis_id, fields].str.cat(sep=', ')}]"
-                except (KeyError, AttributeError):
-                    pass
+                if fields:
+                    try:
+                        m = (metadata.loc[analysis_id, :]
+                             .reindex(index=fields, fill_value='')
+                             .to_dict(into=OrderedDict))
+
+                        if 'label' in fields:
+                            m['label'] = ids[((name, criterion, _uid), analysis_id)]['name']
+
+                        idx += f" [{', '.join(m.values())}]"
+                    except (KeyError, AttributeError):
+                        pass
 
             indices.append(idx)
 
