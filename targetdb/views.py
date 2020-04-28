@@ -163,3 +163,14 @@ class ValueView(View):
                     AnalysisData.objects.filter(key__name__iexact=key).distinct().values_list('value', flat=True))
 
             return JsonResponse(queryset, safe=False)
+
+
+class ExtraFieldNamesView(View):
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request):
+        keys = ["analysis_id", "gene_id", "gene_name", "filter", "label"]
+
+        keys.extend(MetaKey.objects.values_list("name", flat=True))
+        keys.sort()
+
+        return JsonResponse(keys, safe=False)
