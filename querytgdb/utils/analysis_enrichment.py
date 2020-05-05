@@ -4,7 +4,7 @@ from collections import OrderedDict
 from io import StringIO
 from itertools import combinations
 from operator import itemgetter
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
 import pandas as pd
@@ -113,12 +113,13 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
 
 
 get_name_fields = itemgetter(0, 1, 3)
-fieldnames = ['tf1', 'query1', 'analysis1', 'count1',
-              'tf2', 'query2', 'analysis2', 'count2',
-              'less', 'less_adj', 'greater', 'greater_adj', 'intersection_count', 'genes']
+FIELD_NAMES = ['tf1', 'query1', 'analysis1', 'count1',
+               'tf2', 'query2', 'analysis2', 'count2',
+               'less', 'less_adj', 'greater', 'greater_adj', 'intersection_count', 'genes']
 
 
 def analysis_enrichment_csv(uid: Union[str, UUID],
+                            fields: Optional[List[str]] = None,
                             buffer: Optional[Union[StringIO, HttpResponse]] = None,
                             size_limit: int = 100,
                             raise_warning: bool = False):
@@ -133,6 +134,11 @@ def analysis_enrichment_csv(uid: Union[str, UUID],
 
     info = dict(enrichment['info'])
 
+    if fields is not None:
+        fieldnames = FIELD_NAMES + [f + n for n in ('_1', '_2') for f in fields]
+    else:
+        fieldnames = FIELD_NAMES
+
     writer = csv.DictWriter(buffer,
                             dialect='unix',
                             quoting=csv.QUOTE_MINIMAL,
@@ -143,9 +149,11 @@ def analysis_enrichment_csv(uid: Union[str, UUID],
     for p, d, g in zip(enrichment['columns'],
                        map(itemgetter('less', 'less_adj', 'greater', 'greater_adj'), enrichment['data']),
                        map(lambda x: (len(x['genes']), ','.join(x['genes'])), enrichment['data'])):
-        writer.writerow(dict(zip(
-            fieldnames,
-            get_name_fields(p[0]) + (info[p[0]]['Count'],) + get_name_fields(p[1]) + (info[p[1]]['Count'],) + d + g
-        )))
+        row = get_name_fields(p[0]) + (info[p[0]]['Count'],) + get_name_fields(p[1]) + (info[p[1]]['Count'],) + d + g
+
+        if fields is not None:
+            row += tuple(info[p[n]][f] for n in (0, 1) for f in fields)
+
+        writer.writerow(dict(zip(fieldnames, row)))
 
     return buffer

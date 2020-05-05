@@ -711,11 +711,12 @@ class AnalysisEnrichmentView(View):
 
 class AnalysisEnrichmentCsvView(View):
     def get(self, request, request_id):
+        fields = request.GET.getlist('fields')
         response = HttpResponse(content_type='text/csv')
         response["Content-Disposition"] = 'attachment; filename="analysis_enrichment.csv"'
 
         try:
-            analysis_enrichment_csv(request_id, buffer=response)
+            analysis_enrichment_csv(request_id, fields=fields, buffer=response)
 
             return response
         except AnalysisEnrichmentError:
