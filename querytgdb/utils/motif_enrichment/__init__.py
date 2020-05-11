@@ -230,6 +230,9 @@ def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
 
     result_df = pd.concat(chain.from_iterable(zip(*results.values())), axis=1, sort=True)
 
+    if result_df.empty:
+        raise NoEnrichedMotif
+
     columns = list(starmap(
         lambda r, c: (*c, r),
         zip(
@@ -256,9 +259,6 @@ def motif_enrichment(res: Dict[Tuple[Tuple[str, str, str], int], Set[str]],
     else:
         result_df[(result_df > alpha)] = np.nan
         result_df = result_df.dropna(how='all')
-
-    if result_df.empty:
-        raise NoEnrichedMotif
 
     return regions, result_df
 
@@ -372,15 +372,18 @@ def get_additional_motif_enrichment_json(uid: Union[str, UUID],
 
     motif_dict = OrderedDict(zip(res.keys(), motifs))
 
-    regions, result_df = motif_enrichment(res, regions,
-                                          uid=None,
-                                          motif_dict=motif_dict,
-                                          alpha=1,
-                                          show_reject=False,
-                                          motif_data=motif_data)
+    try:
+        regions, result_df = motif_enrichment(res, regions,
+                                              uid=None,
+                                              motif_dict=motif_dict,
+                                              alpha=1,
+                                              show_reject=False,
+                                              motif_data=motif_data)
 
-    result_df.columns = pd.MultiIndex.from_tuples(result_df.columns)
-    result_df = result_df.stack().unstack(level=0).dropna(how='all', axis=1)
+        result_df.columns = pd.MultiIndex.from_tuples(result_df.columns)
+        result_df = result_df.stack().unstack(level=0).dropna(how='all', axis=1)
+    except NoEnrichedMotif:
+        result_df = pd.DataFrame(columns=regions)
 
     columns = []
     indices = []
