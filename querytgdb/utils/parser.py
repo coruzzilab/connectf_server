@@ -597,7 +597,7 @@ def get_all_tf(query: str,
     df = df.drop('id', axis=1)
 
     df.insert(3, 'EDGE', np.nan)
-    df['EDGE'] = df['EDGE'].where(df['Log2FC'].notna(), '+')
+    df['EDGE'] = df['EDGE'].where(df[LOG2FC].notna() | df[PVALUE].notna(), '+')
 
     expressions = Analysis.objects.filter(
         analysisdata__key__name='EXPERIMENT_TYPE',
