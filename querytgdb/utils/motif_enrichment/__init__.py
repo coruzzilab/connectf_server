@@ -93,10 +93,13 @@ class Mrna(Region):
     group = [2, 3, 4, 5]
 
 
-CLUSTER_INFO = pd.read_csv(
-    settings.MOTIF_CLUSTER,
-    index_col=0
-).fillna('').to_dict('index')
+try:
+    CLUSTER_INFO = pd.read_csv(
+        settings.MOTIF_CLUSTER,
+        index_col=0
+    ).fillna('').to_dict('index')
+except FileNotFoundError:
+    CLUSTER_INFO = {}
 
 
 class MotifEnrichmentError(ValueError):
@@ -449,6 +452,13 @@ def make_motif_enrichment_heatmap_columns(res, ids: Ids, fields: Optional[List[s
     return columns
 
 
+def get_motif_name(name):
+    try:
+        return "{} ({})".format(name, CLUSTER_INFO[name]['Family'])
+    except KeyError:
+        return str(name)
+
+
 def get_motif_enrichment_heatmap(uid: Union[str, UUID],
                                  regions: Optional[List[str]] = None,
                                  alpha: float = 0.05,
@@ -464,7 +474,7 @@ def get_motif_enrichment_heatmap(uid: Union[str, UUID],
     result_df = -np.log10(result_df)
 
     result_df = result_df.rename(
-        index={idx: "{} ({})".format(idx, CLUSTER_INFO[idx]['Family']) for idx in result_df.index})
+        index={idx: get_motif_name(idx) for idx in result_df.index})
 
     ids = cache.get(f'{uid}/analysis_ids')
     if ids is None:
