@@ -476,7 +476,7 @@ def get_tf_data(query: str,
 
         if not reg.empty:
             df = df.merge(reg, on=['ANALYSIS', 'id'], how='left')
-            df.loc[df['Log2FC'].notna(), 'EDGE'] = np.nan
+            df.loc[~(df[LOG2FC].isna() & df[PVALUE].isna()), 'EDGE'] = np.nan
 
         if edges:
             try:
@@ -604,7 +604,7 @@ def get_all_tf(query: str,
         analysisdata__value__iexact='expression'
     ).values_list('pk', flat=True)
 
-    df.loc[df['Log2FC'].isna() & (df['ANALYSIS'].isin(expressions)), 'EDGE'] = '*'
+    df.loc[df[LOG2FC].isna() & df[PVALUE].isna() & (df['ANALYSIS'].isin(expressions)), 'EDGE'] = '*'
 
     df = (df.set_index(['TF', 'ANALYSIS', 'TARGET'])
           .unstack(level=[0, 1])
