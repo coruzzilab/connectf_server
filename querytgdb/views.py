@@ -663,14 +663,17 @@ class MotifEnrichmentHeatmapTableView(View):
 
 class MotifEnrichmentInfo(View):
     def get(self, request):
-        with open(settings.MOTIF_CLUSTER, 'rb') as f:
-            response = HttpResponse(content_type="text/csv")
-            response["Content-Disposition"] = 'attachment; filename="cluster_info.csv"'
-            response["Content-Encoding"] = 'gzip'
+        try:
+            with open(settings.MOTIF_CLUSTER, 'rb') as f:
+                response = HttpResponse(content_type="text/csv")
+                response["Content-Disposition"] = 'attachment; filename="cluster_info.csv"'
+                response["Content-Encoding"] = 'gzip'
 
-            shutil.copyfileobj(f, response)
+                shutil.copyfileobj(f, response)
 
-            return response
+                return response
+        except FileNotFoundError as e:
+            raise Http404("No motif cluster info.") from e
 
 
 class MotifEnrichmentRegions(View):

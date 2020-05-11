@@ -35,7 +35,7 @@ class QuerytgdbConfig(AppConfig):
 
             if not os.path.isfile(settings.MOTIF_CLUSTER):
                 errors.append(
-                    Error('Motif cluster info not found.', id='querytgdb.E002')
+                    Warning('Motif cluster info not found.', id='querytgdb.W004')
                 )
 
             if not os.path.isdir(settings.GENE_LISTS):
