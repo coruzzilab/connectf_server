@@ -108,8 +108,8 @@ def format_data(df: pd.DataFrame, stats: Dict, metadata: pd.DataFrame, ids: Ids)
     empty_cols = df.isnull().all(axis=0)
 
     # for JSON response, can't have NaN or Inf
-    df.loc[:, num_cols] = num_df.mask(np.isinf(num_df), None)
-    df = df.where(pd.notna(df), None)
+    df.loc[:, num_cols] = num_df.mask(np.isinf(num_df), np.nan)
+    df = df.replace({np.nan: None})
 
     data_col_len = 8
 
