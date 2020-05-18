@@ -299,7 +299,6 @@ class EditQueryView(View):
                 f'{request_id}/formatted_tabular_output',
                 # network
                 f'{request_id}/network',
-                f'{request_id}/network_data',
                 # AUPR curve
                 f'{request_id}/figure',
                 f'{request_id}/figure_data',

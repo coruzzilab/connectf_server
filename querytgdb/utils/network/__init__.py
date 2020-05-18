@@ -27,15 +27,20 @@ TF_GAP = 50
 G_GAP = 40
 
 
-def make_nodes(df: pd.DataFrame, pos, show_label: bool = False) -> Generator[Dict[str, Any], None, None]:
+def make_nodes(df: pd.DataFrame, pos, show_label: bool = False, extra_attrs: Optional[Dict] = None) \
+        -> Generator[Dict[str, Any], None, None]:
     """
     Make nodes for cytoscape network
 
     :param df:
     :param pos:
     :param show_label:
+    :param extra_attrs:
     :return:
     """
+    if extra_attrs is None:
+        extra_attrs = {}
+
     for (idx, name, t), (y, x) in zip(df.itertuples(name=None), pos):
         yield {
             'group': 'nodes',
@@ -45,7 +50,8 @@ def make_nodes(df: pd.DataFrame, pos, show_label: bool = False) -> Generator[Dic
                 'type': t,
                 'size': SIZE,
                 'showLabel': show_label,
-                **COLOR_SHAPE[t]
+                **COLOR_SHAPE[t],
+                **extra_attrs
             },
             'position': {
                 'x': x,
@@ -70,10 +76,9 @@ def get_network_json(uid: Union[str, UUID],
     :return:
     """
     network_key = f'{uid}/network'
-    network_data_key = f'{uid}/network_data'
     df_key = f'{uid}/tabular_output'
 
-    cached_data = cache.get_many([df_key, network_key, network_data_key])
+    cached_data = cache.get_many([df_key, network_key])
 
     df = cached_data[df_key]
 
@@ -87,7 +92,7 @@ def get_network_json(uid: Union[str, UUID],
 
     # network data cached separately. @todo: utilize the caching better
     try:
-        data, network_table = itemgetter(network_data_key, network_key)(cached_data)
+        data, network_table, e_tfs, groups_edge_len = cached_data[network_key]
     except KeyError:
         network_table = df.pipe(data_to_edges)
 
@@ -158,10 +163,10 @@ def get_network_json(uid: Union[str, UUID],
 
             groups_edge_len = group_edge_len(s_target, group_bbox, G_GAP)
 
-            tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
+            # tf_grid += ((groups_edge_len - e_tfs) / 2, 0)
 
             group_grid = np.array(np.meshgrid(np.arange(s_target), np.arange(s_target), indexing='ij')).reshape(
-                (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (groups_edge_len + e_tfs) / 2)
+                (2, -1), order='F').T * (group_bbox + G_GAP) + group_bbox / 2 + (0, (e_tfs + groups_edge_len) / 2)
 
             for (num, e_group), g_ij in zip(edge_group, group_grid):
                 e_group = e_group.sort_values(by=e_group.columns.tolist())
@@ -188,8 +193,10 @@ def get_network_json(uid: Union[str, UUID],
                                     **COLOR[e]
                                 }
                             } for t, s, e, w in e_group.reset_index().itertuples(name=None, index=False))
+        else:
+            groups_edge_len = 0
 
-        cache.set_many({network_key: network_table, network_data_key: data})
+        cache.set_many({network_key: (data, network_table, e_tfs, groups_edge_len)})
 
     # additional edges
     if edges:
@@ -270,6 +277,14 @@ def get_network_json(uid: Union[str, UUID],
 
             g = g[g["rank"] <= rank]
 
+            predict_nodes = GENE_TYPE.loc[
+                GENE_TYPE.index.isin(np.setdiff1d(g.loc[(g[0] == 0), 'target'], network_table.index)), ['Name', 'Type']]
+            side_predict = math.ceil(math.sqrt(predict_nodes.shape[0]))
+            predict_grid = np.array(
+                np.meshgrid(np.arange(side_predict), np.arange(side_predict), indexing='ij')).reshape(
+                (2, -1), order='F').T * (SIZE + GAP) + SIZE / 2 + (0, (groups_edge_len + e_tfs) * 1.5)
+            data.extend(make_nodes(predict_nodes, predict_grid, extra_attrs={'predicted': True}))
+
             data.extend({
                             'group': 'edges',
                             'data': {
@@ -281,9 +296,10 @@ def get_network_json(uid: Union[str, UUID],
                                 'shape': 'triangle'
                             }
                         } for s, e, t in
-                        g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None,
-                                                                                                   index=False))
-        except KeyError:
+                        g.loc[(g["rank"] <= rank) & g['target'].isin(GENE_TYPE.index), ['source', 'edge',
+                                                                                        'target']].itertuples(name=None,
+                                                                                                              index=False))
+        except (KeyError, ValueError):
             pass
 
     return data
