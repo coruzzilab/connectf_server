@@ -406,6 +406,7 @@ def get_network_sif(uid: Union[str, UUID],
                 name, network_data = cached_data[f"{uid}/target_network"]
                 network_data = network_data.sort_values('rank')
                 df_unf = cached_data[f'{uid}/tabular_output_unfiltered']
+
                 ids = cached_data[f'{uid}/analysis_ids']
                 df_unf = filter_df_by_ids(df_unf, ids)
 
@@ -532,6 +533,7 @@ def validate_network(predicted: pd.DataFrame, validated: pd.DataFrame) -> pd.Dat
     :param validated:
     :return:
     """
+    predicted[['source', 'target']] = predicted[['source', 'target']].apply(lambda s: s.str.upper())
     d = validated.loc[
         validated['TARGET'].isin(predicted['target']) & validated['ANALYSIS'].isin(predicted['source']), :]
     g = predicted.loc[predicted['source'].isin(d['ANALYSIS']), :]  # filtering predictions

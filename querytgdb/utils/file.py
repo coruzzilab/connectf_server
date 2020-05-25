@@ -87,8 +87,9 @@ def get_gene_lists(f: TextIO) -> UserGeneLists:
             if line.startswith('>'):
                 list_name = line.lstrip('>').strip()
             else:
+                line = line.upper()
                 gene_to_name.setdefault(line, set()).add(list_name)
-                name_to_gene.setdefault(list_name, set()).add(line.upper())
+                name_to_gene.setdefault(list_name, set()).add(line)
 
     if not gene_to_name:
         raise BadFile("Target Gene list empty")
@@ -192,7 +193,7 @@ def network_to_lists(network: Network) -> UserGeneLists:
     gene_to_name: Dict[str, Set[str]] = OrderedDict()
     name_to_gene: Dict[str, Set[str]] = OrderedDict()
 
-    genes = data[['source', 'target']].stack().unique()
+    genes = data[['source', 'target']].stack().str.upper().unique()
 
     for g in genes:
         gene_to_name.setdefault(g, set()).add(name)
