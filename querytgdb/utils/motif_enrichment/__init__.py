@@ -95,7 +95,7 @@ class Mrna(Region):
 
 try:
     CLUSTER_INFO = pd.read_csv(
-        settings.MOTIF_CLUSTER,
+        settings.MOTIF_CLUSTER_INFO,
         index_col=0
     ).fillna('').to_dict('index')
 except FileNotFoundError:

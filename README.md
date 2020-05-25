@@ -44,8 +44,9 @@ DATABASE:
   USER: 'db_username'
   PASSWORD: 'db_password'
   HOST: 'localhost'
-MOTIF_ANNOTATION: '/path/to/file'
-MOTIF_CLUSTER: '/path/to/file'
+MOTIF_ANNOTATION: '/path/to/file'  # path to cluster motif file motifs.csv.gz
+MOTIF_TF_ANNOTATION: '/path/to/file'  # path to tf motif file motifs_tf.csv.gz
+MOTIF_CLUSTER_INFO: '/path/to/file'  # path to cluster_info.csv.gz
 GENE_LISTS: '/path/to/folder'
 TARGET_NETWORKS: '/path/to/folder'
 ```

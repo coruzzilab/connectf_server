@@ -663,7 +663,7 @@ class MotifEnrichmentHeatmapTableView(View):
 class MotifEnrichmentInfo(View):
     def get(self, request):
         try:
-            with open(settings.MOTIF_CLUSTER, 'rb') as f:
+            with open(settings.MOTIF_CLUSTER_INFO, 'rb') as f:
                 response = HttpResponse(content_type="text/csv")
                 response["Content-Disposition"] = 'attachment; filename="cluster_info.csv"'
                 response["Content-Encoding"] = 'gzip'

@@ -164,8 +164,8 @@ CACHES = {
 MOTIF_ANNOTATION = CONFIG.get('MOTIF_ANNOTATION',
                               os.path.join(BASE_DIR, 'data', 'motifs.csv.gz'))
 MOTIF_TF_ANNOTATION = CONFIG.get('MOTIF_TF_ANNOTATION',
-                                 os.path.join(BASE_DIR, 'data', 'motifs_tf.csv.gz'))
-MOTIF_CLUSTER = CONFIG.get('MOTIF_CLUSTER', os.path.join(BASE_DIR, 'data', 'cluster_info.csv.gz'))
+                                 os.path.join(BASE_DIR, 'data', 'motifs_tf2.csv.gz'))
+MOTIF_CLUSTER_INFO = CONFIG.get('MOTIF_CLUSTER_INFO', os.path.join(BASE_DIR, 'data', 'cluster_info.csv.gz'))
 GENE_LISTS = CONFIG.get('GENE_LISTS', os.path.join(BASE_DIR, 'commongenelists'))
 TARGET_NETWORKS = CONFIG.get('TARGET_NETWORKS', os.path.join(BASE_DIR, 'target_networks'))
 

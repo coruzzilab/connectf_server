@@ -33,7 +33,7 @@ class QuerytgdbConfig(AppConfig):
                     Error('Motif annotations not found.', id='querytgdb.E001')
                 )
 
-            if not os.path.isfile(settings.MOTIF_CLUSTER):
+            if not os.path.isfile(settings.MOTIF_CLUSTER_INFO):
                 errors.append(
                     Warning('Motif cluster info not found.', id='querytgdb.W004')
                 )
