@@ -660,7 +660,7 @@ class MotifEnrichmentHeatmapTableView(View):
             raise Http404
 
 
-class MotifEnrichmentInfo(View):
+class MotifEnrichmentInfoView(View):
     def get(self, request):
         try:
             with open(settings.MOTIF_CLUSTER_INFO, 'rb') as f:
@@ -675,7 +675,7 @@ class MotifEnrichmentInfo(View):
             raise Http404("No motif cluster info.") from e
 
 
-class MotifEnrichmentRegions(View):
+class MotifEnrichmentRegionsView(View):
     def get(self, request):
         return JsonResponse({
             'regions': MOTIFS.region_desc,
@@ -683,18 +683,23 @@ class MotifEnrichmentRegions(View):
         })
 
 
-class MotifEnrichmentMotifs(View):
+class MotifEnrichmentMotifsView(View):
     def get(self, request):
         return JsonResponse({
             'motifs': MOTIFS.motifs
         }, encoder=PandasJSONEncoder)
 
 
-class MotifEnrichmentAdditionalMotifs(View):
+class MotifEnrichmentAdditionalMotifsView(View):
     def get(self, request):
-        return JsonResponse({
-            'motifs': ADD_MOTIFS.motifs
-        }, encoder=PandasJSONEncoder)
+        try:
+            return JsonResponse({
+                'motifs': ADD_MOTIFS.motifs
+            }, encoder=PandasJSONEncoder)
+        except FileNotFoundError:
+            return JsonResponse({
+                'error': 'no additional motif definitions'
+            }, status=404)
 
 
 class AnalysisEnrichmentView(View):

@@ -7,7 +7,7 @@ class QuerytgdbConfig(AppConfig):
     name = 'querytgdb'
 
     def ready(self):
-        from django.core.checks import register, Error, Warning
+        from django.core.checks import register, Warning
         from django.conf import settings
         from .models import Annotation
         from django.db.utils import DatabaseError
@@ -28,24 +28,24 @@ class QuerytgdbConfig(AppConfig):
         def check_data_files(app_configs, **kwargs):
             errors = []
 
-            if not os.path.isfile(settings.MOTIF_ANNOTATION):
+            if not (os.path.isfile(settings.MOTIF_ANNOTATION) and os.path.isfile(settings.MOTIF_TF_ANNOTATION)):
                 errors.append(
-                    Error('Motif annotations not found.', id='querytgdb.E001')
+                    Warning('Motif annotations not found.', id='querytgdb.W001')
                 )
 
             if not os.path.isfile(settings.MOTIF_CLUSTER_INFO):
                 errors.append(
-                    Warning('Motif cluster info not found.', id='querytgdb.W004')
+                    Warning('Motif cluster info not found.', id='querytgdb.W002')
                 )
 
             if not os.path.isdir(settings.GENE_LISTS):
                 errors.append(
-                    Warning('Gene list folder not found.', id='querytgdb.W001')
+                    Warning('Gene list folder not found.', id='querytgdb.W003')
                 )
 
             if not os.path.isdir(settings.TARGET_NETWORKS):
                 errors.append(
-                    Warning('Network folder not found.', id='querytgdb.W002')
+                    Warning('Network folder not found.', id='querytgdb.W004')
                 )
 
             return errors
