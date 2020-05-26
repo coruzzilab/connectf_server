@@ -10,8 +10,11 @@ This is the API backend for ConnecTF.
 pip install -r requirements.txt
 ```
 
-A MySQL database instance is required. Details of the database should be configured in the [`config.yaml`](#configyaml) file in the 
-`./connectf/` folder, alongside `settings.py`. You can edit `settings.py` directly if you are more comfortable in
+Create a [`config.yaml`](#configyaml) in the `./connectf` folder, alongside the `./connectf/settings.py` file.
+
+To set up data files for the server to read from, it is recommended you create a `./data` folder at the top level of the project. Put required data files within the `./data` folder and edit [`config.yaml`](#configyaml) to reflect the changes.
+
+A MySQL database instance is required. Details of the database should be configured in the [`config.yaml`](#configyaml) file. You can edit `settings.py` directly if you are more comfortable in
 configuring a Django project.
 
 ```bash
@@ -23,7 +26,7 @@ python manage.py migrate
 Import data before starting the server.
 
 ```bash
-python manage.py import_annotation annotation.csv  # import gene annotations
+python manage.py import_annotation -i annotation.csv  # import gene annotations
 python manage.py import_data data.csv metadata.txt  # import data/metadata
 python manage.py import_edges additional_edges.txt  # import additional edges
 ```
@@ -36,6 +39,8 @@ Sample files can be found at:
 
 A sample `config.yaml` file:
 
+*N.B.* If the file does not exist, create a new `config.yaml` in the same folder as `connectf/settings.py`, with the contents similar to the one seen in the sample.
+
 ```yaml
 SECRET_KEY: 'django_secret_key'  # see https://docs.djangoproject.com/en/2.2/ref/settings/#secret-key
 DEBUG: True
@@ -45,10 +50,10 @@ DATABASE:
   PASSWORD: 'db_password'
   HOST: 'localhost'
 MOTIF_ANNOTATION: '/path/to/file'  # path to cluster motif file motifs.csv.gz
-MOTIF_TF_ANNOTATION: '/path/to/file'  # path to tf motif file motifs_tf.csv.gz
+MOTIF_TF_ANNOTATION: '/path/to/file'  # path to tf motif file motifs_indv.csv.gz
 MOTIF_CLUSTER_INFO: '/path/to/file'  # path to cluster_info.csv.gz
-GENE_LISTS: '/path/to/folder'
-TARGET_NETWORKS: '/path/to/folder'
+GENE_LISTS: '/path/to/folder'  # optional gene list folder
+TARGET_NETWORKS: '/path/to/folder' # optional target network folder
 ```
 
 ## Deploying
@@ -74,8 +79,7 @@ This binds the server to a unix socket, which can then be connected to from a re
 
 ### Sample Nginx Server Configuration
 
-This listens to an HTTPS connection. Remember to include certificates and private keys in the configuration, 
-or use an HTTP configuration instead.
+This listens to an HTTPS connection. Remember to include certificates and private keys in the configuration, or use an HTTP configuration instead.
 
 ```text
 server {
@@ -89,7 +93,7 @@ server {
 
         add_header Strict-Transport-Security "max-age=86400; includeSubDomains" always;
 
-        client_max_body_size 20M;
+        client_max_body_size 100M; # ensure file size is big enough for user upload
 
         root /var/www/html; # path to html files
 
