@@ -40,29 +40,31 @@ class Command(BaseCommand):
         os.makedirs(os.path.join(settings.BASE_DIR, 'data'), exist_ok=True)  # make data directory if not exist
 
         opts = {}
+        try:
+            if options['description']:
+                desc_path = os.path.join(settings.BASE_DIR, 'data/cluster_info.csv.gz')
+                gz_copy(options['description'], desc_path, force=options['force'])
+                opts['MOTIF_CLUSTER_INFO'] = desc_path
 
-        if options['description']:
-            desc_path = os.path.join(settings.BASE_DIR, 'data/cluster_info.csv.gz')
-            gz_copy(options['description'], desc_path, force=options['force'])
-            opts['MOTIF_CLUSTER_INFO'] = desc_path
+            if options['motifs']:
+                motifs_path = os.path.join(settings.BASE_DIR, 'data/motifs.csv.gz')
+                gz_copy(options['motifs'], motifs_path, force=options['force'])
+                opts['MOTIF_ANNOTATION'] = motifs_path
 
-        if options['motifs']:
-            motifs_path = os.path.join(settings.BASE_DIR, 'data/motifs.csv.gz')
-            gz_copy(options['motifs'], motifs_path, force=options['force'])
-            opts['MOTIF_ANNOTATION'] = motifs_path
+            if options['individual_motifs']:
+                motifs_indv_path = os.path.join(settings.BASE_DIR, 'data/motifs_indv.csv.gz')
+                gz_copy(options['individual_motifs'], motifs_indv_path, force=options['force'])
+                opts['MOTIF_TF_ANNOTATION'] = motifs_indv_path
 
-        if options['individual_motifs']:
-            motifs_indv_path = os.path.join(settings.BASE_DIR, 'data/motifs_indv.csv.gz')
-            gz_copy(options['individual_motifs'], motifs_indv_path, force=options['force'])
-            opts['MOTIF_TF_ANNOTATION'] = motifs_indv_path
+            # Writes configs back into config.yaml with backup
+            if opts:
+                backup_path = settings.CONFIG_PATH + '.bak'
+                shutil.copy2(settings.CONFIG_PATH, backup_path)
+                self.stdout.write(f"Backup created at {backup_path}")
+                new_configs = {**settings.CONFIG, **opts}
+                with open(settings.CONFIG_PATH, 'w') as f:
+                    yaml.safe_dump(new_configs, f)
 
-        # Writes configs back into config.yaml with backup
-        if opts:
-            backup_path = settings.CONFIG_PATH + '.bak'
-            shutil.copy2(settings.CONFIG_PATH, backup_path)
-            self.stdout.write(f"Backup created at {backup_path}")
-            new_configs = {**settings.CONFIG, **opts}
-            with open(settings.CONFIG_PATH, 'w') as f:
-                yaml.safe_dump(new_configs, f)
-
-        self.stdout.write("Remember to restart the server.\n")
+            self.stdout.write("Remember to restart the server.\n")
+        except ValueError as e:
+            raise CommandError(e) from e
