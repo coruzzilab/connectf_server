@@ -120,3 +120,7 @@ server {
 }
 
 ```
+
+### Front End Interface
+
+The front end of this project is build with React. You can find it at [connectf_react](https://github.com/coruzzilab/connectf_react).
