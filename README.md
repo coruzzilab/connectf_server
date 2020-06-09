@@ -2,7 +2,66 @@
 
 ## Introduction
 
-This is the API backend for ConnecTF.
+This is the API backend for ConnecTF. The instructions for the for the [react](#front-end-interface) server should be followed after these instructions.
+
+## Pre-requisites
+​
+### Conda
+
+Following instructions are using conda
+
+```bash
+# On linux
+curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+sh Miniconda3-latest-Linux-x86_64.sh
+​
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
+​
+conda create -n connectf
+conda activate connectf
+conda install python
+conda install nodejs
+sudo apt-get install build-essential
+​
+```
+​
+### Mysql
+​
+A MySQL database instance is required. 
+​
+​
+```bash
+sudo apt install mariadb-server
+sudo apt install mariadb-client
+sudo apt-get install libmariadbclient-dev
+​
+#TODO: confirm the following are required
+#sudo apt-get install gcc
+#pip install mysql-connector-python
+​
+sudo system mysql start
+sudo mysql_secure_installation
+# set a password for user root on mysql
+```
+​
+Now create database with username and password that will be accessed for connectf.
+Details of the database should be configured in the [`config.yaml`](#configyaml) file in the `./connectf/` folder, alongside `settings.py`. You can edit `settings.py` directly if you are more comfortable in configuring a Django project.
+​
+​
+- db_name=connectf
+- db_username=connectfuser
+- db_passwd=connectfpwd
+​
+```bash
+sudo mysqladmin create connectf
+sudo mysql -u root
+grant all privileges on connectf.* to 'connectfuser'@'localhost' identified by 'connectfpwd';
+flush privileges;
+​
+```
+
 
 ## Install
 
