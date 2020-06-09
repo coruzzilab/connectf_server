@@ -1,9 +1,10 @@
 import csv
 import warnings
 from collections import OrderedDict
+from functools import reduce
 from io import StringIO
 from itertools import combinations
-from operator import itemgetter
+from operator import itemgetter, methodcaller, or_
 from typing import Dict, List, Optional, Tuple, Union
 from uuid import UUID
 
@@ -27,8 +28,7 @@ class AnalysisEnrichmentWarning(AnalysisEnrichmentError, UserWarning):
 
 
 def split_col_name(col_name: Tuple[Tuple[str, str, str], int]) -> Tuple[str, str, str, int]:
-    name, analysis_id = col_name
-    return name + (analysis_id,)
+    return col_name[0] + (col_name[1],)
 
 
 def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warning: bool = False) -> Dict:
@@ -68,6 +68,7 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
 
     for col_name in df.columns:
         d = OrderedDict(Count=df[col_name].count())
+        d['filter'] = col_name[0][1]
         try:
             rename = ids[col_name]
             d['label'] = rename['name'] if rename['version'] else ''
@@ -135,6 +136,8 @@ def analysis_enrichment_csv(uid: Union[str, UUID],
     info = dict(enrichment['info'])
 
     if fields is not None:
+        known_fields = reduce(or_, map(methodcaller('keys'), info.values()))
+        fields = [f for f in fields if f in known_fields]
         fieldnames = FIELD_NAMES + [f + n for n in ('_1', '_2') for f in fields]
     else:
         fieldnames = FIELD_NAMES
