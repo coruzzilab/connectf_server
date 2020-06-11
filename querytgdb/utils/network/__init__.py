@@ -277,13 +277,14 @@ def get_network_json(uid: Union[str, UUID],
 
             g = g[g["rank"] <= rank]
 
-            predict_nodes = GENE_TYPE.loc[
-                GENE_TYPE.index.isin(np.setdiff1d(g.loc[(g[0] == 0), 'target'], network_table.index)), ['Name', 'Type']]
-            side_predict = math.ceil(math.sqrt(predict_nodes.shape[0]))
-            predict_grid = np.array(
-                np.meshgrid(np.arange(side_predict), np.arange(side_predict), indexing='ij')).reshape(
-                (2, -1), order='F').T * (SIZE + GAP) + SIZE / 2 + (0, (groups_edge_len + e_tfs) * 1.5)
-            data.extend(make_nodes(predict_nodes, predict_grid, extra_attrs={'predicted': True}))
+            # predict_nodes = GENE_TYPE.loc[
+            #     GENE_TYPE.index.isin(np.setdiff1d(g.loc[(g[0] == 0), 'target'], network_table.index)), ['Name',
+            #     'Type']]
+            # side_predict = math.ceil(math.sqrt(predict_nodes.shape[0]))
+            # predict_grid = np.array(
+            #     np.meshgrid(np.arange(side_predict), np.arange(side_predict), indexing='ij')).reshape(
+            #     (2, -1), order='F').T * (SIZE + GAP) + SIZE / 2 + (0, (groups_edge_len + e_tfs) * 1.5)
+            # data.extend(make_nodes(predict_nodes, predict_grid, extra_attrs={'predicted': True}))
 
             data.extend({
                             'group': 'edges',
@@ -296,9 +297,8 @@ def get_network_json(uid: Union[str, UUID],
                                 'shape': 'triangle'
                             }
                         } for s, e, t in
-                        g.loc[(g["rank"] <= rank) & g['target'].isin(GENE_TYPE.index), ['source', 'edge',
-                                                                                        'target']].itertuples(name=None,
-                                                                                                              index=False))
+                        g.loc[(g["rank"] <= rank) & g[0], ['source', 'edge', 'target']].itertuples(name=None,
+                                                                                                   index=False))
         except (KeyError, ValueError):
             pass
 
