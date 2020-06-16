@@ -222,6 +222,6 @@ AWS_REGION_NAME = CONFIG.get('AWS_REGION_NAME')
 NAMED_QUERIES = {
     # User predefined queries.
     'all_expression': 'all_tfs[EXPERIMENT_TYPE=Expression]',
-    'all_dap': 'all_tfs[EDGE_TYPE=ampDap or EDGE_TYPE=DAP]',
+    'all_dap': "all_tfs[EDGE_TYPE='in vitro:Bound:DAP' or EDGE_TYPE='in vitro:Bound:ampDAP']",
     'in_planta_bound': "all_tfs[EDGE_TYPE='in planta:Bound']"
 }
