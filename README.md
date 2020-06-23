@@ -183,3 +183,7 @@ server {
 ### Front End Interface
 
 The front end of this project is built with ReactJS. You can find it at [connectf_react](https://github.com/coruzzilab/connectf_react).
+
+### Data
+
+All data for this project can be found at https://connectf.s3.amazonaws.com/connectf_data_release_v1.tar.gz
