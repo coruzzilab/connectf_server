@@ -359,7 +359,7 @@ def get_column_filter(df: TargetFrame, filter_list) -> TargetFrame:
     result = list(map(partial(gene_to_ids, metadata), result))
     valid_genes = reduce(and_, map(methodcaller('keys'), result))
     if not valid_genes:
-        return TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
+        return TargetFrame(columns=pd.MultiIndex(levels=[[], [], []]))
 
     return df.loc[:, df.columns.get_level_values(1).isin(reduce(or_, (r[g] for r in result for g in valid_genes)))]
 
@@ -676,7 +676,7 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                         df = df.dropna(axis=1, how='all')
                     except IndexError:
                         # beware of the shape of indices and columns
-                        df = TargetFrame(columns=pd.MultiIndex(levels=[[], [], []], labels=[[], [], []]))
+                        df = TargetFrame(columns=pd.MultiIndex(levels=[[], [], []]))
 
                     df.filter_string = filter_string
 
@@ -734,7 +734,7 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
             .reindex(columns=tf_order.index, level=0))
 
 
-def get_metadata(ids: Sequence) -> TargetFrame:
+def get_metadata(ids: Sequence) -> pd.DataFrame:
     df = get_meta_df(ids)
     df = df.T
     df.columns = df.columns.rename('ANALYSIS')
