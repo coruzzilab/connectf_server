@@ -150,7 +150,14 @@ def get_network(f: IO) -> Network:
     :return:
     """
     try:
-        df = pd.read_csv(f, delim_whitespace=True, header=None)
+        line = f.readline()
+        f.seek(0)
+        opts = {}
+        if "\t" in line:
+            opts['sep'] = "\t"
+        else:
+            opts['delim_whitespace'] = True
+        df = pd.read_csv(f, **opts, header=None)
     except (ParserError, UnicodeDecodeError, EmptyDataError) as e:
         raise BadNetwork(NETWORK_MSG) from e
 
