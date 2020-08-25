@@ -45,16 +45,16 @@ COLOR_SHAPE = defaultdict(default_shape, {
         'color': '#00CC00',
         'shape': 'triangle'
     },
-    'PROTEIN_CODING': {
-        'color': '#CCCCFF',
-        'shape': 'roundrectangle'
-    },
-    'METABOLIC': {
-        'color': '#3399FF',
-        'shape': 'roundrectangle'
-    },
-    'MOLECULE': {
-        'color': '#FFFF00',
-        'shape': 'roundrectangle'
-    }
+    # 'PROTEIN_CODING': {
+    #     'color': '#CCCCFF',
+    #     'shape': 'roundrectangle'
+    # },
+    # 'METABOLIC': {
+    #     'color': '#3399FF',
+    #     'shape': 'roundrectangle'
+    # },
+    # 'MOLECULE': {
+    #     'color': '#FFFF00',
+    #     'shape': 'roundrectangle'
+    # }
 })
