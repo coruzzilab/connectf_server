@@ -47,7 +47,7 @@ networks_storage = FileSystemStorage(settings.TARGET_NETWORKS)
 
 class QueryView(View):
     """
-    Enpoint for new query or get cached queries
+    Endpoint for new query or get cached queries
     """
 
     def get(self, request, request_id):
