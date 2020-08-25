@@ -730,7 +730,7 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     analysis_order = edges.count(axis=1, level=1).sum().sort_values(ascending=False)
     tf_order = edges.count(axis=1, level=0).sum()
     tf_total = tf_order.groupby(by=list(map(itemgetter(0), tf_order.index))).sum()
-    tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order[i]), reverse=True)
+    tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order.at[i]), reverse=True)
 
     return (df.reindex(columns=analysis_order.index, level=1)
             .reindex(columns=tf_reorder, level=0))

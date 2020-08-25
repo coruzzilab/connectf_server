@@ -139,8 +139,8 @@ def format_data(df: pd.DataFrame, stats: Dict, metadata: pd.DataFrame, ids: Ids)
                 tech = get_tech(analysis)
                 method = get_analysis_method(analysis)
 
-                edge_count = edge_counts[col[:2]]
-                total_edge_count = total_edge_counts[col[:2]]
+                edge_count = edge_counts.at[col[:2]]
+                total_edge_count = total_edge_counts.at[col[:2]]
 
                 edge = get_edge(analysis).format(edge_count)
                 if edge_count != total_edge_count:

@@ -53,7 +53,7 @@ def get_summary(uid: Union[UUID, str], size_limit: int = 50) -> Dict[str, Any]:
 
     tf_order = df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False)
     tf_total = tf_order.groupby(by=list(map(itemgetter(0), tf_order.index))).sum()
-    tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order[i]), reverse=True)
+    tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order.at[i]), reverse=True)
 
     chart = (df.reindex(columns=tf_reorder, level=0))
     chart.columns = chart.columns.to_flat_index()
