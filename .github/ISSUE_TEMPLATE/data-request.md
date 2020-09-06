@@ -1,6 +1,6 @@
 ---
 name: Data Suggestion
-about: Suggestion for datasets to be added to the public site.
+about: Suggest datasets to be added to the public site.
 title: ''
 labels: ''
 assignees: ''
