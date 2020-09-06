@@ -1,6 +1,6 @@
 ---
-name: Data Request
-about: Requesting datasets to be added to the public site.
+name: Data Suggestion
+about: Suggestion for datasets to be added to the public site.
 title: ''
 labels: ''
 assignees: ''
