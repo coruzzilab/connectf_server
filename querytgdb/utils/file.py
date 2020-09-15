@@ -143,10 +143,11 @@ def get_background_genes(f: TextIO) -> pd.Series:
 NETWORK_MSG = "Network must have source, edge, target columns. Can have an additional forth column of scores."
 
 
-def get_network(f: IO) -> Network:
+def get_network(f: IO, headers=False) -> Network:
     """
     Parse uploaded file into dataframe
     :param f:
+    :param headers:
     :return:
     """
     try:
@@ -157,7 +158,13 @@ def get_network(f: IO) -> Network:
             opts['sep'] = "\t"
         else:
             opts['delim_whitespace'] = True
-        df = pd.read_csv(f, **opts, header=None)
+
+        if headers:
+            opts['header'] = 0
+        else:
+            opts['header'] = None
+
+        df = pd.read_csv(f, **opts)
     except (ParserError, UnicodeDecodeError, EmptyDataError) as e:
         raise BadNetwork(NETWORK_MSG) from e
 

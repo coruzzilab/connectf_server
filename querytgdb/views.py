@@ -136,7 +136,7 @@ class QueryView(View):
                     errors.append(f'Genes in Filter TFs File not in database: {", ".join(bad_genes)}')
 
             if target_networks:
-                network = get_network(target_networks)
+                network = get_network(target_networks, headers=request.POST.get('networkHeaders') == 'true')
 
                 bad_genes = check_annotations(network[1]['source'].append(network[1]['target']))
                 if bad_genes and networks_source != 'storage':
