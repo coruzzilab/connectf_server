@@ -1,0 +1,41 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql:latest
+    platform: linux/amd64
+    environment:
+      - MYSQL_DATABASE=connectf
+      - MYSQL_USER=connectfuser
+      - MYSQL_PASSWORD=connectfpwd
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - "3306:3306"
+
+  backend:
+    build:
+      no_cache: true
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.backend
+    environment:
+      - IMPORT=$IMPORT
+      - MYSQL_DOCKER_HOST=mysql
+    command: /app/dockerfiles/wait-for-it.sh mysql:3306 --timeout=30 -- bash -c "
+        /app/dockerfiles/import-data.sh && \
+        gunicorn --workers 3 --timeout 200 --bind 0.0.0.0:8001 -m 007 connectf.wsgi"
+    ports:
+      - "8001:8001"
+    depends_on: 
+      - mysql
+
+  nginx:
+    platform: linux/amd64
+    build:
+      context: .
+      additional_contexts:
+        connectf_react: ../connectf_react
+      dockerfile: ./dockerfiles/Dockerfile.nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

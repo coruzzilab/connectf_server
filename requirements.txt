@@ -1,6 +1,6 @@
 cycler
 decorator
-Django==3.0.3
+Django==5.0.0
 django-cors-headers
 fonttools
 gunicorn
@@ -12,13 +12,13 @@ mypy-extensions
 mysqlclient
 networkx
 numpy
-pandas
+pandas==2.1.4
 patsy
 pyparsing
 python-dateutil
 pytz
 scikit-learn
-scipy
+scipy==1.11.4
 seaborn
 six
 statsmodels

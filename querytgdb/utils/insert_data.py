@@ -8,8 +8,9 @@ from typing import TextIO, Tuple
 import numpy as np
 import pandas as pd
 from django.db.transaction import atomic
+from django.db.utils import IntegrityError
 
-from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeType, Interaction, MetaKey, Regulation
+from querytgdb.models import Analysis, AnalysisData, Annotation, EdgeData, EdgeType, Interaction, MetaKey, Regulation, ImportHistory
 from querytgdb.utils.sif import get_network
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ def process_meta_file(f: TextIO) -> pd.DataFrame:
     metadata = pd.Series(f.readlines())
 
     metadata = (metadata
-                .str.split(':', 1, True)
+                .str.split(':', n=1, expand=True)
                 .apply(lambda x: x.str.strip())
                 .replace([r'', nan_regex], np.nan, regex=True)
                 .dropna(subset=[0])
@@ -34,7 +35,7 @@ def process_meta_file(f: TextIO) -> pd.DataFrame:
 
     metadata.index = metadata.index.str.upper().str.replace(' ', '_')
     metadata['special'] = metadata.index.str.extract(r'^([^a-z])', flags=re.I, expand=False).fillna('')
-    metadata.index = metadata.index.str.replace(r'^[^a-z]+', '', flags=re.I)
+    metadata.index = metadata.index.str.replace(r'^([^a-z])', '', flags=re.I, regex=True)
     metadata.columns = ['data', 'special']
 
     date_rows = metadata.index.str.contains(r'_?DATE$')
@@ -71,6 +72,16 @@ def process_data(f, sep=',') -> Tuple[pd.DataFrame, bool]:
 
 
 def insert_data(data_file, metadata_file, sep=',', dry_run=False):
+    # if data_file or metadata_file are already imported, skip
+    if (
+        ImportHistory.objects.filter(fileName=data_file, type="data").exists() or 
+        ImportHistory.objects.filter(fileName=metadata_file, type="metadata").exists()
+    ):
+        print(f"Skipping {data_file.split('/')[-1]} and {metadata_file.split('/')[-1]} as they are already imported.")
+        return
+
+    print("inserting {0} {1}\n".format(data_file, metadata_file))
+
     data, has_pvals = process_data(data_file, sep=sep)
 
     try:
@@ -117,11 +128,15 @@ def insert_data(data_file, metadata_file, sep=',', dry_run=False):
 
     AnalysisData.objects.bulk_create(
         [AnalysisData(analysis=analysis, key_id=meta_key_frame.at[key, 'id'], value=val)
-         for key, val in metadata['data'].iteritems()])
+         for key, val in metadata['data'].items()])
 
     anno = pd.DataFrame(Annotation.objects.filter(
         gene_id__in=data.iloc[:, 0]
     ).values_list('gene_id', 'id', named=True).iterator())
+
+    # update import history
+    ImportHistory.objects.create(fileName=data_file, type="data")
+    ImportHistory.objects.create(fileName=metadata_file, type="metadata")
 
     # check for invalid ids
     data = data.merge(anno, on='gene_id', how='left')
@@ -204,6 +219,8 @@ def import_annotations(annotation_file: str, dry_run: bool = False, delete_exist
 
 
 def import_additional_edges(edge_file: str, sif: bool = False, directional: bool = True):
+    print(f"Inserting edge file: {edge_file}\n")
+
     if sif:
         try:
             with open(edge_file) as f:
@@ -258,11 +275,14 @@ def import_additional_edges(edge_file: str, sif: bool = False, directional: bool
         df = pd.concat([df, und_df])
         df = df.drop_duplicates()
 
-    EdgeData.objects.bulk_create(
-        (EdgeData(
-            type_id=e,
-            tf_id=s,
-            target_id=t
-        ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
-        batch_size=1000
-    )
+    try:
+        EdgeData.objects.bulk_create(
+            (EdgeData(
+                type_id=e,
+                tf_id=s,
+                target_id=t
+            ) for e, s, t in df[['edge_id', 'id_x', 'id_y']].itertuples(index=False, name=None)),
+            batch_size=1000
+        )
+    except IntegrityError as e:
+        print(f"Duplicate entry error, skipping edge file: {edge_file.split('/')[-1]}")

@@ -1,0 +1,17 @@
+FROM python:3.11.6
+
+# Prevent Python from writing pyc files to disc and overflowing the container
+ENV PYTHONDONTWRITEBYTECODE 1
+# Prevent Python from buffering stdout and stderr and causing memory issues
+ENV PYTHONUNBUFFERED 1
+
+WORKDIR /app
+COPY . /app
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+
+RUN mv /app/dockerfiles/config.yaml /app/connectf/config.yaml
+RUN chmod +x /app/dockerfiles/wait-for-it.sh
+RUN chmod +x /app/dockerfiles/import-data.sh
+
+EXPOSE 8001

@@ -286,7 +286,7 @@ def get_metadata(analyses, fields: Optional[Iterable[str]] = None) -> pd.DataFra
     analysis_data = AnalysisData.objects.filter(analysis__in=analyses, **opts).prefetch_related(
         'key')
     metadata = pd.DataFrame(
-        analysis_data.values_list('analysis_id', 'key__name', 'value').iterator(),
+        analysis_data.values_list('analysis_id', 'key__name', 'value').iterator(chunk_size=2000),
         columns=['id', 'key', 'value'])
     metadata = metadata.set_index(['id', 'key'])['value'].unstack().fillna('None')
 

@@ -42,10 +42,8 @@ class Command(BaseCommand):
                     df = data.merge(meta, on=1, how='inner', validate='one_to_one')
 
                     for row in df.itertuples():
-                        self.stdout.write("inserting {0[1]} {0[3]}\n".format(row))
                         insert_data(row[1], row[3], sep=options["sep"], dry_run=options['dry_run'])
                 else:
-                    self.stdout.write("inserting {0[data]} {0[metadata]}\n".format(options))
                     insert_data(options['data'], options['metadata'], sep=options["sep"], dry_run=options['dry_run'])
             except ValueError as e:
                 raise CommandError(e) from e

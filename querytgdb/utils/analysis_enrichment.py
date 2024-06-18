@@ -80,7 +80,7 @@ def analysis_enrichment(uid: Union[UUID, str], size_limit: int = 100, raise_warn
         info.append((split_col_name(col_name), d))
 
     for (name1, col1), (name2, col2) in combinations(((name, col.index[col.notna()])
-                                                      for name, col in df.iteritems()), 2):
+                                                      for name, col in df.items()), 2):
         columns.append((
             split_col_name(name1),
             split_col_name(name2)

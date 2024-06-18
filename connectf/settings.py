@@ -24,7 +24,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, 'connectf/config.yaml')
 
 with open(CONFIG_PATH) as f:
-    CONFIG = yaml.safe_load(f)
+    yaml_content_with_env_vars = os.path.expandvars(f.read())
+    CONFIG = yaml.safe_load(yaml_content_with_env_vars)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = CONFIG['SECRET_KEY']
@@ -82,7 +83,8 @@ DATABASES = {
         'NAME': CONFIG['DATABASE']['NAME'],
         'USER': CONFIG['DATABASE']['USER'],
         'PASSWORD': CONFIG['DATABASE']['PASSWORD'],
-        'HOST': CONFIG['DATABASE'].get('HOST', 'localhost'),
+         # if MYSQL_DOCKER_HOST is set, use it as the host, otherwise use config file
+        'HOST': os.getenv('MYSQL_DOCKER_HOST', CONFIG['DATABASE']['HOST']),
         'PORT': CONFIG['DATABASE'].get('PORT', '3306'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'"
@@ -163,13 +165,21 @@ CACHES = {
 }
 
 # Configure motif annotation file and cluster definitions here
-MOTIF_ANNOTATION = CONFIG.get('MOTIF_ANNOTATION',
-                              os.path.join(BASE_DIR, 'data', 'motifs.csv.gz'))
-MOTIF_TF_ANNOTATION = CONFIG.get('MOTIF_TF_ANNOTATION',
-                                 os.path.join(BASE_DIR, 'data', 'motifs_indv.csv.gz'))
-MOTIF_CLUSTER_INFO = CONFIG.get('MOTIF_CLUSTER_INFO', os.path.join(BASE_DIR, 'data', 'cluster_info.csv.gz'))
-GENE_LISTS = CONFIG.get('GENE_LISTS', os.path.join(BASE_DIR, 'commongenelists'))
-TARGET_NETWORKS = CONFIG.get('TARGET_NETWORKS', os.path.join(BASE_DIR, 'target_networks'))
+
+def getPathOrDefault(key, default):
+    if key in CONFIG and len(CONFIG[key]) > 0:
+        if CONFIG[key].startswith('/'):
+            return CONFIG[key]
+        else:
+            return os.path.normpath(os.path.join(BASE_DIR, CONFIG[key]))
+    else:
+        return default
+
+MOTIF_ANNOTATION = getPathOrDefault('MOTIF_ANNOTATION', os.path.join(BASE_DIR, 'data', 'motifs.csv.gz'))
+MOTIF_TF_ANNOTATION = getPathOrDefault('MOTIF_TF_ANNOTATION', os.path.join(BASE_DIR, 'data', 'motifs_indv.csv.gz'))
+MOTIF_CLUSTER_INFO = getPathOrDefault('MOTIF_CLUSTER_INFO', os.path.join(BASE_DIR, 'data', 'cluster_info.csv.gz'))
+GENE_LISTS = getPathOrDefault('GENE_LISTS', os.path.join(BASE_DIR, 'commongenelists'))
+TARGET_NETWORKS = getPathOrDefault('TARGET_NETWORKS', os.path.join(BASE_DIR, 'target_networks'))
 
 LOGGING = {
     'version': 1,
@@ -225,3 +235,8 @@ NAMED_QUERIES = {
     'all_dap': "all_tfs[EDGE_TYPE='in vitro:Bound:DAP' or EDGE_TYPE='in vitro:Bound:ampDAP']",
     'in_planta_bound': "all_tfs[EDGE_TYPE='in planta:Bound']"
 }
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'

@@ -51,9 +51,9 @@ class TypeColor:
 
     def __call__(self, df: pd.DataFrame):
         type_count = df['type'].value_counts()
-        colors = {idx: iter(self[idx](value)) for idx, value in type_count.items()}
+        colors = {str(idx): iter(self[idx](value)) for idx, value in type_count.items()}
         return pd.DataFrame(
-            ((c, next(colors[t])) for c, t in df.itertuples(index=False, name=None)),
+            ((c, next(colors[str(t)])) for c, t in df.itertuples(index=False, name=None)),
             index=df.index,
             columns=['count', 'type'])
 

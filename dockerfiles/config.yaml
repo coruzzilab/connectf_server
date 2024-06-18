@@ -1,0 +1,13 @@
+SECRET_KEY: '%rn7w^9lm7t+0tu=zq=(sf5o^4lf^n(t*k04w8(^xc$a8cyp*)'  # see https://docs.djangoproject.com/en/2.2/ref/settings/#secret-key
+DEBUG: True
+DATABASE:
+  NAME: 'connectf'
+  USER: 'connectfuser'
+  PASSWORD: 'connectfpwd'
+  HOST: 'localhost'
+
+MOTIF_ANNOTATION: './connectf_data_release_v1/$IMPORT/motifs/motifs.csv.gz'  # path to cluster motif file motifs.csv.gz
+MOTIF_TF_ANNOTATION: './connectf_data_release_v1/$IMPORT/motifs/motifs_indv.csv.gz'  # path to tf motif file motifs_indv.csv.gz
+MOTIF_CLUSTER_INFO: './connectf_data_release_v1/common/cluster_info.csv.gz'  # path to cluster_info.csv.gz
+GENE_LISTS: './connectf_data_release_v1/$IMPORT/gene_lists'  # optional gene list folder
+TARGET_NETWORKS: './connectf_data_release_v1/$IMPORT/networks' # optional target network folder

@@ -149,3 +149,14 @@ class Regulation(models.Model):
 
     class Meta:
         unique_together = (('analysis', 'target'),)
+
+class ImportHistory(models.Model):
+    """
+    History of imported data
+    """
+    fileName = models.FilePathField()
+    type = models.CharField(max_length=10)
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.type}: {self.fileName} imported at {self.imported_at}"

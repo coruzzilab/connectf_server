@@ -267,7 +267,7 @@ def get_analysis_gene_list(uid: Union[str, UUID]) -> Dict[Id, Set[str]]:
     cached_data = cache.get_many([f'{uid}/tabular_output', f'{uid}/target_genes'])
     df = cached_data[f'{uid}/tabular_output']
     df = clear_data(df)
-    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.iteritems())
+    res = OrderedDict((name, set(col.index[col.notnull()])) for name, col in df.items())
 
     try:
         _, target_lists = cached_data[f'{uid}/target_genes']

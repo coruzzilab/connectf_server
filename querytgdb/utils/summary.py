@@ -41,7 +41,7 @@ def get_summary(uid: Union[UUID, str], size_limit: int = 50) -> Dict[str, Any]:
     ).distinct().prefetch_related('tf')
 
     analysis_data = pd.DataFrame(
-        ((a.pk, a.name, a.tf.gene_name_symbol) for a in analyses.iterator()),
+        ((a.pk, a.name, a.tf.gene_name_symbol) for a in analyses.iterator(chunk_size=2000)),
         columns=['pk', 'name', 'symbol']
     ).set_index('pk')
 
@@ -51,7 +51,7 @@ def get_summary(uid: Union[UUID, str], size_limit: int = 50) -> Dict[str, Any]:
           .fillna(0)
           .astype(np.int_))
 
-    tf_order = df.sum(axis=1, level=0).sum(axis=0).sort_values(ascending=False)
+    tf_order = df.groupby(axis=1, level=0).sum().sum(axis=0).sort_values(ascending=False)
     tf_total = tf_order.groupby(by=list(map(itemgetter(0), tf_order.index))).sum()
     tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order.at[i]), reverse=True)
 

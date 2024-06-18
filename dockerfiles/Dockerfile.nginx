@@ -1,0 +1,28 @@
+# Two build stages are used to build the react app and then start the nginx server
+
+# 1. Build react app stage
+FROM --platform=amd64 ubuntu:latest AS builder
+
+# Install necessary dependencies for Node.js and npm
+RUN apt-get update && \
+    apt-get install -y build-essential && \
+    apt-get install -y curl && \
+    apt-get install -y git && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+
+WORKDIR /app
+COPY --from=connectf_react . .
+RUN npm install -g npm@10.5.0
+RUN npm install
+RUN npm run build
+
+# 2. Start nginx server stage
+FROM nginx:latest
+
+COPY ./dockerfiles/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /var/www/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
