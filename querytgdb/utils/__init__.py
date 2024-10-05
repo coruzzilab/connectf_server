@@ -143,7 +143,12 @@ def clear_data(df: pd.DataFrame, drop: bool = True) -> pd.DataFrame:
     :param drop:
     :return:
     """
-    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df_cols = []
+    if 'EDGE' in df:
+      df_cols.append('EDGE')
+    if 'Log2FC' in df:
+      df_cols.append('Log2FC')
+    df = df.loc[:, (slice(None), slice(None), df_cols)]
     if drop:
         df.columns = df.columns.droplevel(2)
 
@@ -156,7 +161,12 @@ def data_to_edges(df: pd.DataFrame) -> pd.DataFrame:
     :param df:
     :return:
     """
-    df = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])]
+    df_cols = []
+    if 'EDGE' in df:
+      df_cols.append('EDGE')
+    if 'Log2FC' in df:
+      df_cols.append('Log2FC')
+    df = df.loc[:, (slice(None), slice(None), df_cols)]
 
     edge_types = dict(AnalysisData.objects.filter(
         key__name='EDGE_TYPE',
