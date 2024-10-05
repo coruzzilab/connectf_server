@@ -36,6 +36,6 @@ services:
         connectf_react: ../connectf_react
       dockerfile: ./dockerfiles/Dockerfile.nginx
     ports:
-      - "80:80"
+      - "8080:8080"
     depends_on:
       - backend

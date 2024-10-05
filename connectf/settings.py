@@ -139,7 +139,10 @@ MEDIA_ROOT = 'media/'
 CORS_ORIGIN_WHITELIST = [
     'http://127.0.0.1:3000',
     'http://localhost:8080',
-    'http://localhost:8081'
+    'http://localhost:8081',
+    'http://host.docker.internal:3000',
+    'http://host.docker.internal:8080',
+    'http://host.docker.internal:8081'
 ]
 
 CORS_ALLOW_CREDENTIALS = True
