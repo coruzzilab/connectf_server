@@ -747,12 +747,7 @@ def get_metadata(ids: Sequence) -> pd.DataFrame:
 
 
 def get_tf_count(df: TargetFrame) -> TargetSeries:
-    df_cols = []
-    if 'EDGE' in df:
-      df_cols.append('EDGE')
-    if 'Log2FC' in df:
-      df_cols.append('Log2FC')
-    counts = df.loc[:, (slice(None), slice(None), df_cols)].count(axis=1)
+    counts = df.loc[:, (slice(None), slice(None), ['EDGE', 'Log2FC'])].count(axis=1)
     counts.name = 'Edge Count'
 
     return counts
@@ -853,10 +848,7 @@ def get_total(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def induce_repress_count(result: TargetFrame) -> pd.DataFrame:
-    df_cols = []
-    if 'Log2FC' in result:
-      df_cols.append('Log2FC')
-    fc_result = result.loc[:, (slice(None), slice(None), df_cols)]
+    fc_result = result.loc[:, (slice(None), slice(None), ['Log2FC'])]
     return pd.DataFrame([(fc_result > 0).sum(axis=0), (fc_result < 0).sum(axis=0)], index=['induced', 'repressed'])
 
 
