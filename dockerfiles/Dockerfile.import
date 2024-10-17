@@ -12,6 +12,4 @@ RUN pip install -r requirements.txt
 
 RUN mv /app/dockerfiles/config.yaml /app/connectf/config.yaml
 # RUN chmod +x /app/dockerfiles/wait-for-it.sh
-# RUN chmod +x /app/dockerfiles/import-data.sh
-
-EXPOSE 8001
+RUN chmod +x /app/dockerfiles/import-data.sh

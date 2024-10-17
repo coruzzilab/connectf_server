@@ -11,6 +11,8 @@ services:
       - MYSQL_ROOT_PASSWORD=root
     ports:
       - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
 
   backend:
     build:
@@ -20,13 +22,32 @@ services:
     environment:
       - IMPORT=$IMPORT
       - MYSQL_DOCKER_HOST=mysql
-    command: /app/dockerfiles/wait-for-it.sh mysql:3306 --timeout=30 -- bash -c "
-        /app/dockerfiles/import-data.sh && \
-        gunicorn --workers 3 --timeout 200 --bind 0.0.0.0:8001 -m 007 connectf.wsgi"
+    command: gunicorn --reload --workers 3 --timeout 200 --bind 0.0.0.0:8001 -m 007 connectf.wsgi
     ports:
       - "8001:8001"
     depends_on: 
       - mysql
+    volumes:
+      - .:/app
+    develop:
+      watch:
+        - action: sync+restart
+          path: .
+          target: /app
+  
+  import:
+    build:
+      no_cache: true
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile.import
+    environment:
+      - IMPORT=$IMPORT
+      - MYSQL_DOCKER_HOST=mysql
+    command: sh /app/dockerfiles/import-data.sh
+    depends_on: 
+      - mysql
+    volumes:
+      - .:/app
 
   nginx:
     platform: linux/amd64
@@ -39,3 +60,5 @@ services:
       - "8080:8080"
     depends_on:
       - backend
+volumes:
+  db-data:

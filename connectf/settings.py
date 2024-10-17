@@ -142,7 +142,10 @@ CORS_ORIGIN_WHITELIST = [
     'http://localhost:8081',
     'http://host.docker.internal:3000',
     'http://host.docker.internal:8080',
-    'http://host.docker.internal:8081'
+    'http://host.docker.internal:8081',
+    'http://0.0.0.0:8080',
+    'http://0.0.0.0:3000',
+    'http://0.0.0.0:8081'
 ]
 
 CORS_ALLOW_CREDENTIALS = True
