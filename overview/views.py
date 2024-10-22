@@ -65,7 +65,7 @@ class OverviewView(View):
                                # Q(analysisdata__key__name__icontains=search) |
                                Q(analysisdata__value__icontains=search))
 
-        analyses = pd.DataFrame(qs.values_list('pk', 'tf__gene_id', 'tf__name').distinct().iterator(),
+        analyses = pd.DataFrame(qs.values_list('pk', 'tf__gene_id', 'tf__name').distinct().iterator(chunk_size=2000),
                                 columns=['id', 'gene_id', 'gene_name'])
 
         # new colors in summary
@@ -81,10 +81,10 @@ class OverviewView(View):
 
         analysisdata_qs = AnalysisData.objects.filter(analysis__in=qs).prefetch_related('key')
 
-        analysisdata = pd.DataFrame(analysisdata_qs.values_list('analysis_id', 'key__name', 'value').iterator(),
+        analysisdata = pd.DataFrame(analysisdata_qs.values_list('analysis_id', 'key__name', 'value').iterator(chunk_size=2000),
                                     columns=['id', 'key', 'value'])
 
-        analysisdata['value'] = analysisdata['value'].str.replace(na_vals, 'None')
+        analysisdata['value'] = analysisdata['value'].str.replace(na_vals, 'None', regex=True)
 
         exp_type = analysisdata.loc[analysisdata['key'] == 'EXPERIMENT_TYPE', ['id', 'value']]
         exp_type['value'] = exp_type['value'].str.upper()

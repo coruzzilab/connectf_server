@@ -681,7 +681,8 @@ def get_tf(query: Union[pp.ParseResults, str, TargetFrame],
                     df.filter_string = filter_string
 
                     if curr == 'and':
-                        df = df.rename(columns=partial(replace_filter_str, filter_string=filter_string), level=0)
+                        # df = df.rename(columns=partial(replace_filter_str, filter_string=filter_string), level=0)
+                        df.columns = pd.MultiIndex.from_tuples([(replace_filter_str(c[0], filter_string), c[1], c[2]) for c in df.columns])
 
                     stack.append(df)
 
@@ -727,8 +728,8 @@ def reorder_data(df: TargetFrame) -> TargetFrame:
     """
     edges = clear_data(df)
 
-    analysis_order = edges.count(axis=1, level=1).sum().sort_values(ascending=False)
-    tf_order = edges.count(axis=1, level=0).sum()
+    analysis_order = edges.groupby(level=1, axis=1).count().sum().sort_values(ascending=False)
+    tf_order = edges.groupby(level=0, axis=1).count().sum()
     tf_total = tf_order.groupby(by=list(map(itemgetter(0), tf_order.index))).sum()
     tf_reorder = sorted(tf_order.index, key=lambda i: (tf_total[i[0]], tf_order.at[i]), reverse=True)
 

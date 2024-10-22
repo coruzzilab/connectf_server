@@ -184,6 +184,68 @@ server {
 
 The front end of this project is built with ReactJS. You can find it at [connectf_react](https://github.com/coruzzilab/connectf_react).
 
+### Containerization
+
+To run all three -databse, backend and frontend- in a containerized environment, use the provided `Dockerfiles` and `docker-compose.yml` files.
+
+- 1. The docker compose script expects all gene data to be located at `connectf_server/connectf_data_release_v1/` folder, following the structure:
+```bash
+connectf_server
+├── connectf_data_release_v1
+│   ├── arabidopsis
+│   │   ├── additional_edges/
+│   │   ├── data/
+│   │   ├── gene_lists/
+│   │   ├── metadata/
+│   │   ├── motifs/
+│   │   ├── networks/
+│   │   ├── annotation.csv.gz
+│   ├── common
+│   │   ├── cluster_info.csv.gz
+│   ├── maize
+│   │   ├── same structure as arabidopsis
+│   ├── rice
+│   │   ├── same structure as arabidopsis
+```
+- 2. Make sure the folders for projects `connectf_react` and `connectf_server` are siblings.
+- 2. cd into connectf_react and build a production version of the React app
+```bash
+cd ../connectf_react
+npm run build
+```
+- 3. cd back to connectf_server and make sure the `./connectf/config.yaml` file is set up correctly.
+```yaml
+SECRET_KEY: 'django_secret_key' # see https://docs.djangoproject.com/en/2.2/ref/settings/#secret-key
+DEBUG: True
+DATABASE:
+  NAME: 'connectf'
+  USER: 'connectfuser'
+  PASSWORD: 'connectfpwd'
+  HOST: 'localhost'
+
+MOTIF_ANNOTATION: './connectf_data_release_v1/$IMPORT/motifs/motifs.csv.gz'  # path to cluster motif file motifs.csv.gz
+MOTIF_TF_ANNOTATION: './connectf_data_release_v1/$IMPORT/motifs/motifs_indv.csv.gz'  # path to tf motif file motifs_indv.csv.gz
+MOTIF_CLUSTER_INFO: './connectf_data_release_v1/common/cluster_info.csv.gz'  # path to cluster_info.csv.gz
+GENE_LISTS: './connectf_data_release_v1/$IMPORT/gene_lists'  # optional gene list folder
+TARGET_NETWORKS: './connectf_data_release_v1/$IMPORT/networks' # optional target network folder
+```
+
+- 4. Make sure there are no running containers:
+```bash
+docker compose down
+```
+
+- 5. Finally, build and run images:
+```bash
+COMPOSE_PROJECT_NAME=connectf IMPORT=arabidopsis docker compose up --build
+```
+The env var `IMPORT` is always required and signals to install all your gene data into the mysql database if this is the first time running the containers. `IMPORT` is a string that specifies the folder that contains your gene data, for example, 'arabiopsis' or 'maize' or 'rice'.
+
+- 5. The api should be running on `http://localhost:8001/api` and the frontend should be running on `http://localhost:80`
+
+<img width="1155" alt="image" src="https://github.com/coruzzilab/connectf_server/assets/1679438/cab90ef1-a3d5-47b5-af47-de85cb6debf8">
+
 ### Data
 
 All data for this project can be found at https://connectf.s3.amazonaws.com/connectf_data_release_v1.tar.gz
+
